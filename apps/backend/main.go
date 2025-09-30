@@ -1,0 +1,127 @@
+package main
+
+import (
+	"log"
+	"os"
+	"time"
+
+	"risknexus/backend/internal/cache"
+	"risknexus/backend/internal/config"
+	"risknexus/backend/internal/database"
+	"risknexus/backend/internal/domain"
+	"risknexus/backend/internal/http"
+	"risknexus/backend/internal/repo"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/logger"
+)
+
+func main() {
+	cfg := config.Load()
+
+	db, err := database.Connect(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatal("Failed to connect to database:", err)
+	}
+	defer db.Close()
+
+	// Initialize cache
+	memoryCache := cache.NewMemoryCache()
+
+	// Initialize repositories
+	userRepo := repo.NewUserRepo(db)
+	baseRoleRepo := repo.NewRoleRepo(db)
+	roleRepo := repo.NewCachedRoleRepo(baseRoleRepo, memoryCache, 5*time.Minute)
+	permissionRepo := repo.NewPermissionRepo(db)
+	assetRepo := repo.NewAssetRepo(db)
+	riskRepo := repo.NewRiskRepo(db)
+	documentRepo := repo.NewDocumentRepo(db)
+	incidentRepo := repo.NewIncidentRepo(db)
+	trainingRepo := repo.NewTrainingRepo(db)
+	auditRepo := repo.NewAuditRepo(db)
+	aiRepo := repo.NewAIRepo(db)
+	complianceRepo := repo.NewComplianceRepo(db)
+
+	// Initialize services
+	authService := domain.NewAuthService(userRepo, baseRoleRepo, permissionRepo)
+	userService := domain.NewUserService(userRepo, baseRoleRepo)
+	roleService := domain.NewRoleService(roleRepo, userRepo, auditRepo)
+	assetService := domain.NewAssetService(assetRepo, auditRepo)
+	riskService := domain.NewRiskService(riskRepo, auditRepo)
+	documentService := domain.NewDocumentService(documentRepo, auditRepo)
+	incidentService := domain.NewIncidentService(incidentRepo, auditRepo)
+	trainingService := domain.NewTrainingService(trainingRepo, auditRepo)
+	aiService := domain.NewAIService(aiRepo)
+	complianceService := domain.NewComplianceService(complianceRepo)
+
+	// Initialize handlers
+	authHandler := http.NewAuthHandler(authService)
+	userHandler := http.NewUserHandler(userService)
+	roleHandler := http.NewRoleHandler(roleService)
+	log.Printf("DEBUG: main.go roleHandler created: %+v", roleHandler)
+	auditHandler := http.NewAuditHandler(auditRepo)
+
+	// Set global permission checker
+	http.SetPermissionChecker(userService)
+	assetHandler := http.NewAssetHandler(assetService)
+	riskHandler := http.NewRiskHandler(riskService)
+	documentHandler := http.NewDocumentHandler(documentService)
+	incidentHandler := http.NewIncidentHandler(incidentService)
+	trainingHandler := http.NewTrainingHandler(trainingService)
+	aiHandler := http.NewAIHandler(aiService)
+	complianceHandler := http.NewComplianceHandler(complianceService)
+
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c *fiber.Ctx, err error) error {
+			code := fiber.StatusInternalServerError
+			if e, ok := err.(*fiber.Error); ok {
+				code = e.Code
+			}
+			return c.Status(code).JSON(fiber.Map{"error": err.Error()})
+		},
+	})
+
+	// Middleware
+	app.Use(logger.New())
+	app.Use(cors.New())
+
+	// Simple test endpoint (no auth)
+	app.Get("/health", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"status": "OK", "message": "Backend is healthy"})
+	})
+
+	// Routes
+	api := app.Group("/api")
+
+	// Auth routes
+	authHandler.Register(api)
+
+	// Test endpoint (this should work without auth)
+	api.Get("/test", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"status": "OK", "message": "Backend is working"})
+	})
+
+	// Protected routes
+	protected := api.Group("", http.AuthMiddleware(authService))
+	userHandler.Register(protected)
+	log.Printf("DEBUG: main.go registering roleHandler")
+	roleHandler.Register(protected)
+	log.Printf("DEBUG: main.go roleHandler registered")
+	auditHandler.Register(protected)
+	assetHandler.Register(protected)
+	riskHandler.Register(protected)
+	documentHandler.Register(protected)
+	incidentHandler.Register(protected)
+	trainingHandler.Register(protected)
+	aiHandler.Register(protected)
+	complianceHandler.Register(protected)
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	log.Printf("Server starting on port %s", port)
+	log.Fatal(app.Listen(":" + port))
+}

@@ -1,0 +1,634 @@
+import { useState, useEffect } from "react"
+import {
+  Container,
+  Typography,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Button,
+  Box,
+  Chip,
+  Tabs,
+  Tab,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  IconButton,
+  Tooltip,
+  Alert,
+  CircularProgress,
+} from "@mui/material"
+import {
+  Add,
+  Description,
+  Edit,
+  Delete,
+  Visibility,
+  History,
+  Assignment,
+  Quiz,
+  Search,
+  FilterList,
+} from "@mui/icons-material"
+import {
+  getDocuments,
+  createDocument,
+  updateDocument,
+  deleteDocument,
+  getDocumentTypeLabel,
+  getDocumentStatusLabel,
+  getDocumentStatusColor,
+  type Document,
+  type CreateDocumentDTO,
+  type UpdateDocumentDTO,
+  type DocumentFilters,
+} from "../shared/api/documents"
+import CreateDocumentWizard from "../components/docs/CreateDocumentWizard"
+import DocumentVersionsDialog from "../components/docs/DocumentVersionsDialog"
+
+interface TabPanelProps {
+  children?: React.ReactNode
+  index: number
+  value: number
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`documents-tabpanel-${index}`}
+      aria-labelledby={`documents-tab-${index}`}
+      {...other}
+    >
+      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
+    </div>
+  )
+}
+
+function DocumentsPage() {
+  const [activeTab, setActiveTab] = useState(0)
+  const [documents, setDocuments] = useState<Document[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [statusFilter, setStatusFilter] = useState("")
+  const [typeFilter, setTypeFilter] = useState("")
+  
+  // Dialog states
+  const [openCreate, setOpenCreate] = useState(false)
+  const [openCreateWizard, setOpenCreateWizard] = useState(false)
+  const [openEdit, setOpenEdit] = useState(false)
+  const [openDelete, setOpenDelete] = useState(false)
+  const [openView, setOpenView] = useState(false)
+  const [openVersions, setOpenVersions] = useState(false)
+  const [selectedDocument, setSelectedDocument] = useState<Document | null>(null)
+  
+  // Form states
+  const [formData, setFormData] = useState<CreateDocumentDTO>({
+    title: "",
+    code: "",
+    description: "",
+    type: "policy",
+    category: "",
+    tags: [],
+    ownerId: "",
+    classification: "Internal",
+    effectiveFrom: "",
+    reviewPeriodMonths: 12,
+    assetIds: [],
+    riskIds: [],
+    controlIds: [],
+  })
+
+  useEffect(() => {
+    loadDocuments()
+  }, [searchTerm, statusFilter, typeFilter])
+
+  const loadDocuments = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      
+      const filters: DocumentFilters = {}
+      if (searchTerm) filters.search = searchTerm
+      if (statusFilter) filters.status = statusFilter
+      if (typeFilter) filters.type = typeFilter
+      
+      const data = await getDocuments(filters)
+      setDocuments(Array.isArray(data) ? data : [])
+    } catch (err) {
+      console.error('Error loading documents:', err)
+      setError('Ошибка загрузки документов')
+      setDocuments([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue)
+  }
+
+  const handleCreateDocument = async () => {
+    try {
+      await createDocument(formData)
+      setOpenCreate(false)
+      resetForm()
+      loadDocuments()
+    } catch (err) {
+      console.error('Error creating document:', err)
+      setError('Ошибка создания документа')
+    }
+  }
+
+  const handleCreateWizardSuccess = (documentId: string) => {
+    setOpenCreateWizard(false)
+    loadDocuments()
+    // Можно добавить редирект на страницу документа
+    console.log('Document created with ID:', documentId)
+  }
+
+  const handleUpdateDocument = async () => {
+    if (!selectedDocument) return
+    
+    try {
+      await updateDocument(selectedDocument.id, {
+        ...formData,
+        status: selectedDocument.status,
+      })
+      setOpenEdit(false)
+      resetForm()
+      loadDocuments()
+    } catch (err) {
+      console.error('Error updating document:', err)
+      setError('Ошибка обновления документа')
+    }
+  }
+
+  const handleDeleteDocument = async () => {
+    if (!selectedDocument) return
+    
+    try {
+      await deleteDocument(selectedDocument.id)
+      setOpenDelete(false)
+      loadDocuments()
+    } catch (err) {
+      console.error('Error deleting document:', err)
+      setError('Ошибка удаления документа')
+    }
+  }
+
+  const resetForm = () => {
+    setFormData({
+      title: "",
+      code: "",
+      description: "",
+      type: "policy",
+      category: "",
+      tags: [],
+      ownerId: "",
+      classification: "Internal",
+      effectiveFrom: "",
+      reviewPeriodMonths: 12,
+      assetIds: [],
+      riskIds: [],
+      controlIds: [],
+    })
+    setSelectedDocument(null)
+  }
+
+  const openViewDialog = (document: Document) => {
+    setSelectedDocument(document)
+    setOpenView(true)
+  }
+
+  const openEditDialog = (document: Document) => {
+    setSelectedDocument(document)
+    setFormData({
+      title: document.title,
+      description: document.description || "",
+      type: document.type,
+      category: document.category || "",
+      tags: document.tags,
+    })
+    setOpenEdit(true)
+  }
+
+  const openDeleteDialog = (document: Document) => {
+    setSelectedDocument(document)
+    setOpenDelete(true)
+  }
+
+  const openVersionsDialog = (document: Document) => {
+    setSelectedDocument(document)
+    setOpenVersions(true)
+  }
+
+  const renderDocumentsList = () => (
+    <Paper>
+      <Box display="flex" justifyContent="space-between" alignItems="center" p={2}>
+        <Typography variant="h6">Документы</Typography>
+        <Button variant="contained" startIcon={<Add />} onClick={() => setOpenCreateWizard(true)}>
+          Создать документ
+        </Button>
+      </Box>
+      
+      <Box p={2} display="flex" gap={2} alignItems="center">
+        <TextField
+          size="small"
+          placeholder="Поиск документов..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          InputProps={{
+            startAdornment: <Search sx={{ mr: 1, color: 'text.secondary' }} />
+          }}
+        />
+        
+        <FormControl size="small" sx={{ minWidth: 120 }}>
+          <InputLabel>Статус</InputLabel>
+          <Select
+            value={statusFilter}
+            label="Статус"
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <MenuItem value="">Все</MenuItem>
+            <MenuItem value="draft">Черновик</MenuItem>
+            <MenuItem value="in_review">На согласовании</MenuItem>
+            <MenuItem value="approved">Утвержден</MenuItem>
+            <MenuItem value="obsolete">Устарел</MenuItem>
+          </Select>
+        </FormControl>
+        
+        <FormControl size="small" sx={{ minWidth: 120 }}>
+          <InputLabel>Тип</InputLabel>
+          <Select
+            value={typeFilter}
+            label="Тип"
+            onChange={(e) => setTypeFilter(e.target.value)}
+          >
+            <MenuItem value="">Все</MenuItem>
+            <MenuItem value="policy">Политика</MenuItem>
+            <MenuItem value="standard">Стандарт</MenuItem>
+            <MenuItem value="procedure">Процедура</MenuItem>
+            <MenuItem value="instruction">Инструкция</MenuItem>
+            <MenuItem value="act">Акт</MenuItem>
+            <MenuItem value="other">Другое</MenuItem>
+          </Select>
+        </FormControl>
+      </Box>
+      
+      <TableContainer>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Название</TableCell>
+              <TableCell>Тип</TableCell>
+              <TableCell>Категория</TableCell>
+              <TableCell>Статус</TableCell>
+              <TableCell>Версия</TableCell>
+              <TableCell>Создан</TableCell>
+              <TableCell>Действия</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={7} align="center">
+                  <CircularProgress />
+                </TableCell>
+              </TableRow>
+            ) : documents.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} align="center">
+                  <Typography>Нет документов</Typography>
+                </TableCell>
+              </TableRow>
+            ) : (
+              documents.map((document) => (
+                <TableRow key={document.id}>
+                  <TableCell>
+                    <Box display="flex" alignItems="center">
+                      <Description sx={{ mr: 1 }} />
+                      {document.title}
+                    </Box>
+                  </TableCell>
+                  <TableCell>{getDocumentTypeLabel(document.type)}</TableCell>
+                  <TableCell>{document.category || '-'}</TableCell>
+                  <TableCell>
+                    <Chip
+                      label={getDocumentStatusLabel(document.status)}
+                      color={getDocumentStatusColor(document.status)}
+                      size="small"
+                    />
+                  </TableCell>
+                  <TableCell>v{document.current_version}</TableCell>
+                  <TableCell>
+                    {new Date(document.created_at).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell>
+                    <Box display="flex" gap={1}>
+                      <Tooltip title="Просмотр">
+                        <IconButton size="small" onClick={() => openViewDialog(document)}>
+                          <Visibility />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Редактировать">
+                        <IconButton size="small" onClick={() => openEditDialog(document)}>
+                          <Edit />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Версии">
+                        <IconButton size="small" onClick={() => openVersionsDialog(document)}>
+                          <History />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Удалить">
+                        <IconButton 
+                          size="small" 
+                          color="error"
+                          onClick={() => openDeleteDialog(document)}
+                        >
+                          <Delete />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Paper>
+  )
+
+  const renderAcknowledgment = () => (
+    <Paper>
+      <Box display="flex" justifyContent="space-between" alignItems="center" p={2}>
+        <Typography variant="h6">Ознакомления</Typography>
+        <Button variant="contained" startIcon={<Assignment />}>
+          Создать ознакомление
+        </Button>
+      </Box>
+      <Box p={2}>
+        <Typography>Здесь будет список ознакомлений с документами</Typography>
+      </Box>
+    </Paper>
+  )
+
+  const renderQuizzes = () => (
+    <Paper>
+      <Box display="flex" justifyContent="space-between" alignItems="center" p={2}>
+        <Typography variant="h6">Квизы</Typography>
+        <Button variant="contained" startIcon={<Quiz />}>
+          Создать квиз
+        </Button>
+      </Box>
+      <Box p={2}>
+        <Typography>Здесь будет управление квизами для документов</Typography>
+      </Box>
+    </Paper>
+  )
+
+  if (error) {
+    return (
+      <Container maxWidth="lg">
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      </Container>
+    )
+  }
+
+  return (
+    <Container maxWidth="lg">
+      <Typography variant="h4" gutterBottom>
+        Управление документами
+      </Typography>
+
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+        <Tabs value={activeTab} onChange={handleTabChange}>
+          <Tab label="Документы" icon={<Description />} />
+          <Tab label="Ознакомления" icon={<Assignment />} />
+          <Tab label="Квизы" icon={<Quiz />} />
+        </Tabs>
+      </Box>
+
+      <TabPanel value={activeTab} index={0}>
+        {renderDocumentsList()}
+      </TabPanel>
+      <TabPanel value={activeTab} index={1}>
+        {renderAcknowledgment()}
+      </TabPanel>
+      <TabPanel value={activeTab} index={2}>
+        {renderQuizzes()}
+      </TabPanel>
+
+      {/* Create Document Dialog */}
+      <Dialog open={openCreate} onClose={() => setOpenCreate(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Создать документ</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              label="Название"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              fullWidth
+              required
+            />
+            <TextField
+              label="Описание"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              fullWidth
+              multiline
+              rows={3}
+            />
+            <FormControl fullWidth>
+              <InputLabel>Тип документа</InputLabel>
+              <Select
+                value={formData.type}
+                label="Тип документа"
+                onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
+              >
+                <MenuItem value="policy">Политика</MenuItem>
+                <MenuItem value="standard">Стандарт</MenuItem>
+                <MenuItem value="procedure">Процедура</MenuItem>
+                <MenuItem value="instruction">Инструкция</MenuItem>
+                <MenuItem value="act">Акт</MenuItem>
+                <MenuItem value="other">Другое</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              label="Категория"
+              value={formData.category}
+              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+              fullWidth
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenCreate(false)}>Отмена</Button>
+          <Button onClick={handleCreateDocument} variant="contained">
+            Создать
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Document Dialog */}
+      <Dialog open={openEdit} onClose={() => setOpenEdit(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Редактировать документ</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              label="Название"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              fullWidth
+              required
+            />
+            <TextField
+              label="Описание"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              fullWidth
+              multiline
+              rows={3}
+            />
+            <FormControl fullWidth>
+              <InputLabel>Тип документа</InputLabel>
+              <Select
+                value={formData.type}
+                label="Тип документа"
+                onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
+              >
+                <MenuItem value="policy">Политика</MenuItem>
+                <MenuItem value="standard">Стандарт</MenuItem>
+                <MenuItem value="procedure">Процедура</MenuItem>
+                <MenuItem value="instruction">Инструкция</MenuItem>
+                <MenuItem value="act">Акт</MenuItem>
+                <MenuItem value="other">Другое</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              label="Категория"
+              value={formData.category}
+              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+              fullWidth
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenEdit(false)}>Отмена</Button>
+          <Button onClick={handleUpdateDocument} variant="contained">
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* View Document Dialog */}
+      <Dialog open={openView} onClose={() => setOpenView(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Просмотр документа</DialogTitle>
+        <DialogContent>
+          {selectedDocument && (
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                {selectedDocument.title}
+              </Typography>
+              <Box mb={2}>
+                <Typography variant="body2" color="textSecondary">
+                  <strong>Тип:</strong> {getDocumentTypeLabel(selectedDocument.type)}
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  <strong>Статус:</strong> {getDocumentStatusLabel(selectedDocument.status)}
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  <strong>Категория:</strong> {selectedDocument.category || "Не указана"}
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  <strong>Версия:</strong> v{selectedDocument.current_version}
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  <strong>Создан:</strong> {new Date(selectedDocument.created_at).toLocaleString()}
+                </Typography>
+              </Box>
+              {selectedDocument.description && (
+                <Box mb={2}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Описание:
+                  </Typography>
+                  <Typography variant="body2">
+                    {selectedDocument.description}
+                  </Typography>
+                </Box>
+              )}
+              {selectedDocument.tags && selectedDocument.tags.length > 0 && (
+                <Box mb={2}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Теги:
+                  </Typography>
+                  <Box display="flex" gap={1} flexWrap="wrap">
+                    {selectedDocument.tags.map((tag, index) => (
+                      <Chip key={index} label={tag} size="small" />
+                    ))}
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenView(false)}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Document Dialog */}
+      <Dialog open={openDelete} onClose={() => setOpenDelete(false)}>
+        <DialogTitle>Удалить документ</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Вы уверены, что хотите удалить документ "{selectedDocument?.title}"?
+            Это действие нельзя отменить.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenDelete(false)}>Отмена</Button>
+          <Button onClick={handleDeleteDocument} variant="contained" color="error">
+            Удалить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Create Document Wizard */}
+      <CreateDocumentWizard
+        open={openCreateWizard}
+        onClose={() => setOpenCreateWizard(false)}
+        onSuccess={handleCreateWizardSuccess}
+      />
+
+      {/* Document Versions Dialog */}
+      <DocumentVersionsDialog
+        open={openVersions}
+        onClose={() => setOpenVersions(false)}
+        documentId={selectedDocument?.id || ''}
+        documentTitle={selectedDocument?.title || ''}
+      />
+    </Container>
+  )
+}
+
+export { DocumentsPage }
+export default DocumentsPage

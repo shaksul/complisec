@@ -1,0 +1,53 @@
+import { Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider } from './contexts/AuthContext'
+import { ProtectedRoute } from './components/ProtectedRoute'
+import { Layout } from './components/Layout'
+import { LoginPage } from './pages/LoginPage'
+import { DashboardPage } from './pages/DashboardPage'
+import { UsersPage } from './pages/UsersPage'
+import { AssetsPage } from './pages/AssetsPage'
+import { RisksPage } from './pages/RisksPage'
+import { DocumentsPage } from './pages/DocumentsPage'
+import { IncidentsPage } from './pages/IncidentsPage'
+import { TrainingPage } from './pages/TrainingPage'
+import CompliancePage from './pages/CompliancePage'
+import AIProvidersPage from './pages/AIProvidersPage'
+import AIQueryPage from './pages/AIQueryPage'
+import UsersManagementPage from './pages/UsersManagementPage'
+import RolesManagementPage from './pages/RolesManagementPage'
+
+function App() {
+  return (
+    <AuthProvider>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/*"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <Routes>
+                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                  <Route path="/dashboard" element={<DashboardPage />} />
+                  <Route path="/users" element={<UsersPage />} />
+                  <Route path="/admin/users" element={<UsersManagementPage />} />
+                  <Route path="/admin/roles" element={<RolesManagementPage />} />
+                  <Route path="/assets" element={<AssetsPage />} />
+                  <Route path="/risks" element={<RisksPage />} />
+                  <Route path="/documents" element={<DocumentsPage />} />
+                  <Route path="/incidents" element={<IncidentsPage />} />
+                  <Route path="/training" element={<TrainingPage />} />
+                  <Route path="/compliance" element={<CompliancePage />} />
+                  <Route path="/ai/providers" element={<AIProvidersPage />} />
+                  <Route path="/ai/query" element={<AIQueryPage />} />
+                </Routes>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+    </AuthProvider>
+  )
+}
+
+export default App
