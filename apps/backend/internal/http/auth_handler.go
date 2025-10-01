@@ -41,8 +41,8 @@ func (h *AuthHandler) login(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
 	}
 
-	log.Printf("DEBUG: AuthHandler.login attempt email=%s", req.Email)
-	user, roles, err := h.authService.Login(context.Background(), req.Email, req.Password)
+	log.Printf("DEBUG: AuthHandler.login attempt email=%s tenantID=%s", req.Email, req.TenantID)
+	user, roles, err := h.authService.Login(context.Background(), req.Email, req.Password, req.TenantID)
 	if err != nil {
 		log.Printf("WARN: AuthHandler.login failed: %v", err)
 		return c.Status(401).JSON(fiber.Map{"error": err.Error()})

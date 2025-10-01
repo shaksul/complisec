@@ -19,30 +19,30 @@ type AuthService struct {
 	jwtSecret      string
 }
 
-func NewAuthService(userRepo *repo.UserRepo, roleRepo *repo.RoleRepo, permissionRepo *repo.PermissionRepo) *AuthService {
+func NewAuthService(userRepo *repo.UserRepo, roleRepo *repo.RoleRepo, permissionRepo *repo.PermissionRepo, jwtSecret string) *AuthService {
 	return &AuthService{
 		userRepo:       userRepo,
-		roleRepo:       roleRepo,
 		permissionRepo: permissionRepo,
-		jwtSecret:      "your-secret-key", // TODO: get from config
+		jwtSecret:      jwtSecret,
 	}
 }
 
-func (s *AuthService) Login(ctx context.Context, email, password string) (*repo.User, []string, error) {
-	log.Printf("DEBUG: AuthService.Login email=%s", email)
-	user, err := s.userRepo.GetByEmail(ctx, "00000000-0000-0000-0000-000000000001", email)
+func (s *AuthService) Login(ctx context.Context, email, password, tenantID string) (*repo.User, []string, error) {
+	log.Printf("DEBUG: AuthService.Login email=%s tenantID=%s", email, tenantID)
+	user, err := s.userRepo.GetByEmail(ctx, tenantID, email)
 	if err != nil {
 		log.Printf("ERROR: AuthService.Login GetByEmail failed: %v", err)
 		return nil, nil, err
 	}
 	if user == nil {
-		log.Printf("WARN: AuthService.Login user not found email=%s", email)
+		log.Printf("WARN: AuthService.Login user not found email=%s tenantID=%s", email, tenantID)
 		return nil, nil, errors.New("invalid credentials")
 	}
 
 	// Check password
 	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
 	if err != nil {
+		log.Printf("WARN: AuthService.Login invalid password email=%s tenantID=%s", email, tenantID)
 		log.Printf("WARN: AuthService.Login invalid password email=%s", email)
 		return nil, nil, errors.New("invalid credentials")
 	}

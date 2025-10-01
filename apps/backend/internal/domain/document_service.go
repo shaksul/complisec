@@ -1,7 +1,9 @@
 package domain
 
 import (
+	"archive/zip"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -362,8 +364,22 @@ func (s *DocumentService) PublishDocument(ctx context.Context, tenantID, userID,
 
 // Helper functions
 func calculateSHA256(data []byte) string {
-	// In real implementation, use crypto/sha256
-	return "sha256:" + fmt.Sprintf("%x", data)[:16] // Simplified for demo
+	// Use crypto/sha256 for proper hash calculation
+	if len(data) == 0 {
+		return "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	}
+
+	hash := sha256.Sum256(data)
+	return "sha256:" + fmt.Sprintf("%x", hash)
+}
+
+func calculateSHA256Truncated(data []byte) string {
+	// Use crypto/sha256 and truncate to 16 characters for compatibility
+	fullHash := calculateSHA256(data)
+	if len(fullHash) > 23 { // "sha256:" is 7 chars + 16 hex chars
+		return fullHash[:23]
+	}
+	return fullHash
 }
 
 func getMimeType(filename string) string {
@@ -376,6 +392,12 @@ func getMimeType(filename string) string {
 	default:
 		return "application/octet-stream"
 	}
+}
+
+func (s *DocumentService) performAVScan(fileContent []byte) (string, string) {
+	// In real implementation, this would use antivirus service
+	// For now, simulate clean scan
+	return "clean", "No threats detected"
 }
 
 func (s *DocumentService) processOCR(fileContent []byte, filename string) (string, error) {
@@ -433,6 +455,13 @@ func (s *DocumentService) processOCR(fileContent []byte, filename string) (strin
 			ocrParts = append(ocrParts, part)
 		}
 		return strings.Join(ocrParts, "\n\n"), nil
+	case ".docx":
+		// Extract text directly from DOCX using gooxml
+		text, err := extractTextFromDocx(inputPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to extract text from DOCX: %w", err)
+		}
+		return text, nil
 	default:
 		// Unsupported for OCR; return an explicit error so callers can decide to ignore
 		return "", fmt.Errorf("ocr not supported for file type: %s", ext)
@@ -455,10 +484,74 @@ func runTesseract(imagePath string) (string, error) {
 	return "", lastErr
 }
 
-func (s *DocumentService) performAVScan(fileContent []byte) (string, string) {
-	// In real implementation, this would use antivirus service
-	// For now, simulate clean scan
-	return "clean", "No threats detected"
+// extractTextFromDocx извлекает текст из DOCX файла без внешних зависимостей
+func extractTextFromDocx(filePath string) (string, error) {
+	// DOCX файлы - это ZIP архивы с XML содержимым
+	// Извлекаем текст из document.xml
+
+	// Читаем файл как архив
+	r, err := zip.OpenReader(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open DOCX as zip: %w", err)
+	}
+	defer r.Close()
+
+	var documentXML string
+
+	// Ищем document.xml в архиве
+	for _, f := range r.File {
+		if f.Name == "word/document.xml" {
+			rc, err := f.Open()
+			if err != nil {
+				return "", fmt.Errorf("failed to open document.xml: %w", err)
+			}
+			defer rc.Close()
+
+			xmlContent, err := io.ReadAll(rc)
+			if err != nil {
+				return "", fmt.Errorf("failed to read document.xml: %w", err)
+			}
+
+			documentXML = string(xmlContent)
+			break
+		}
+	}
+
+	if documentXML == "" {
+		return "", fmt.Errorf("document.xml not found in DOCX file")
+	}
+
+	// Простая парсинг текста из XML (извлекаем содержимое между <w:t> тегами)
+	var textParts []string
+	inText := false
+	var currentText strings.Builder
+
+	for i := 0; i < len(documentXML); i++ {
+		if i+4 <= len(documentXML) && documentXML[i:i+4] == "<w:t" {
+			// Начинаем извлекать текст
+			inText = true
+			i += 3 // Пропускаем <w:t
+			continue
+		}
+
+		if inText {
+			if i+5 <= len(documentXML) && documentXML[i:i+5] == "</w:t>" {
+				// Закончили извлекать текст
+				if currentText.Len() > 0 {
+					textParts = append(textParts, currentText.String())
+				}
+				currentText.Reset()
+				inText = false
+			i += 4 // Пропускаем </w:t>
+			continue
+			}
+
+			// Добавляем символ к текущему тексту
+			currentText.WriteByte(documentXML[i])
+		}
+	}
+
+	return strings.Join(textParts, " "), nil
 }
 
 // UpdateDocument updates an existing document

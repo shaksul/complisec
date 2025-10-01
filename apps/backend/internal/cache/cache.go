@@ -48,16 +48,19 @@ func (c *MemoryCache) Set(ctx context.Context, key string, value interface{}, tt
 // Get получает значение из кэша
 func (c *MemoryCache) Get(ctx context.Context, key string) (interface{}, bool) {
 	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-
 	item, exists := c.items[key]
+	c.mutex.RUnlock()
+
 	if !exists {
 		return nil, false
 	}
 
 	// Проверяем, не истек ли срок действия
 	if time.Now().After(item.ExpiresAt) {
+		// Удаляем просроченный элемент
+		c.mutex.Lock()
 		delete(c.items, key)
+		c.mutex.Unlock()
 		return nil, false
 	}
 

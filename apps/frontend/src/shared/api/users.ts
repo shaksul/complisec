@@ -27,17 +27,20 @@ export interface PaginatedResponse<T> {
 
 export const getUsers = async (): Promise<User[]> => {
   const response = await apiClient.get('/users')
-  return response.data
+  return response.data.data || []
 }
 
 export const getUsersPaginated = async (page: number = 1, pageSize: number = 20): Promise<PaginatedResponse<User>> => {
   const response = await apiClient.get(`/users?page=${page}&page_size=${pageSize}`)
-  return response.data
+  return {
+    data: response.data.data || [],
+    pagination: response.data.pagination
+  }
 }
 
 export const getUser = async (id: string): Promise<User> => {
   const response = await apiClient.get(`/users/${id}`)
-  return response.data
+  return response.data.data
 }
 
 export const createUser = async (userData: {

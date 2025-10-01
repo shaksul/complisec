@@ -44,7 +44,7 @@ func main() {
 	complianceRepo := repo.NewComplianceRepo(db)
 
 	// Initialize services
-	authService := domain.NewAuthService(userRepo, baseRoleRepo, permissionRepo)
+	authService := domain.NewAuthService(userRepo, baseRoleRepo, permissionRepo, cfg.JWTSecret)
 	userService := domain.NewUserService(userRepo, baseRoleRepo)
 	roleService := domain.NewRoleService(roleRepo, userRepo, auditRepo)
 	assetService := domain.NewAssetService(assetRepo, auditRepo)
