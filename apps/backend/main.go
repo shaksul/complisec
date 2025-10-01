@@ -10,6 +10,7 @@ import (
 	"risknexus/backend/internal/database"
 	"risknexus/backend/internal/domain"
 	"risknexus/backend/internal/http"
+	"risknexus/backend/internal/migrate"
 	"risknexus/backend/internal/repo"
 
 	"github.com/gofiber/fiber/v2"
@@ -25,6 +26,16 @@ func main() {
 		log.Fatal("Failed to connect to database:", err)
 	}
 	defer db.Close()
+
+	// Check if we should run migrations
+	if len(os.Args) > 1 && os.Args[1] == "migrate" {
+		log.Println("Running database migrations...")
+		if err := migrate.RunMigrations(db.DB, "./migrations"); err != nil {
+			log.Fatal("Migration failed:", err)
+		}
+		log.Println("Migrations completed successfully")
+		return
+	}
 
 	// Initialize cache
 	memoryCache := cache.NewMemoryCache()
@@ -47,7 +58,7 @@ func main() {
 	authService := domain.NewAuthService(userRepo, baseRoleRepo, permissionRepo, cfg.JWTSecret)
 	userService := domain.NewUserService(userRepo, baseRoleRepo)
 	roleService := domain.NewRoleService(roleRepo, userRepo, auditRepo)
-	assetService := domain.NewAssetService(assetRepo, auditRepo)
+	assetService := domain.NewAssetService(assetRepo, userRepo)
 	riskService := domain.NewRiskService(riskRepo, auditRepo)
 	documentService := domain.NewDocumentService(documentRepo, auditRepo)
 	incidentService := domain.NewIncidentService(incidentRepo, auditRepo)
@@ -57,7 +68,7 @@ func main() {
 
 	// Initialize handlers
 	authHandler := http.NewAuthHandler(authService)
-	userHandler := http.NewUserHandler(userService)
+	userHandler := http.NewUserHandler(userService, roleService)
 	roleHandler := http.NewRoleHandler(roleService)
 	log.Printf("DEBUG: main.go roleHandler created: %+v", roleHandler)
 	auditHandler := http.NewAuditHandler(auditRepo)
@@ -84,7 +95,12 @@ func main() {
 
 	// Middleware
 	app.Use(logger.New())
-	app.Use(cors.New())
+	app.Use(cors.New(cors.Config{
+		AllowOrigins:     "http://localhost:3000,http://localhost:5173",
+		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
+		AllowHeaders:     "Origin,Content-Type,Accept,Authorization",
+		AllowCredentials: true,
+	}))
 
 	// Simple test endpoint (no auth)
 	app.Get("/health", func(c *fiber.Ctx) error {
@@ -104,6 +120,8 @@ func main() {
 
 	// Protected routes
 	protected := api.Group("", http.AuthMiddleware(authService))
+	// Register protected auth routes
+	authHandler.RegisterProtected(protected)
 	userHandler.Register(protected)
 	log.Printf("DEBUG: main.go registering roleHandler")
 	roleHandler.Register(protected)

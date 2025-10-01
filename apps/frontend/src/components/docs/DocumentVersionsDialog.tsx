@@ -27,9 +27,14 @@ import {
   Security,
   Description,
   CloudUpload,
+  PictureAsPdf,
+  Description as WordIcon,
+  TextSnippet,
+  Image,
 } from '@mui/icons-material'
 import { getDocumentVersions, downloadDocumentVersion, getDocumentVersionPreview, type DocumentVersion } from '../../shared/api/documents'
 import UploadNewVersionDialog from './UploadNewVersionDialog'
+import DocumentViewer from './DocumentViewer'
 
 interface DocumentVersionsDialogProps {
   open: boolean
@@ -48,6 +53,7 @@ export default function DocumentVersionsDialog({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [openUploadNewVersion, setOpenUploadNewVersion] = useState(false)
+  const [viewingVersion, setViewingVersion] = useState<DocumentVersion | null>(null)
 
   useEffect(() => {
     if (open && documentId) {
@@ -125,17 +131,8 @@ export default function DocumentVersionsDialog({
     }
   }
 
-  const handlePreview = async (version: DocumentVersion) => {
-    try {
-      const token = localStorage.getItem('access_token')
-      const query = new URLSearchParams({ preview: 'true' })
-      if (token) query.append('access_token', token)
-      const previewUrl = `/api/documents/versions/${version.id}/download?${query.toString()}`
-      window.open(previewUrl, '_blank')
-    } catch (err) {
-      console.error('Error previewing file:', err)
-      setError('Ошибка предварительного просмотра файла')
-    }
+  const handlePreview = (version: DocumentVersion) => {
+    setViewingVersion(version)
   }
 
   const getFileExtension = (mimeType?: string): string => {
@@ -151,6 +148,20 @@ export default function DocumentVersionsDialog({
     }
     
     return extensions[mimeType] || 'bin'
+  }
+
+  const getFileIcon = (mimeType?: string) => {
+    if (!mimeType) return <Description fontSize="small" />
+    
+    const mimeTypeLower = mimeType.toLowerCase()
+    if (mimeTypeLower.includes('pdf')) return <PictureAsPdf fontSize="small" color="error" />
+    if (mimeTypeLower.includes('msword') || mimeTypeLower.includes('openxmlformats')) {
+      return <WordIcon fontSize="small" color="primary" />
+    }
+    if (mimeTypeLower.includes('text/plain')) return <TextSnippet fontSize="small" color="info" />
+    if (mimeTypeLower.includes('image/')) return <Image fontSize="small" color="secondary" />
+    
+    return <Description fontSize="small" />
   }
 
   return (
@@ -216,8 +227,10 @@ export default function DocumentVersionsDialog({
                     </TableCell>
                     <TableCell>
                       <Box display="flex" alignItems="center" gap={1}>
-                        <Description fontSize="small" />
-                        {version.mime_type || 'Неизвестно'}
+                        {getFileIcon(version.mime_type)}
+                        <Typography variant="body2">
+                          {version.mime_type ? getFileExtension(version.mime_type).toUpperCase() : 'Неизвестно'}
+                        </Typography>
                       </Box>
                     </TableCell>
                     <TableCell>
@@ -236,7 +249,12 @@ export default function DocumentVersionsDialog({
                     </TableCell>
                     <TableCell>
                       <Box display="flex" gap={1}>
-                        <Tooltip title="Предварительный просмотр">
+                        <Tooltip title={
+                          version.mime_type?.toLowerCase().includes('msword') || 
+                          version.mime_type?.toLowerCase().includes('openxmlformats') 
+                            ? "Предварительный просмотр" 
+                            : "Предварительный просмотр"
+                        }>
                           <IconButton 
                             size="small" 
                             onClick={() => handlePreview(version)}
@@ -276,6 +294,17 @@ export default function DocumentVersionsDialog({
         documentId={documentId}
         documentTitle={documentTitle}
       />
+
+      {/* Document Viewer */}
+      {viewingVersion && (
+        <DocumentViewer
+          open={!!viewingVersion}
+          onClose={() => setViewingVersion(null)}
+          versionId={viewingVersion.id}
+          fileName={`${documentTitle}_v${viewingVersion.version_number}.${getFileExtension(viewingVersion.mime_type)}`}
+          mimeType={viewingVersion.mime_type}
+        />
+      )}
     </Dialog>
   )
 }

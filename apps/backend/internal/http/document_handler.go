@@ -43,6 +43,7 @@ func (h *DocumentHandler) Register(r fiber.Router) {
 	r.Get("/documents/versions/:versionId", h.getDocumentVersion)
 	r.Get("/documents/versions/:versionId/download", h.downloadDocumentVersion)
 	r.Get("/documents/versions/:versionId/preview", h.previewDocumentVersion)
+	r.Get("/documents/versions/:versionId/html", h.getDocumentVersionHTML)
 
 	// Document acknowledgments
 	r.Get("/documents/:id/acknowledgments", h.listDocumentAcknowledgment)
@@ -410,7 +411,10 @@ func (h *DocumentHandler) downloadDocumentVersion(c *fiber.Ctx) error {
 	fileContent, err := h.service.DownloadDocumentVersion(context.Background(), versionID, tenantID)
 	if err != nil {
 		fmt.Printf("DEBUG: DownloadDocumentVersion error: %v\n", err)
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		if strings.Contains(strings.ToLower(err.Error()), "not found") {
+			return c.Status(404).JSON(fiber.Map{"error": "Document file not found"})
+		}
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to download document", "details": err.Error()})
 	}
 
 	// Determine filename
@@ -486,4 +490,58 @@ func (h *DocumentHandler) previewDocumentVersion(c *fiber.Ctx) error {
 	previewURL := fmt.Sprintf("/api/documents/versions/%s/download", versionID)
 
 	return c.JSON(fiber.Map{"url": previewURL})
+}
+
+// getDocumentVersionHTML converts a document version to HTML for local viewing
+func (h *DocumentHandler) getDocumentVersionHTML(c *fiber.Ctx) error {
+	fmt.Printf("DEBUG: getDocumentVersionHTML called for versionID=%s\n", c.Params("versionId"))
+
+	tenantID, ok := c.Locals("tenant_id").(string)
+	if !ok {
+		fmt.Printf("DEBUG: getDocumentVersionHTML - tenant_id not found in locals\n")
+		return c.Status(401).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+	versionID := c.Params("versionId")
+
+	fmt.Printf("DEBUG: getDocumentVersionHTML called for versionID=%s, tenantID=%s\n", versionID, tenantID)
+
+	// Get version info first
+	version, err := h.service.GetDocumentVersion(context.Background(), versionID, tenantID)
+	if err != nil {
+		fmt.Printf("DEBUG: GetDocumentVersion error: %v\n", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	if version == nil {
+		fmt.Printf("DEBUG: Version not found\n")
+		return c.Status(404).JSON(fiber.Map{"error": "Document version not found"})
+	}
+
+	fmt.Printf("DEBUG: Version found for HTML conversion: %+v\n", version)
+
+	// Get file content from service
+	fileContent, err := h.service.DownloadDocumentVersion(context.Background(), versionID, tenantID)
+	if err != nil {
+		fmt.Printf("DEBUG: DownloadDocumentVersion error: %v\n", err)
+		if strings.Contains(strings.ToLower(err.Error()), "not found") {
+			return c.Status(404).JSON(fiber.Map{"error": "Document file not found"})
+		}
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to download document", "details": err.Error()})
+	}
+
+	// Convert to HTML based on file type
+	mimeType := ""
+	if version.MimeType != nil {
+		mimeType = *version.MimeType
+	}
+	htmlContent, err := h.service.ConvertDocumentToHTML(context.Background(), fileContent, mimeType)
+	if err != nil {
+		fmt.Printf("DEBUG: ConvertDocumentToHTML error: %v\n", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to convert document to HTML", "details": err.Error()})
+	}
+
+	// Set appropriate headers
+	c.Set("Content-Type", "text/html; charset=utf-8")
+	c.Set("Content-Length", fmt.Sprintf("%d", len(htmlContent)))
+
+	return c.Send(htmlContent)
 }

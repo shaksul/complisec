@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"html"
 	"io"
 	"mime/multipart"
 	"os"
@@ -250,7 +251,7 @@ func (s *DocumentService) CreateDocumentVersionWithFile(ctx context.Context, doc
 	storageKey := fmt.Sprintf("documents/%s/versions/%s", documentID, filename)
 
 	// Create storage directory if it doesn't exist
-	storageDir := fmt.Sprintf("./storage/documents/%s/versions", documentID)
+	storageDir := fmt.Sprintf("/app/storage/documents/%s/versions", documentID)
 	if err := os.MkdirAll(storageDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create storage directory: %w", err)
 	}
@@ -366,11 +367,11 @@ func (s *DocumentService) PublishDocument(ctx context.Context, tenantID, userID,
 func calculateSHA256(data []byte) string {
 	// Use crypto/sha256 for proper hash calculation
 	if len(data) == 0 {
-		return "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+		return "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 	}
 
 	hash := sha256.Sum256(data)
-	return "sha256:" + fmt.Sprintf("%x", hash)
+	return fmt.Sprintf("%x", hash)
 }
 
 func calculateSHA256Truncated(data []byte) string {
@@ -389,6 +390,14 @@ func getMimeType(filename string) string {
 		return "application/pdf"
 	case ".docx":
 		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case ".doc":
+		return "application/msword"
+	case ".txt":
+		return "text/plain"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
 	default:
 		return "application/octet-stream"
 	}
@@ -542,8 +551,8 @@ func extractTextFromDocx(filePath string) (string, error) {
 				}
 				currentText.Reset()
 				inText = false
-			i += 4 // Пропускаем </w:t>
-			continue
+				i += 4 // Пропускаем </w:t>
+				continue
 			}
 
 			// Добавляем символ к текущему тексту
@@ -699,6 +708,270 @@ func (s *DocumentService) GetDocumentVersion(ctx context.Context, versionID, ten
 	}
 
 	return version, nil
+}
+
+// ConvertDocumentToHTML converts document content to HTML for local viewing
+func (s *DocumentService) ConvertDocumentToHTML(ctx context.Context, fileContent []byte, mimeType string) ([]byte, error) {
+	if mimeType == "" {
+		return nil, fmt.Errorf("mime type is required for conversion")
+	}
+
+	mimeTypeLower := strings.ToLower(mimeType)
+
+	// For text files, wrap in HTML
+	if strings.Contains(mimeTypeLower, "text/plain") {
+		html := fmt.Sprintf(`
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Текстовый документ</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: 'Courier New', monospace;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📄 Текстовый документ</h1>
+        <pre>%s</pre>
+    </div>
+</body>
+</html>`, html.EscapeString(string(fileContent)))
+		return []byte(html), nil
+	}
+
+	// For Office documents, create a simple HTML wrapper with download option
+	if strings.Contains(mimeTypeLower, "msword") || strings.Contains(mimeTypeLower, "openxmlformats") {
+		html := `
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Документ Microsoft Office</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .icon {
+            font-size: 64px;
+            color: #007bff;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        p {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 0 10px;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn-secondary {
+            background: #6c757d;
+        }
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">📄</div>
+        <h1>Документ Microsoft Office</h1>
+        <p>Этот документ не может быть отображен в браузере. Скачайте файл и откройте его в Microsoft Office или совместимом приложении.</p>
+        <a href="javascript:window.close()" class="btn btn-secondary">Закрыть</a>
+        <a href="javascript:window.print()" class="btn">Печать</a>
+    </div>
+</body>
+</html>`
+		return []byte(html), nil
+	}
+
+	// For PDF files, create a simple HTML wrapper
+	if strings.Contains(mimeTypeLower, "pdf") {
+		html := `
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF документ</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .icon {
+            font-size: 64px;
+            color: #dc3545;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        p {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #dc3545;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 0 10px;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #c82333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">📄</div>
+        <h1>PDF документ</h1>
+        <p>PDF документ будет отображен в отдельном окне браузера.</p>
+        <a href="javascript:window.close()" class="btn">Закрыть</a>
+    </div>
+</body>
+</html>`
+		return []byte(html), nil
+	}
+
+	// For other file types, create a generic HTML wrapper
+	html := fmt.Sprintf(`
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Документ</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .icon {
+            font-size: 64px;
+            color: #6c757d;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        p {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 0 10px;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">📄</div>
+        <h1>Документ</h1>
+        <p>Тип файла: %s</p>
+        <p>Этот тип файла не поддерживает встроенный просмотр. Скачайте файл для просмотра.</p>
+        <a href="javascript:window.close()" class="btn">Закрыть</a>
+    </div>
+</body>
+</html>`, html.EscapeString(mimeType))
+	return []byte(html), nil
 }
 
 // CreateDocumentAcknowledgment creates an acknowledgment for a document
@@ -874,19 +1147,39 @@ func (s *DocumentService) DownloadDocumentVersion(ctx context.Context, versionID
 
 	fmt.Printf("DEBUG: Downloading file for version %s, storage key: %s\n", versionID, version.StorageKey)
 
-	// Extract filename from storage key
+	// Extract filename and documentID from storage key
 	filename := filepath.Base(version.StorageKey)
-	documentID := filepath.Base(filepath.Dir(filepath.Dir(version.StorageKey)))
+	// Storage key format: "documents/{documentID}/versions/{filename}"
+	storageKeyParts := strings.Split(version.StorageKey, "/")
+	if len(storageKeyParts) < 4 {
+		return nil, fmt.Errorf("invalid storage key format: %s", version.StorageKey)
+	}
+	documentID := storageKeyParts[1] // documents/{documentID}/versions/{filename}
 
-	// Read file from local storage
-	filePath := filepath.Join("./storage/documents", documentID, "versions", filename)
-	fileContent, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file from storage: %w", err)
+	// Primary path (relative to current working directory)
+	primaryPath := filepath.Join("./storage/documents", documentID, "versions", filename)
+	fmt.Printf("DEBUG: Attempting to read file at path: %s\n", primaryPath)
+	fileContent, readErr := os.ReadFile(primaryPath)
+	if readErr == nil {
+		fmt.Printf("DEBUG: Read file from storage, size: %d bytes\n", len(fileContent))
+		return fileContent, nil
 	}
 
-	fmt.Printf("DEBUG: Read file from storage, size: %d bytes\n", len(fileContent))
-	return fileContent, nil
+	// If file not found, try alternative path commonly used in containerized builds
+	altPath := filepath.Join("/app/storage/documents", documentID, "versions", filename)
+	fmt.Printf("WARN: Primary path failed: %v. Trying alt path: %s\n", readErr, altPath)
+	fileContent, altErr := os.ReadFile(altPath)
+	if altErr == nil {
+		fmt.Printf("DEBUG: Read file from alt storage, size: %d bytes\n", len(fileContent))
+		return fileContent, nil
+	}
+
+	// If still not found, return a clear not found error
+	if os.IsNotExist(readErr) || os.IsNotExist(altErr) {
+		return nil, fmt.Errorf("document file not found")
+	}
+
+	return nil, fmt.Errorf("failed to read file from storage: primary=%v, alt=%v", readErr, altErr)
 }
 
 // Helper functions

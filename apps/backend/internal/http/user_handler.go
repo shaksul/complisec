@@ -14,12 +14,14 @@ import (
 
 type UserHandler struct {
 	userService *domain.UserService
+	roleService *domain.RoleService
 	validator   *validator.Validate
 }
 
-func NewUserHandler(userService *domain.UserService) *UserHandler {
+func NewUserHandler(userService *domain.UserService, roleService *domain.RoleService) *UserHandler {
 	return &UserHandler{
 		userService: userService,
+		roleService: roleService,
 		validator:   validator.New(),
 	}
 }
@@ -168,22 +170,30 @@ func (h *UserHandler) getUserRoles(c *fiber.Ctx) error {
 }
 
 func (h *UserHandler) assignRoleToUser(c *fiber.Ctx) error {
-	_ = c.Params("id")
+	userID := c.Params("id")
 	var req dto.UserRoleRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
+	if err := h.validator.Struct(req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
+	}
+	if req.UserID != userID {
+		return c.Status(400).JSON(fiber.Map{"error": "User ID mismatch"})
+	}
 
-	// В реальной системе здесь должна быть логика назначения роли
-	// Пока что просто возвращаем успех
+	if err := h.roleService.AssignRoleToUser(c.Context(), req.UserID, req.RoleID); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
 	return c.JSON(fiber.Map{"data": "Role assigned successfully"})
 }
 
 func (h *UserHandler) removeRoleFromUser(c *fiber.Ctx) error {
-	_ = c.Params("id")
-	_ = c.Params("role_id")
+	userID := c.Params("id")
+	roleID := c.Params("role_id")
 
-	// В реальной системе здесь должна быть логика удаления роли
-	// Пока что просто возвращаем успех
+	if err := h.roleService.RemoveRoleFromUser(c.Context(), userID, roleID); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
 	return c.JSON(fiber.Map{"data": "Role removed successfully"})
 }

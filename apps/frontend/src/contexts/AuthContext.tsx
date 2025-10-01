@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { authApi } from '../shared/api/auth'
+import { authApi, DEMO_TENANT_ID } from '../shared/api/auth'
 
 interface User {
   id: string
@@ -35,21 +35,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem('access_token')
-    if (token) {
-      // TODO: Validate token and get user info
-      setIsLoading(false)
-    } else {
-      setIsLoading(false)
+    const init = async () => {
+      const token = localStorage.getItem('access_token')
+      if (!token) {
+        setIsLoading(false)
+        return
+      }
+      try {
+        const response = await authApi.me()
+        if (response && response.user) {
+          setUser(response.user as unknown as User)
+        }
+      } catch (e) {
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('refresh_token')
+        setUser(null)
+      } finally {
+        setIsLoading(false)
+      }
     }
+    void init()
   }, [])
 
   const login = async (email: string, password: string) => {
     try {
-      const response = await authApi.login({ email, password })
+      const response = await authApi.login({ email, password, tenant_id: DEMO_TENANT_ID })
       localStorage.setItem('access_token', response.access_token)
       localStorage.setItem('refresh_token', response.refresh_token)
-      setUser(response.user)
+      setUser(response.user as unknown as User)
     } catch (error) {
       throw error
     }

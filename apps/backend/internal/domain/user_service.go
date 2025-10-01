@@ -171,6 +171,9 @@ func (s *UserService) HasPermission(ctx context.Context, userID, permission stri
 }
 
 func (s *UserService) UpdateRole(ctx context.Context, id, name, description *string, permissionIDs []string) error {
+	if id == nil {
+		return errors.New("role id is required")
+	}
 	role, err := s.roleRepo.GetByID(ctx, *id)
 	if err != nil {
 		return err
@@ -179,20 +182,25 @@ func (s *UserService) UpdateRole(ctx context.Context, id, name, description *str
 		return errors.New("role not found")
 	}
 
-	// Update role fields
+	// Compute updated fields safely
+	updatedName := role.Name
 	if name != nil {
-		role.Name = *name
+		updatedName = *name
+	}
+	var updatedDescription string
+	if role.Description != nil {
+		updatedDescription = *role.Description
 	}
 	if description != nil {
-		role.Description = description
+		updatedDescription = *description
 	}
 
-	err = s.roleRepo.Update(ctx, *id, *name, *description)
+	err = s.roleRepo.Update(ctx, *id, updatedName, updatedDescription)
 	if err != nil {
 		return err
 	}
 
-	// Update permissions if provided
+	// Update permissions if provided (non-nil slice means caller intends update)
 	if permissionIDs != nil {
 		err = s.roleRepo.SetRolePermissions(ctx, *id, permissionIDs)
 		if err != nil {

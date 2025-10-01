@@ -12,8 +12,6 @@ import {
   Button,
   Box,
   Chip,
-  Tabs,
-  Tab,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -35,8 +33,6 @@ import {
   Delete,
   Visibility,
   History,
-  Assignment,
-  Quiz,
   Search,
   FilterList,
 } from "@mui/icons-material"
@@ -79,7 +75,6 @@ function TabPanel(props: TabPanelProps) {
 }
 
 function DocumentsPage() {
-  const [activeTab, setActiveTab] = useState(0)
   const [documents, setDocuments] = useState<Document[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -138,9 +133,6 @@ function DocumentsPage() {
     }
   }
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setActiveTab(newValue)
-  }
 
   const handleCreateDocument = async () => {
     try {
@@ -375,33 +367,6 @@ function DocumentsPage() {
     </Paper>
   )
 
-  const renderAcknowledgment = () => (
-    <Paper>
-      <Box display="flex" justifyContent="space-between" alignItems="center" p={2}>
-        <Typography variant="h6">Ознакомления</Typography>
-        <Button variant="contained" startIcon={<Assignment />}>
-          Создать ознакомление
-        </Button>
-      </Box>
-      <Box p={2}>
-        <Typography>Здесь будет список ознакомлений с документами</Typography>
-      </Box>
-    </Paper>
-  )
-
-  const renderQuizzes = () => (
-    <Paper>
-      <Box display="flex" justifyContent="space-between" alignItems="center" p={2}>
-        <Typography variant="h6">Квизы</Typography>
-        <Button variant="contained" startIcon={<Quiz />}>
-          Создать квиз
-        </Button>
-      </Box>
-      <Box p={2}>
-        <Typography>Здесь будет управление квизами для документов</Typography>
-      </Box>
-    </Paper>
-  )
 
   if (error) {
     return (
@@ -419,23 +384,7 @@ function DocumentsPage() {
         Управление документами
       </Typography>
 
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-        <Tabs value={activeTab} onChange={handleTabChange}>
-          <Tab label="Документы" icon={<Description />} />
-          <Tab label="Ознакомления" icon={<Assignment />} />
-          <Tab label="Квизы" icon={<Quiz />} />
-        </Tabs>
-      </Box>
-
-      <TabPanel value={activeTab} index={0}>
-        {renderDocumentsList()}
-      </TabPanel>
-      <TabPanel value={activeTab} index={1}>
-        {renderAcknowledgment()}
-      </TabPanel>
-      <TabPanel value={activeTab} index={2}>
-        {renderQuizzes()}
-      </TabPanel>
+      {renderDocumentsList()}
 
       {/* Create Document Dialog */}
       <Dialog open={openCreate} onClose={() => setOpenCreate(false)} maxWidth="md" fullWidth>

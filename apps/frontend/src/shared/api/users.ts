@@ -70,6 +70,7 @@ export const deleteUser = async (id: string): Promise<void> => {
 
 // Экспортируем объект с API методами
 export const usersApi = {
+  list: getUsers,
   getUsers,
   getUsersPaginated,
   getUser,

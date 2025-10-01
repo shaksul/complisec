@@ -166,6 +166,10 @@ func (s *AuthService) GetUserFromAccessToken(token *jwt.Token) (string, string, 
 	return userID, tenantID, roles, nil
 }
 
+func (s *AuthService) GetUser(ctx context.Context, userID string) (*repo.User, error) {
+	return s.userRepo.GetByID(ctx, userID)
+}
+
 func (s *AuthService) GetUserRoles(ctx context.Context, userID string) ([]string, error) {
 	return s.userRepo.GetUserRoles(ctx, userID)
 }

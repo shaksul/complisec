@@ -26,6 +26,12 @@ func NewAuthHandler(authService *domain.AuthService) *AuthHandler {
 func (h *AuthHandler) Register(r fiber.Router) {
 	r.Post("/auth/login", h.login)
 	r.Post("/auth/refresh", h.refresh)
+	// Protected by middleware; registered under protected group in main
+}
+
+func (h *AuthHandler) RegisterProtected(r fiber.Router) {
+	// Requires AuthMiddleware
+	r.Get("/auth/me", h.me)
 }
 
 func (h *AuthHandler) login(c *fiber.Ctx) error {
@@ -106,4 +112,33 @@ func (h *AuthHandler) refresh(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(response)
+}
+
+func (h *AuthHandler) me(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(string)
+
+	user, err := h.authService.GetUser(context.Background(), userID)
+	if err != nil || user == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "User not found"})
+	}
+
+	roles, err := h.authService.GetUserRoles(context.Background(), userID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to get user roles"})
+	}
+
+	return c.JSON(dto.LoginResponse{
+		AccessToken:  "",
+		RefreshToken: "",
+		User: dto.UserResponse{
+			ID:        user.ID,
+			Email:     user.Email,
+			FirstName: user.FirstName,
+			LastName:  user.LastName,
+			IsActive:  user.IsActive,
+			Roles:     roles,
+			CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			UpdatedAt: user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		},
+	})
 }

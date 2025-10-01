@@ -21,6 +21,7 @@ type RoleRepository interface {
 	GetRolePermissions(ctx context.Context, roleID string) ([]string, error)
 	GetRoleWithPermissions(ctx context.Context, roleID string) (*repo.RoleWithPermissions, error)
 	GetUsersByRole(ctx context.Context, roleID string) ([]repo.User, error)
+	GetPermissions(ctx context.Context, tenantID string) ([]repo.Permission, error)
 }
 
 type RoleService struct {
@@ -329,9 +330,7 @@ func (s *RoleService) DeleteRole(ctx context.Context, roleID string) error {
 
 // GetPermissions получает все права в системе
 func (s *RoleService) GetPermissions(ctx context.Context) ([]repo.Permission, error) {
-	// Используем базовый репозиторий для получения всех прав
-	baseRepo := s.roleRepo.(*repo.RoleRepo)
-	return baseRepo.GetPermissions(ctx, "")
+	return s.roleRepo.GetPermissions(ctx, "")
 }
 
 // GetRolePermissions получает права роли
