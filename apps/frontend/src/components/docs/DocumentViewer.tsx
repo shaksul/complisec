@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -39,7 +39,7 @@ export default function DocumentViewer({
   const [fileContent, setFileContent] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
 
-  const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
+  const apiBaseUrl = (import.meta as any).env.VITE_API_URL || 'http://localhost:8080/api'
   const token = localStorage.getItem('access_token')
   const query = new URLSearchParams({ preview: 'true' })
   if (token) query.append('access_token', token)

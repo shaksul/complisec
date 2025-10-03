@@ -210,3 +210,40 @@ func (s *UserService) UpdateRole(ctx context.Context, id, name, description *str
 
 	return nil
 }
+
+func (s *UserService) SearchUsers(ctx context.Context, tenantID string, search, role string, isActive *bool, sortBy, sortDir string, page, pageSize int) ([]repo.User, int64, error) {
+	return s.userRepo.SearchUsers(ctx, tenantID, search, role, isActive, sortBy, sortDir, page, pageSize)
+}
+
+func (s *UserService) GetUserRoles(ctx context.Context, userID string) ([]string, error) {
+	return s.userRepo.GetUserRoles(ctx, userID)
+}
+
+func (s *UserService) GetUserDetail(ctx context.Context, userID string) (*repo.User, []string, map[string]int, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if user == nil {
+		return nil, nil, nil, errors.New("user not found")
+	}
+
+	roles, err := s.userRepo.GetUserRoles(ctx, userID)
+	if err != nil {
+		// Если не удается получить роли, возвращаем пустой массив
+		roles = []string{}
+	}
+
+	stats, err := s.userRepo.GetUserStats(ctx, userID)
+	if err != nil {
+		// Если не удается получить статистику, возвращаем нули
+		stats = map[string]int{
+			"documents_count": 0,
+			"risks_count":     0,
+			"incidents_count": 0,
+			"assets_count":    0,
+		}
+	}
+
+	return user, roles, stats, nil
+}

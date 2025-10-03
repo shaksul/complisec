@@ -16,6 +16,7 @@ import {
   Report,
   School,
 } from '@mui/icons-material'
+import { RiskHeatmap } from '../components/dashboard/RiskHeatmap'
 
 const StatCard: React.FC<{
   title: string
@@ -83,7 +84,11 @@ export const DashboardPage: React.FC = () => {
           />
         </Grid>
         
-        <Grid item xs={12} md={6}>
+        <Grid item xs={12} md={8}>
+          <RiskHeatmap />
+        </Grid>
+        
+        <Grid item xs={12} md={4}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>
               Последние риски

@@ -29,8 +29,10 @@ func NewUserHandler(userService *domain.UserService, roleService *domain.RoleSer
 func (h *UserHandler) Register(r fiber.Router) {
 	users := r.Group("/users")
 	users.Get("/", RequirePermission("users.view"), h.listUsers)
+	users.Get("/catalog", RequirePermission("users.view"), h.getUserCatalog)
 	users.Post("/", RequirePermission("users.create"), h.createUser)
 	users.Get("/:id", RequirePermission("users.view"), h.getUser)
+	users.Get("/:id/detail", RequirePermission("users.view"), h.getUserDetail)
 	users.Put("/:id", RequirePermission("users.edit"), h.updateUser)
 	users.Delete("/:id", RequirePermission("users.delete"), h.deleteUser)
 	users.Get("/:id/roles", RequirePermission("users.view"), h.getUserRoles)
@@ -196,4 +198,91 @@ func (h *UserHandler) removeRoleFromUser(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"data": "Role removed successfully"})
+}
+
+func (h *UserHandler) getUserCatalog(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(string)
+
+	// Параметры запроса
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 20)
+	search := c.Query("search", "")
+	role := c.Query("role", "")
+	sortBy := c.Query("sort_by", "created_at")
+	sortDir := c.Query("sort_dir", "desc")
+
+	var isActive *bool
+	if c.Query("is_active") != "" {
+		active := c.QueryBool("is_active")
+		isActive = &active
+	}
+
+	// Валидация параметров
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		pageSize = 20
+	}
+
+	users, total, err := h.userService.SearchUsers(context.Background(), tenantID, search, role, isActive, sortBy, sortDir, page, pageSize)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Преобразуем в DTO
+	var catalogUsers []dto.UserCatalogResponse
+	for _, user := range users {
+		roles, err := h.userService.GetUserRoles(context.Background(), user.ID)
+		var roleNames []string
+		if err == nil {
+			roleNames = roles
+		}
+
+		catalogUsers = append(catalogUsers, dto.UserCatalogResponse{
+			ID:        user.ID,
+			Email:     user.Email,
+			FirstName: user.FirstName,
+			LastName:  user.LastName,
+			IsActive:  user.IsActive,
+			Roles:     roleNames,
+			CreatedAt: user.CreatedAt,
+			UpdatedAt: user.UpdatedAt,
+		})
+	}
+
+	pagination := dto.NewPaginationResponse(page, pageSize, total)
+
+	return c.JSON(dto.PaginatedResponse{
+		Data:       catalogUsers,
+		Pagination: pagination,
+	})
+}
+
+func (h *UserHandler) getUserDetail(c *fiber.Ctx) error {
+	userID := c.Params("id")
+
+	user, roles, stats, err := h.userService.GetUserDetail(context.Background(), userID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	response := dto.UserDetailResponse{
+		ID:        user.ID,
+		Email:     user.Email,
+		FirstName: user.FirstName,
+		LastName:  user.LastName,
+		IsActive:  user.IsActive,
+		Roles:     roles,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Stats: dto.UserStats{
+			DocumentsCount: stats["documents_count"],
+			RisksCount:     stats["risks_count"],
+			IncidentsCount: stats["incidents_count"],
+			AssetsCount:    stats["assets_count"],
+		},
+	}
+
+	return c.JSON(fiber.Map{"data": response})
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
@@ -235,6 +236,141 @@ func (r *UserRepo) GetUserPermissions(ctx context.Context, userID string) ([]str
 		permissions = append(permissions, perm)
 	}
 	return permissions, nil
+}
+
+func (r *UserRepo) SearchUsers(ctx context.Context, tenantID string, search, role string, isActive *bool, sortBy, sortDir string, page, pageSize int) ([]User, int64, error) {
+	offset := (page - 1) * pageSize
+
+	// Build WHERE clause
+	whereClause := "WHERE u.tenant_id = $1"
+	args := []interface{}{tenantID}
+	argIndex := 2
+
+	if search != "" {
+		whereClause += " AND (u.email ILIKE $" + fmt.Sprintf("%d", argIndex) + " OR u.first_name ILIKE $" + fmt.Sprintf("%d", argIndex+1) + " OR u.last_name ILIKE $" + fmt.Sprintf("%d", argIndex+2) + ")"
+		searchPattern := "%" + search + "%"
+		args = append(args, searchPattern, searchPattern, searchPattern)
+		argIndex += 3
+	}
+
+	if isActive != nil {
+		whereClause += " AND u.is_active = $" + fmt.Sprintf("%d", argIndex)
+		args = append(args, *isActive)
+		argIndex++
+	}
+
+	// Build ORDER BY clause
+	orderBy := "ORDER BY u.created_at DESC"
+	if sortBy != "" {
+		switch sortBy {
+		case "email":
+			orderBy = "ORDER BY u.email"
+		case "first_name":
+			orderBy = "ORDER BY u.first_name"
+		case "last_name":
+			orderBy = "ORDER BY u.last_name"
+		case "created_at":
+			orderBy = "ORDER BY u.created_at"
+		case "updated_at":
+			orderBy = "ORDER BY u.updated_at"
+		}
+		if sortDir == "asc" {
+			orderBy += " ASC"
+		} else {
+			orderBy += " DESC"
+		}
+	}
+
+	// Get total count
+	countQuery := `
+		SELECT COUNT(*) 
+		FROM users u
+		` + whereClause
+
+	var total int64
+	err := r.db.QueryRow(countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Get users
+	query := `
+		SELECT u.id, u.tenant_id, u.email, u.password_hash, u.first_name, u.last_name, u.is_active, u.created_at, u.updated_at
+		FROM users u
+		` + whereClause + `
+		` + orderBy + `
+		LIMIT $` + fmt.Sprintf("%d", argIndex) + ` OFFSET $` + fmt.Sprintf("%d", argIndex+1)
+
+	args = append(args, pageSize, offset)
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var u User
+		err := rows.Scan(&u.ID, &u.TenantID, &u.Email, &u.PasswordHash, &u.FirstName, &u.LastName, &u.IsActive, &u.CreatedAt, &u.UpdatedAt)
+		if err != nil {
+			return nil, 0, err
+		}
+		users = append(users, u)
+	}
+
+	return users, total, nil
+}
+
+func (r *UserRepo) GetUserStats(ctx context.Context, userID string) (map[string]int, error) {
+	stats := make(map[string]int)
+
+	// Count documents
+	var docCount int
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM documents WHERE created_by = $1
+	`, userID).Scan(&docCount)
+	if err != nil {
+		// Если таблица не существует, возвращаем 0
+		stats["documents_count"] = 0
+	} else {
+		stats["documents_count"] = docCount
+	}
+
+	// Count risks
+	var riskCount int
+	err = r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM risks WHERE created_by = $1
+	`, userID).Scan(&riskCount)
+	if err != nil {
+		stats["risks_count"] = 0
+	} else {
+		stats["risks_count"] = riskCount
+	}
+
+	// Count incidents
+	var incidentCount int
+	err = r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM incidents WHERE created_by = $1
+	`, userID).Scan(&incidentCount)
+	if err != nil {
+		stats["incidents_count"] = 0
+	} else {
+		stats["incidents_count"] = incidentCount
+	}
+
+	// Count assets
+	var assetCount int
+	err = r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM assets WHERE created_by = $1
+	`, userID).Scan(&assetCount)
+	if err != nil {
+		stats["assets_count"] = 0
+	} else {
+		stats["assets_count"] = assetCount
+	}
+
+	return stats, nil
 }
 
 type UserWithRoles struct {

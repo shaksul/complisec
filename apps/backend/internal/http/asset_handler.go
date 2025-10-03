@@ -13,11 +13,11 @@ import (
 )
 
 type AssetHandler struct {
-	assetService *domain.AssetService
+	assetService domain.AssetServiceInterface
 	validator    *validator.Validate
 }
 
-func NewAssetHandler(assetService *domain.AssetService) *AssetHandler {
+func NewAssetHandler(assetService domain.AssetServiceInterface) *AssetHandler {
 	return &AssetHandler{
 		assetService: assetService,
 		validator:    validator.New(),
@@ -28,17 +28,29 @@ func (h *AssetHandler) Register(r fiber.Router) {
 	assets := r.Group("/assets")
 	assets.Get("/", RequirePermission("assets.view"), h.listAssets)
 	assets.Post("/", RequirePermission("assets.create"), h.createAsset)
+	assets.Get("/export", RequirePermission("assets.export"), h.exportAssets)
+	assets.Post("/inventory", RequirePermission("assets.inventory"), h.performInventory)
 	assets.Get("/:id", RequirePermission("assets.view"), h.getAsset)
 	assets.Put("/:id", RequirePermission("assets.edit"), h.updateAsset)
 	assets.Delete("/:id", RequirePermission("assets.delete"), h.deleteAsset)
 	assets.Get("/:id/details", RequirePermission("assets.view"), h.getAssetDetails)
 	assets.Get("/:id/documents", RequirePermission("assets.view"), h.getAssetDocuments)
 	assets.Post("/:id/documents", RequirePermission("assets.edit"), h.addAssetDocument)
+	assets.Delete("/documents/:docId", RequirePermission("assets.edit"), h.deleteAssetDocument)
+	assets.Get("/documents/:docId", RequirePermission("assets.view"), h.getAssetDocument)
 	assets.Get("/:id/software", RequirePermission("assets.view"), h.getAssetSoftware)
 	assets.Post("/:id/software", RequirePermission("assets.edit"), h.addAssetSoftware)
 	assets.Get("/:id/history", RequirePermission("assets.view"), h.getAssetHistory)
-	assets.Post("/inventory", RequirePermission("assets.inventory"), h.performInventory)
-	assets.Get("/export", RequirePermission("assets.export"), h.exportAssets)
+	assets.Get("/:id/history/filtered", RequirePermission("assets.view"), h.getAssetHistoryWithFilters)
+	assets.Get("/:id/risks", RequirePermission("assets.view"), h.getAssetRisks)
+	assets.Get("/:id/incidents", RequirePermission("assets.view"), h.getAssetIncidents)
+	assets.Get("/:id/can-add-risk", RequirePermission("assets.view"), h.canAddRisk)
+	assets.Get("/:id/can-add-incident", RequirePermission("assets.view"), h.canAddIncident)
+	assets.Get("/inventory/without-owner", RequirePermission("assets.inventory"), h.getAssetsWithoutOwner)
+	assets.Get("/inventory/without-passport", RequirePermission("assets.inventory"), h.getAssetsWithoutPassport)
+	assets.Get("/inventory/without-criticality", RequirePermission("assets.inventory"), h.getAssetsWithoutCriticality)
+	assets.Post("/bulk/update-status", RequirePermission("assets.edit"), h.bulkUpdateStatus)
+	assets.Post("/bulk/update-owner", RequirePermission("assets.edit"), h.bulkUpdateOwner)
 }
 
 func (h *AssetHandler) listAssets(c *fiber.Ctx) error {
@@ -78,7 +90,7 @@ func (h *AssetHandler) listAssets(c *fiber.Ctx) error {
 		filters["search"] = search
 	}
 
-	log.Printf("DEBUG: AssetHandler.listAssets tenant=%s user=%s page=%d pageSize=%d filters=%v", 
+	log.Printf("DEBUG: AssetHandler.listAssets tenant=%s user=%s page=%d pageSize=%d filters=%v",
 		tenantID, userID, page, pageSize, filters)
 
 	assets, total, err := h.assetService.ListAssetsPaginated(context.Background(), tenantID, page, pageSize, filters)
@@ -331,6 +343,225 @@ func (h *AssetHandler) performInventory(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: AssetHandler.performInventory success")
 	return c.Status(200).JSON(fiber.Map{"message": "Inventory performed successfully"})
+}
+
+func (h *AssetHandler) deleteAssetDocument(c *fiber.Ctx) error {
+	documentID := c.Params("docId")
+	userID := c.Locals("user_id").(string)
+
+	log.Printf("DEBUG: AssetHandler.deleteAssetDocument docID=%s user=%s", documentID, userID)
+
+	err := h.assetService.DeleteDocument(context.Background(), documentID, userID)
+	if err != nil {
+		log.Printf("ERROR: AssetHandler.deleteAssetDocument service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	log.Printf("DEBUG: AssetHandler.deleteAssetDocument success docID=%s", documentID)
+	return c.Status(200).JSON(fiber.Map{"message": "Document deleted successfully"})
+}
+
+func (h *AssetHandler) getAssetDocument(c *fiber.Ctx) error {
+	documentID := c.Params("docId")
+	userID := c.Locals("user_id").(string)
+
+	log.Printf("DEBUG: AssetHandler.getAssetDocument docID=%s user=%s", documentID, userID)
+
+	document, err := h.assetService.GetDocumentByID(context.Background(), documentID)
+	if err != nil {
+		log.Printf("ERROR: AssetHandler.getAssetDocument service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	if document == nil {
+		log.Printf("WARN: AssetHandler.getAssetDocument not found docID=%s", documentID)
+		return c.Status(404).JSON(fiber.Map{"error": "Document not found"})
+	}
+
+	return c.JSON(fiber.Map{"data": document})
+}
+
+func (h *AssetHandler) getAssetHistoryWithFilters(c *fiber.Ctx) error {
+	assetID := c.Params("id")
+	userID := c.Locals("user_id").(string)
+
+	log.Printf("DEBUG: AssetHandler.getAssetHistoryWithFilters assetID=%s user=%s", assetID, userID)
+
+	// Parse filters
+	filters := make(map[string]interface{})
+	if changedBy := c.Query("changed_by"); changedBy != "" {
+		filters["changed_by"] = changedBy
+	}
+	if fromDate := c.Query("from_date"); fromDate != "" {
+		filters["from_date"] = fromDate
+	}
+	if toDate := c.Query("to_date"); toDate != "" {
+		filters["to_date"] = toDate
+	}
+
+	history, err := h.assetService.GetAssetHistoryWithFilters(context.Background(), assetID, filters)
+	if err != nil {
+		log.Printf("ERROR: AssetHandler.getAssetHistoryWithFilters service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"data": history})
+}
+
+func (h *AssetHandler) getAssetRisks(c *fiber.Ctx) error {
+	assetID := c.Params("id")
+	userID := c.Locals("user_id").(string)
+
+	log.Printf("DEBUG: AssetHandler.getAssetRisks assetID=%s user=%s", assetID, userID)
+
+	risks, err := h.assetService.GetAssetRisks(context.Background(), assetID)
+	if err != nil {
+		log.Printf("ERROR: AssetHandler.getAssetRisks service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"data": risks})
+}
+
+func (h *AssetHandler) getAssetIncidents(c *fiber.Ctx) error {
+	assetID := c.Params("id")
+	userID := c.Locals("user_id").(string)
+
+	log.Printf("DEBUG: AssetHandler.getAssetIncidents assetID=%s user=%s", assetID, userID)
+
+	incidents, err := h.assetService.GetAssetIncidents(context.Background(), assetID)
+	if err != nil {
+		log.Printf("ERROR: AssetHandler.getAssetIncidents service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"data": incidents})
+}
+
+func (h *AssetHandler) canAddRisk(c *fiber.Ctx) error {
+	assetID := c.Params("id")
+	userID := c.Locals("user_id").(string)
+
+	log.Printf("DEBUG: AssetHandler.canAddRisk assetID=%s user=%s", assetID, userID)
+
+	err := h.assetService.CanAddRisk(context.Background(), assetID)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error(), "can_add": false})
+	}
+
+	return c.JSON(fiber.Map{"can_add": true})
+}
+
+func (h *AssetHandler) canAddIncident(c *fiber.Ctx) error {
+	assetID := c.Params("id")
+	userID := c.Locals("user_id").(string)
+
+	log.Printf("DEBUG: AssetHandler.canAddIncident assetID=%s user=%s", assetID, userID)
+
+	err := h.assetService.CanAddIncident(context.Background(), assetID)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error(), "can_add": false})
+	}
+
+	return c.JSON(fiber.Map{"can_add": true})
+}
+
+func (h *AssetHandler) getAssetsWithoutOwner(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(string)
+	userID := c.Locals("user_id").(string)
+
+	log.Printf("DEBUG: AssetHandler.getAssetsWithoutOwner tenant=%s user=%s", tenantID, userID)
+
+	assets, err := h.assetService.GetAssetsWithoutOwner(context.Background(), tenantID)
+	if err != nil {
+		log.Printf("ERROR: AssetHandler.getAssetsWithoutOwner service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"data": assets})
+}
+
+func (h *AssetHandler) getAssetsWithoutPassport(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(string)
+	userID := c.Locals("user_id").(string)
+
+	log.Printf("DEBUG: AssetHandler.getAssetsWithoutPassport tenant=%s user=%s", tenantID, userID)
+
+	assets, err := h.assetService.GetAssetsWithoutPassport(context.Background(), tenantID)
+	if err != nil {
+		log.Printf("ERROR: AssetHandler.getAssetsWithoutPassport service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"data": assets})
+}
+
+func (h *AssetHandler) getAssetsWithoutCriticality(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(string)
+	userID := c.Locals("user_id").(string)
+
+	log.Printf("DEBUG: AssetHandler.getAssetsWithoutCriticality tenant=%s user=%s", tenantID, userID)
+
+	assets, err := h.assetService.GetAssetsWithoutCriticality(context.Background(), tenantID)
+	if err != nil {
+		log.Printf("ERROR: AssetHandler.getAssetsWithoutCriticality service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"data": assets})
+}
+
+func (h *AssetHandler) bulkUpdateStatus(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(string)
+	userID := c.Locals("user_id").(string)
+
+	log.Printf("DEBUG: AssetHandler.bulkUpdateStatus tenant=%s user=%s", tenantID, userID)
+
+	var req dto.BulkUpdateStatusRequest
+	if err := c.BodyParser(&req); err != nil {
+		log.Printf("ERROR: AssetHandler.bulkUpdateStatus invalid body: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if err := h.validator.Struct(req); err != nil {
+		log.Printf("ERROR: AssetHandler.bulkUpdateStatus validation failed: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
+	}
+
+	err := h.assetService.BulkUpdateStatus(context.Background(), req.AssetIDs, req.Status, userID)
+	if err != nil {
+		log.Printf("ERROR: AssetHandler.bulkUpdateStatus service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	log.Printf("DEBUG: AssetHandler.bulkUpdateStatus success")
+	return c.Status(200).JSON(fiber.Map{"message": "Assets updated successfully"})
+}
+
+func (h *AssetHandler) bulkUpdateOwner(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(string)
+	userID := c.Locals("user_id").(string)
+
+	log.Printf("DEBUG: AssetHandler.bulkUpdateOwner tenant=%s user=%s", tenantID, userID)
+
+	var req dto.BulkUpdateOwnerRequest
+	if err := c.BodyParser(&req); err != nil {
+		log.Printf("ERROR: AssetHandler.bulkUpdateOwner invalid body: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if err := h.validator.Struct(req); err != nil {
+		log.Printf("ERROR: AssetHandler.bulkUpdateOwner validation failed: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
+	}
+
+	err := h.assetService.BulkUpdateOwner(context.Background(), req.AssetIDs, req.OwnerID, userID)
+	if err != nil {
+		log.Printf("ERROR: AssetHandler.bulkUpdateOwner service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	log.Printf("DEBUG: AssetHandler.bulkUpdateOwner success")
+	return c.Status(200).JSON(fiber.Map{"message": "Assets updated successfully"})
 }
 
 func (h *AssetHandler) exportAssets(c *fiber.Ctx) error {

@@ -8,6 +8,8 @@ export interface Asset {
   class: string;
   owner_id?: string;
   owner_name?: string;
+  responsible_user_id?: string;
+  responsible_user_name?: string;
   location?: string;
   criticality: string;
   confidentiality: string;
@@ -107,6 +109,22 @@ export interface AssetInventoryRequest {
   notes?: string;
 }
 
+export interface AssetHistoryFilters {
+  changed_by?: string;
+  from_date?: string;
+  to_date?: string;
+}
+
+export interface BulkUpdateStatusRequest {
+  asset_ids: string[];
+  status: string;
+}
+
+export interface BulkUpdateOwnerRequest {
+  asset_ids: string[];
+  owner_id: string;
+}
+
 export const assetsApi = {
   // List assets with pagination and filters
   list: async (params: AssetListParams = {}) => {
@@ -166,6 +184,16 @@ export const assetsApi = {
     return response.data;
   },
 
+  deleteDocument: async (documentId: string) => {
+    const response = await apiClient.delete(`/assets/documents/${documentId}`);
+    return response.data;
+  },
+
+  getDocument: async (documentId: string) => {
+    const response = await apiClient.get(`/assets/documents/${documentId}`);
+    return response.data;
+  },
+
   // Asset software
   getSoftware: async (id: string) => {
     const response = await apiClient.get(`/assets/${id}/software`);
@@ -180,6 +208,64 @@ export const assetsApi = {
   // Asset history
   getHistory: async (id: string) => {
     const response = await apiClient.get(`/assets/${id}/history`);
+    return response.data;
+  },
+
+  getHistoryWithFilters: async (id: string, filters: AssetHistoryFilters) => {
+    const searchParams = new URLSearchParams();
+    if (filters.changed_by) searchParams.append('changed_by', filters.changed_by);
+    if (filters.from_date) searchParams.append('from_date', filters.from_date);
+    if (filters.to_date) searchParams.append('to_date', filters.to_date);
+    
+    const response = await apiClient.get(`/assets/${id}/history/filtered?${searchParams.toString()}`);
+    return response.data;
+  },
+
+  // Asset relations
+  getRisks: async (id: string) => {
+    const response = await apiClient.get(`/assets/${id}/risks`);
+    return response.data;
+  },
+
+  getIncidents: async (id: string) => {
+    const response = await apiClient.get(`/assets/${id}/incidents`);
+    return response.data;
+  },
+
+  canAddRisk: async (id: string) => {
+    const response = await apiClient.get(`/assets/${id}/can-add-risk`);
+    return response.data;
+  },
+
+  canAddIncident: async (id: string) => {
+    const response = await apiClient.get(`/assets/${id}/can-add-incident`);
+    return response.data;
+  },
+
+  // Inventory reports
+  getAssetsWithoutOwner: async () => {
+    const response = await apiClient.get('/assets/inventory/without-owner');
+    return response.data;
+  },
+
+  getAssetsWithoutPassport: async () => {
+    const response = await apiClient.get('/assets/inventory/without-passport');
+    return response.data;
+  },
+
+  getAssetsWithoutCriticality: async () => {
+    const response = await apiClient.get('/assets/inventory/without-criticality');
+    return response.data;
+  },
+
+  // Bulk operations
+  bulkUpdateStatus: async (data: BulkUpdateStatusRequest) => {
+    const response = await apiClient.post('/assets/bulk/update-status', data);
+    return response.data;
+  },
+
+  bulkUpdateOwner: async (data: BulkUpdateOwnerRequest) => {
+    const response = await apiClient.post('/assets/bulk/update-owner', data);
     return response.data;
   },
 

@@ -30,9 +30,9 @@ const (
 
 // Asset statuses
 const (
-	AssetStatusActive        = "active"
-	AssetStatusInRepair      = "in_repair"
-	AssetStatusStorage       = "storage"
+	AssetStatusActive         = "active"
+	AssetStatusInRepair       = "in_repair"
+	AssetStatusStorage        = "storage"
 	AssetStatusDecommissioned = "decommissioned"
 )
 
@@ -47,49 +47,53 @@ const (
 
 // CreateAssetRequest represents the request to create a new asset
 type CreateAssetRequest struct {
-	Name            string `json:"name" validate:"required,min=1,max=255"`
-	Type            string `json:"type" validate:"required,oneof=server workstation application database document network_device other"`
-	Class           string `json:"class" validate:"required,oneof=hardware software data service"`
-	OwnerID         string `json:"owner_id" validate:"omitempty,uuid"`
-	Location        string `json:"location,omitempty"`
-	Criticality     string `json:"criticality" validate:"required,oneof=low medium high"`
-	Confidentiality string `json:"confidentiality" validate:"required,oneof=low medium high"`
-	Integrity       string `json:"integrity" validate:"required,oneof=low medium high"`
-	Availability    string `json:"availability" validate:"required,oneof=low medium high"`
-	Status          string `json:"status,omitempty" validate:"omitempty,oneof=active in_repair storage decommissioned"`
+	Name              string `json:"name" validate:"required,min=1,max=255"`
+	Type              string `json:"type" validate:"required,oneof=server workstation application database document network_device other"`
+	Class             string `json:"class" validate:"required,oneof=hardware software data service"`
+	OwnerID           string `json:"owner_id" validate:"omitempty,uuid"`
+	ResponsibleUserID string `json:"responsible_user_id" validate:"omitempty,uuid"`
+	Location          string `json:"location,omitempty"`
+	Criticality       string `json:"criticality" validate:"required,oneof=low medium high"`
+	Confidentiality   string `json:"confidentiality" validate:"required,oneof=low medium high"`
+	Integrity         string `json:"integrity" validate:"required,oneof=low medium high"`
+	Availability      string `json:"availability" validate:"required,oneof=low medium high"`
+	Status            string `json:"status,omitempty" validate:"omitempty,oneof=active in_repair storage decommissioned"`
 }
 
 // UpdateAssetRequest represents the request to update an existing asset
 type UpdateAssetRequest struct {
-	Name            *string `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
-	Type            *string `json:"type,omitempty" validate:"omitempty,oneof=server workstation application database document network_device other"`
-	Class           *string `json:"class,omitempty" validate:"omitempty,oneof=hardware software data service"`
-	OwnerID         *string `json:"owner_id,omitempty" validate:"omitempty,uuid"`
-	Location        *string `json:"location,omitempty"`
-	Criticality     *string `json:"criticality,omitempty" validate:"omitempty,oneof=low medium high"`
-	Confidentiality *string `json:"confidentiality,omitempty" validate:"omitempty,oneof=low medium high"`
-	Integrity       *string `json:"integrity,omitempty" validate:"omitempty,oneof=low medium high"`
-	Availability    *string `json:"availability,omitempty" validate:"omitempty,oneof=low medium high"`
-	Status          *string `json:"status,omitempty" validate:"omitempty,oneof=active in_repair storage decommissioned"`
+	Name              *string `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
+	Type              *string `json:"type,omitempty" validate:"omitempty,oneof=server workstation application database document network_device other"`
+	Class             *string `json:"class,omitempty" validate:"omitempty,oneof=hardware software data service"`
+	OwnerID           *string `json:"owner_id,omitempty" validate:"omitempty,uuid"`
+	ResponsibleUserID *string `json:"responsible_user_id,omitempty" validate:"omitempty,uuid"`
+	Location          *string `json:"location,omitempty"`
+	Criticality       *string `json:"criticality,omitempty" validate:"omitempty,oneof=low medium high"`
+	Confidentiality   *string `json:"confidentiality,omitempty" validate:"omitempty,oneof=low medium high"`
+	Integrity         *string `json:"integrity,omitempty" validate:"omitempty,oneof=low medium high"`
+	Availability      *string `json:"availability,omitempty" validate:"omitempty,oneof=low medium high"`
+	Status            *string `json:"status,omitempty" validate:"omitempty,oneof=active in_repair storage decommissioned"`
 }
 
 // AssetResponse represents the response for asset data
 type AssetResponse struct {
-	ID              string    `json:"id"`
-	InventoryNumber string    `json:"inventory_number"`
-	Name            string    `json:"name"`
-	Type            string    `json:"type"`
-	Class           string    `json:"class"`
-	OwnerID         *string   `json:"owner_id,omitempty"`
-	OwnerName       *string   `json:"owner_name,omitempty"`
-	Location        *string   `json:"location,omitempty"`
-	Criticality     string    `json:"criticality"`
-	Confidentiality string    `json:"confidentiality"`
-	Integrity       string    `json:"integrity"`
-	Availability    string    `json:"availability"`
-	Status          string    `json:"status"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID                  string    `json:"id"`
+	InventoryNumber     string    `json:"inventory_number"`
+	Name                string    `json:"name"`
+	Type                string    `json:"type"`
+	Class               string    `json:"class"`
+	OwnerID             *string   `json:"owner_id,omitempty"`
+	OwnerName           *string   `json:"owner_name,omitempty"`
+	ResponsibleUserID   *string   `json:"responsible_user_id,omitempty"`
+	ResponsibleUserName *string   `json:"responsible_user_name,omitempty"`
+	Location            *string   `json:"location,omitempty"`
+	Criticality         string    `json:"criticality"`
+	Confidentiality     string    `json:"confidentiality"`
+	Integrity           string    `json:"integrity"`
+	Availability        string    `json:"availability"`
+	Status              string    `json:"status"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 // AssetDocumentRequest represents the request to add a document to an asset
@@ -138,14 +142,14 @@ type AssetHistoryResponse struct {
 
 // AssetListRequest represents the request parameters for listing assets
 type AssetListRequest struct {
-	Page       int    `json:"page" validate:"min=1"`
-	PageSize   int    `json:"page_size" validate:"min=1,max=1000"`
-	Type       string `json:"type,omitempty" validate:"omitempty,oneof=server workstation application database document network_device other"`
-	Class      string `json:"class,omitempty" validate:"omitempty,oneof=hardware software data service"`
-	Status     string `json:"status,omitempty" validate:"omitempty,oneof=active in_repair storage decommissioned"`
+	Page        int    `json:"page" validate:"min=1"`
+	PageSize    int    `json:"page_size" validate:"min=1,max=1000"`
+	Type        string `json:"type,omitempty" validate:"omitempty,oneof=server workstation application database document network_device other"`
+	Class       string `json:"class,omitempty" validate:"omitempty,oneof=hardware software data service"`
+	Status      string `json:"status,omitempty" validate:"omitempty,oneof=active in_repair storage decommissioned"`
 	Criticality string `json:"criticality,omitempty" validate:"omitempty,oneof=low medium high"`
-	OwnerID    string `json:"owner_id,omitempty" validate:"omitempty,uuid"`
-	Search     string `json:"search,omitempty"`
+	OwnerID     string `json:"owner_id,omitempty" validate:"omitempty,uuid"`
+	Search      string `json:"search,omitempty"`
 }
 
 // AssetInventoryRequest represents the request to perform inventory
@@ -154,4 +158,31 @@ type AssetInventoryRequest struct {
 	Action   string   `json:"action" validate:"required,oneof=verify update_status"`
 	Status   *string  `json:"status,omitempty" validate:"omitempty,oneof=active in_repair storage decommissioned"`
 	Notes    *string  `json:"notes,omitempty"`
+}
+
+// AssetHistoryFiltersRequest represents the request to filter asset history
+type AssetHistoryFiltersRequest struct {
+	ChangedBy *string `json:"changed_by,omitempty" validate:"omitempty,uuid"`
+	FromDate  *string `json:"from_date,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	ToDate    *string `json:"to_date,omitempty" validate:"omitempty,datetime=2006-01-02"`
+}
+
+// AssetDocumentUploadRequest represents the request to upload a document
+type AssetDocumentUploadRequest struct {
+	DocumentType string `json:"document_type" validate:"required,oneof=passport transfer_act writeoff_act repair_log other"`
+	FileName     string `json:"file_name" validate:"required,min=1,max=255"`
+	FileSize     int64  `json:"file_size" validate:"required,min=1"`
+	ContentType  string `json:"content_type" validate:"required"`
+}
+
+// BulkUpdateStatusRequest represents the request to update status for multiple assets
+type BulkUpdateStatusRequest struct {
+	AssetIDs []string `json:"asset_ids" validate:"required,min=1,dive,uuid"`
+	Status   string   `json:"status" validate:"required,oneof=active in_repair storage decommissioned"`
+}
+
+// BulkUpdateOwnerRequest represents the request to update owner for multiple assets
+type BulkUpdateOwnerRequest struct {
+	AssetIDs []string `json:"asset_ids" validate:"required,min=1,dive,uuid"`
+	OwnerID  string   `json:"owner_id" validate:"omitempty,uuid"`
 }
