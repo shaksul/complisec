@@ -1,15 +1,17 @@
-import React, { useState, useEffect } from 'react'
+﻿import React, { useEffect, useState } from 'react'
 import {
   Box,
   Typography,
   Paper,
   Tooltip,
-  Card,
-  CardContent,
   Grid,
   Chip,
+  Skeleton,
 } from '@mui/material'
-import { risksApi, Risk } from '../../shared/api/risks'
+import { alpha, useTheme } from '@mui/material/styles'
+import type { CorporateTheme } from '../../shared/theme'
+import { risksApi, type Risk } from '../../shared/api/risks'
+import { useAuth } from '../../contexts/AuthContext'
 
 interface HeatmapCell {
   likelihood: number
@@ -19,33 +21,45 @@ interface HeatmapCell {
   level: number
 }
 
+const RISK_LEVEL_LABEL: Record<'low' | 'medium' | 'high' | 'critical', string> = {
+  low: 'Низкий',
+  medium: 'Средний',
+  high: 'Высокий',
+  critical: 'Критический',
+}
+
 export const RiskHeatmap: React.FC = () => {
   const [heatmapData, setHeatmapData] = useState<HeatmapCell[][]>([])
   const [loading, setLoading] = useState(true)
-  const [totalRisks, setTotalRisks] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+  const theme = useTheme<CorporateTheme>()
+  const { user } = useAuth()
 
   useEffect(() => {
-    loadHeatmapData()
-  }, [])
+    if (user) {
+      void loadHeatmapData()
+    } else {
+      setLoading(false)
+    }
+  }, [user])
 
   const loadHeatmapData = async () => {
     try {
       setLoading(true)
-      const response = await risksApi.list()
+      setError(null)
+      const response = await risksApi.list({ page_size: 1000 })
       const risks: Risk[] = response.data || []
-      
-      setTotalRisks(risks.length)
-      
-      // Create 4x4 heatmap matrix
+
       const matrix: HeatmapCell[][] = []
-      
+
       for (let impact = 4; impact >= 1; impact--) {
         const row: HeatmapCell[] = []
+
         for (let likelihood = 1; likelihood <= 4; likelihood++) {
-          const cellRisks = risks.filter(risk => 
-            (risk.likelihood || 1) === likelihood && (risk.impact || 1) === impact
+          const cellRisks = risks.filter(
+            (risk) => (risk.likelihood || 1) === likelihood && (risk.impact || 1) === impact,
           )
-          
+
           row.push({
             likelihood,
             impact,
@@ -54,274 +68,250 @@ export const RiskHeatmap: React.FC = () => {
             level: likelihood * impact,
           })
         }
+
         matrix.push(row)
       }
-      
+
       setHeatmapData(matrix)
     } catch (err) {
       console.error('Error loading heatmap data:', err)
+      setError('Не удалось загрузить тепловую карту. Попробуйте обновить страницу позже.')
     } finally {
       setLoading(false)
     }
   }
 
   const getCellColor = (level: number, count: number) => {
-    if (count === 0) return '#f5f5f5'
-    
-    // Color intensity based on risk level
-    switch (level) {
-      case 1:
-      case 2:
-        return '#4caf50' // Green for Low
-      case 3:
-      case 4:
-        return '#ffeb3b' // Yellow for Medium
-      case 5:
-      case 6:
-        return '#ff9800' // Orange for High
-      case 7:
-      case 8:
-      case 9:
-      case 10:
-      case 11:
-      case 12:
-      case 13:
-      case 14:
-      case 15:
-      case 16:
-        return '#f44336' // Red for Critical
-      default:
-        return '#e0e0e0'
+    if (count === 0) {
+      return theme.palette.background.default
     }
+
+    if (level <= 2) {
+      return alpha(theme.palette.success.main, 0.85)
+    }
+
+    if (level <= 4) {
+      return alpha(theme.palette.warning.light ?? theme.palette.warning.main, 0.9)
+    }
+
+    if (level <= 6) {
+      return alpha(theme.palette.warning.main, 0.95)
+    }
+
+    return alpha(theme.palette.error.main, 0.92)
   }
 
   const getCellOpacity = (count: number) => {
-    if (count === 0) return 0.3
-    if (count === 1) return 0.6
-    if (count === 2) return 0.8
-    return 1.0
+    if (count === 0) return 0.32
+    if (count === 1) return 0.72
+    if (count === 2) return 0.84
+    return 1
   }
 
-  const getRiskLevelLabel = (level: number) => {
-    if (level <= 2) return 'Low'
-    if (level <= 4) return 'Medium'
-    if (level <= 6) return 'High'
-    return 'Critical'
+  const getLevelKey = (level: number): keyof typeof RISK_LEVEL_LABEL => {
+    if (level <= 2) return 'low'
+    if (level <= 4) return 'medium'
+    if (level <= 6) return 'high'
+    return 'critical'
   }
 
-  const getRiskLevelColor = (level: number) => {
+  const getLevelChipColor = (level: number) => {
     if (level <= 2) return 'success'
-    if (level <= 4) return 'warning'
     if (level <= 6) return 'warning'
     return 'error'
   }
+
+  const renderRiskList = (risks: Risk[]) => (
+    <Box mt={1}>
+      <Typography variant="caption" display="block" color="text.secondary">
+        Примеры рисков:
+      </Typography>
+      {risks.slice(0, 3).map((risk) => (
+        <Typography key={risk.id} variant="caption" display="block">
+          • {risk.title}
+        </Typography>
+      ))}
+      {risks.length > 3 && (
+        <Typography variant="caption" color="text.secondary" display="block">
+          Ещё {risks.length - 3}
+        </Typography>
+      )}
+    </Box>
+  )
 
   if (loading) {
     return (
       <Paper sx={{ p: 3 }}>
         <Typography variant="h6" gutterBottom>
-          Матрица рисков
+          Тепловая карта рисков
         </Typography>
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight={200}>
-          <Typography>Загрузка данных...</Typography>
-        </Box>
+        <Skeleton variant="rounded" height={260} sx={{ borderRadius: 3 }} />
+      </Paper>
+    )
+  }
+
+  if (error) {
+    return (
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Тепловая карта рисков
+        </Typography>
+        <Typography color="error" variant="body2">
+          {error}
+        </Typography>
       </Paper>
     )
   }
 
   return (
-    <Paper sx={{ p: 3 }}>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h6">
-          Матрица рисков (4×4)
-        </Typography>
-        <Chip 
-          label={`Всего рисков: ${totalRisks}`}
-          color="primary"
-          variant="outlined"
-        />
-      </Box>
-
-      {/* Heatmap Grid */}
+    <Paper sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3 }}>
       <Box>
-        {/* Headers */}
-        <Box display="flex" mb={1}>
-          <Box width={60} />
-          {[1, 2, 3, 4].map(likelihood => (
-            <Box key={likelihood} width={80} textAlign="center">
-              <Typography variant="caption" fontWeight="bold">
-                {likelihood}
-              </Typography>
-            </Box>
-          ))}
-        </Box>
-
-        {/* Heatmap rows */}
-        {heatmapData.map((row, impactIndex) => {
-          const impact = 4 - impactIndex // Reverse order for display
-          return (
-            <Box key={impact} display="flex" mb={1}>
-              {/* Impact label */}
-              <Box width={60} display="flex" alignItems="center">
-                <Typography variant="caption" fontWeight="bold">
-                  {impact}
-                </Typography>
-              </Box>
-
-              {/* Cells */}
-              {row.map((cell, likelihoodIndex) => (
-                <Tooltip
-                  key={`${cell.likelihood}-${cell.impact}`}
-                  title={
-                    <Box>
-                      <Typography variant="subtitle2" gutterBottom>
-                        Вероятность: {cell.likelihood}, Воздействие: {cell.impact}
-                      </Typography>
-                      <Typography variant="body2">
-                        Уровень: {getRiskLevelLabel(cell.level)} ({cell.level})
-                      </Typography>
-                      <Typography variant="body2">
-                        Количество рисков: {cell.count}
-                      </Typography>
-                      {cell.risks.length > 0 && (
-                        <Box mt={1}>
-                          <Typography variant="caption" display="block">
-                            Риски:
-                          </Typography>
-                          {cell.risks.slice(0, 3).map(risk => (
-                            <Typography key={risk.id} variant="caption" display="block">
-                              • {risk.title}
-                            </Typography>
-                          ))}
-                          {cell.risks.length > 3 && (
-                            <Typography variant="caption" display="block">
-                              ... и еще {cell.risks.length - 3}
-                            </Typography>
-                          )}
-                        </Box>
-                      )}
-                    </Box>
-                  }
-                  arrow
-                >
-                  <Box
-                    width={80}
-                    height={60}
-                    display="flex"
-                    alignItems="center"
-                    justifyContent="center"
-                    bgcolor={getCellColor(cell.level, cell.count)}
-                    sx={{
-                      opacity: getCellOpacity(cell.count),
-                      border: '1px solid #ddd',
-                      cursor: cell.count > 0 ? 'pointer' : 'default',
-                      transition: 'opacity 0.2s',
-                      '&:hover': {
-                        opacity: 1,
-                        transform: 'scale(1.05)',
-                      },
-                    }}
-                    borderRadius={1}
-                  >
-                    <Typography
-                      variant="body2"
-                      fontWeight="bold"
-                      color={cell.count > 0 ? 'white' : 'text.secondary'}
-                      sx={{ textShadow: cell.count > 0 ? '1px 1px 2px rgba(0,0,0,0.5)' : 'none' }}
-                    >
-                      {cell.count}
-                    </Typography>
-                  </Box>
-                </Tooltip>
-              ))}
-            </Box>
-          )
-        })}
+        <Typography variant="h6" gutterBottom>
+          Тепловая карта рисков
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Матрица вероятности и влияния помогает увидеть концентрацию рисков и определить приоритеты обработки.
+        </Typography>
       </Box>
 
-      {/* Legend */}
-      <Box mt={3}>
+      <Box display="flex" flexDirection="column" gap={2}>
+        {heatmapData.map((row, rowIndex) => (
+          <Box key={`row-${rowIndex}`} display="flex" gap={1.5}>
+            {row.map((cell) => (
+              <Tooltip
+                key={`${cell.likelihood}-${cell.impact}`}
+                arrow
+                title={
+                  <Box>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Вероятность: {cell.likelihood}, Влияние: {cell.impact}
+                    </Typography>
+                    <Typography variant="body2">
+                      Уровень: {RISK_LEVEL_LABEL[getLevelKey(cell.level)]} ({cell.level})
+                    </Typography>
+                    <Typography variant="body2">Количество рисков: {cell.count}</Typography>
+                    {cell.risks.length > 0 && renderRiskList(cell.risks)}
+                  </Box>
+                }
+              >
+                <Box
+                  width={88}
+                  height={64}
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  bgcolor={getCellColor(cell.level, cell.count)}
+                  sx={{
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 2,
+                    opacity: getCellOpacity(cell.count),
+                    cursor: cell.count > 0 ? 'pointer' : 'default',
+                    transition: 'all 0.2s ease',
+                    '&:hover': {
+                      opacity: 1,
+                      transform: cell.count > 0 ? 'translateY(-4px)' : 'none',
+                    },
+                  }}
+                >
+                  <Typography
+                    variant="body1"
+                    fontWeight={700}
+                    sx={{
+                      color: cell.count > 0 ? theme.palette.common.white : theme.palette.text.secondary,
+                      textShadow: cell.count > 0 ? `0 1px 2px ${alpha(theme.palette.common.black, 0.35)}` : 'none',
+                    }}
+                  >
+                    {cell.count}
+                  </Typography>
+                </Box>
+              </Tooltip>
+            ))}
+          </Box>
+        ))}
+      </Box>
+
+      <Box>
         <Typography variant="subtitle2" gutterBottom>
-          Легенда:
+          Обозначения
         </Typography>
         <Grid container spacing={2}>
           <Grid item>
             <Box display="flex" alignItems="center" gap={1}>
               <Box
-                width={20}
-                height={20}
-                bgcolor="#4caf50"
-                borderRadius={1}
-                border="1px solid #ddd"
+                width={22}
+                height={22}
+                bgcolor={alpha(theme.palette.success.main, 0.85)}
+                borderRadius={2}
+                border={`1px solid ${theme.palette.divider}`}
               />
-              <Typography variant="caption">Low (1-2)</Typography>
+              <Typography variant="caption">Низкий (1–2)</Typography>
             </Box>
           </Grid>
           <Grid item>
             <Box display="flex" alignItems="center" gap={1}>
               <Box
-                width={20}
-                height={20}
-                bgcolor="#ffeb3b"
-                borderRadius={1}
-                border="1px solid #ddd"
+                width={22}
+                height={22}
+                bgcolor={alpha(theme.palette.warning.light ?? theme.palette.warning.main, 0.9)}
+                borderRadius={2}
+                border={`1px solid ${theme.palette.divider}`}
               />
-              <Typography variant="caption">Medium (3-4)</Typography>
+              <Typography variant="caption">Средний (3–4)</Typography>
             </Box>
           </Grid>
           <Grid item>
             <Box display="flex" alignItems="center" gap={1}>
               <Box
-                width={20}
-                height={20}
-                bgcolor="#ff9800"
-                borderRadius={1}
-                border="1px solid #ddd"
+                width={22}
+                height={22}
+                bgcolor={alpha(theme.palette.warning.main, 0.95)}
+                borderRadius={2}
+                border={`1px solid ${theme.palette.divider}`}
               />
-              <Typography variant="caption">High (5-6)</Typography>
+              <Typography variant="caption">Высокий (5–6)</Typography>
             </Box>
           </Grid>
           <Grid item>
             <Box display="flex" alignItems="center" gap={1}>
               <Box
-                width={20}
-                height={20}
-                bgcolor="#f44336"
-                borderRadius={1}
-                border="1px solid #ddd"
+                width={22}
+                height={22}
+                bgcolor={alpha(theme.palette.error.main, 0.92)}
+                borderRadius={2}
+                border={`1px solid ${theme.palette.divider}`}
               />
-              <Typography variant="caption">Critical (7+)</Typography>
+              <Typography variant="caption">Критический (7+)</Typography>
             </Box>
           </Grid>
         </Grid>
-        
-        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-          Интенсивность цвета показывает количество рисков в каждой ячейке
-        </Typography>
       </Box>
 
-      {/* Summary Statistics */}
-      <Box mt={3}>
+      <Box>
         <Typography variant="subtitle2" gutterBottom>
-          Статистика по уровням риска:
+          Распределение по уровням
         </Typography>
-        <Grid container spacing={2}>
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].map(level => {
-            const count = heatmapData.flat().reduce((sum, cell) => {
+        <Grid container spacing={1.5}>
+          {[...Array(16)].map((_, index) => {
+            const level = index + 1
+            const levelCount = heatmapData.flat().reduce((total, cell) => {
               if (cell.level === level) {
-                return sum + cell.count
+                return total + cell.count
               }
-              return sum
+              return total
             }, 0)
-            
-            if (count === 0) return null
-            
+
+            if (levelCount === 0) {
+              return null
+            }
+
+            const key = getLevelKey(level)
+
             return (
-              <Grid item key={level}>
+              <Grid item key={`chip-${level}`}>
                 <Chip
-                  label={`${getRiskLevelLabel(level)} (${level}): ${count}`}
+                  label={`${RISK_LEVEL_LABEL[key]} (${level}) — ${levelCount}`}
                   size="small"
-                  color={getRiskLevelColor(level) as any}
+                  color={getLevelChipColor(level) as any}
                   variant="outlined"
                 />
               </Grid>
@@ -332,4 +322,3 @@ export const RiskHeatmap: React.FC = () => {
     </Paper>
   )
 }
-

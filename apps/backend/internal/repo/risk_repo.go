@@ -183,9 +183,14 @@ func (r *RiskRepo) ListWithFilters(ctx context.Context, tenantID string, filters
 		args = append(args, category)
 		argIndex++
 	}
-	if level, ok := filters["level"].(string); ok && level != "" {
+	if levelRange, ok := filters["level_range"].([]int); ok && len(levelRange) == 2 {
+		query += fmt.Sprintf(" AND level BETWEEN $%d AND $%d", argIndex, argIndex+1)
+		args = append(args, levelRange[0], levelRange[1])
+		argIndex += 2
+	}
+	if levelExact, ok := filters["level_exact"].(int); ok {
 		query += fmt.Sprintf(" AND level = $%d", argIndex)
-		args = append(args, level)
+		args = append(args, levelExact)
 		argIndex++
 	}
 	if ownerUserID, ok := filters["owner_user_id"].(string); ok && ownerUserID != "" {

@@ -13,6 +13,7 @@ import (
 	"risknexus/backend/internal/migrate"
 	"risknexus/backend/internal/repo"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -37,6 +38,15 @@ func main() {
 		return
 	}
 
+	// Auto-run migrations on startup
+	log.Println("Running database migrations on startup...")
+	if err := migrate.RunMigrations(db.DB, "./migrations"); err != nil {
+		log.Printf("Warning: Migration failed: %v", err)
+		// Don't fail startup, just log the warning
+	} else {
+		log.Println("Migrations completed successfully")
+	}
+
 	// Initialize cache
 	memoryCache := cache.NewMemoryCache()
 
@@ -45,6 +55,7 @@ func main() {
 	baseRoleRepo := repo.NewRoleRepo(db)
 	roleRepo := repo.NewCachedRoleRepo(baseRoleRepo, memoryCache, 5*time.Minute)
 	permissionRepo := repo.NewPermissionRepo(db)
+	tenantRepo := repo.NewTenantRepo(db)
 	assetRepo := repo.NewAssetRepo(db)
 	riskRepo := repo.NewRiskRepo(db)
 	documentRepo := repo.NewDocumentRepo(db)
@@ -53,24 +64,28 @@ func main() {
 	auditRepo := repo.NewAuditRepo(db)
 	aiRepo := repo.NewAIRepo(db)
 	complianceRepo := repo.NewComplianceRepo(db)
+	emailChangeRepo := repo.NewEmailChangeRepo(db)
 
 	// Initialize services
 	authService := domain.NewAuthService(userRepo, baseRoleRepo, permissionRepo, cfg.JWTSecret)
 	userService := domain.NewUserService(userRepo, baseRoleRepo)
 	roleService := domain.NewRoleService(roleRepo, userRepo, auditRepo)
+	tenantService := domain.NewTenantService(tenantRepo, auditRepo)
 	assetService := domain.NewAssetService(assetRepo, userRepo)
-	riskService := domain.NewRiskService(riskRepo, auditRepo)
-	documentService := domain.NewDocumentService(documentRepo, auditRepo)
+	documentService := domain.NewDocumentService(documentRepo, "./storage/documents")
+	riskService := domain.NewRiskService(riskRepo, auditRepo, documentService)
 	incidentService := domain.NewIncidentService(incidentRepo, userRepo, assetRepo, riskRepo)
-	trainingService := domain.NewTrainingService(trainingRepo, auditRepo)
+	trainingService := domain.NewTrainingService(trainingRepo)
 	aiService := domain.NewAIService(aiRepo)
 	complianceService := domain.NewComplianceService(complianceRepo)
+	emailChangeService := domain.NewEmailChangeService(emailChangeRepo, userRepo)
 
 	// Initialize handlers
 	authHandler := http.NewAuthHandler(authService)
 	userHandler := http.NewUserHandler(userService, roleService)
 	roleHandler := http.NewRoleHandler(roleService)
 	log.Printf("DEBUG: main.go roleHandler created: %+v", roleHandler)
+	tenantHandler := http.NewTenantHandler(tenantService)
 	auditHandler := http.NewAuditHandler(auditRepo)
 
 	// Set global permission checker
@@ -82,6 +97,7 @@ func main() {
 	trainingHandler := http.NewTrainingHandler(trainingService)
 	aiHandler := http.NewAIHandler(aiService)
 	complianceHandler := http.NewComplianceHandler(complianceService)
+	emailChangeHandler := http.NewEmailChangeHandler(emailChangeService, validator.New())
 
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
@@ -97,7 +113,7 @@ func main() {
 	app.Use(logger.New())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     "http://localhost:3000,http://localhost:5173",
-		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
+		AllowMethods:     "GET,POST,PUT,PATCH,DELETE,OPTIONS",
 		AllowHeaders:     "Origin,Content-Type,Accept,Authorization",
 		AllowCredentials: true,
 	}))
@@ -126,14 +142,16 @@ func main() {
 	log.Printf("DEBUG: main.go registering roleHandler")
 	roleHandler.Register(protected)
 	log.Printf("DEBUG: main.go roleHandler registered")
+	tenantHandler.Register(protected)
 	auditHandler.Register(protected)
 	assetHandler.Register(protected)
 	riskHandler.Register(protected)
-	documentHandler.Register(protected)
+	documentHandler.RegisterRoutes(protected)
 	incidentHandler.Register(protected)
 	trainingHandler.Register(protected)
 	aiHandler.Register(protected)
 	complianceHandler.Register(protected)
+	emailChangeHandler.Register(protected)
 
 	port := os.Getenv("PORT")
 	if port == "" {

@@ -70,10 +70,31 @@ func (h *UserHandler) listUsers(c *fiber.Ctx) error {
 
 	fmt.Printf("DEBUG: ListUsers returned %d users of %d total\n", len(users), total)
 
+	// Преобразуем в DTO
+	var userResponses []dto.UserResponse
+	for _, user := range users {
+		roles, err := h.userService.GetUserRoles(context.Background(), user.ID)
+		var roleNames []string
+		if err == nil {
+			roleNames = roles
+		}
+
+		userResponses = append(userResponses, dto.UserResponse{
+			ID:        user.ID,
+			Email:     user.Email,
+			FirstName: user.FirstName,
+			LastName:  user.LastName,
+			IsActive:  user.IsActive,
+			Roles:     roleNames,
+			CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			UpdatedAt: user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		})
+	}
+
 	pagination := dto.NewPaginationResponse(page, pageSize, total)
 
 	return c.JSON(dto.PaginatedResponse{
-		Data:       users,
+		Data:       userResponses,
 		Pagination: pagination,
 	})
 }
@@ -107,12 +128,26 @@ func (h *UserHandler) createUser(c *fiber.Ctx) error {
 	}
 
 	log.Printf("DEBUG: user_handler.createUser success id=%s", user.ID)
-	return c.Status(201).JSON(fiber.Map{"data": user})
+
+	// Преобразуем в DTO
+	userResponse := dto.UserResponse{
+		ID:        user.ID,
+		Email:     user.Email,
+		FirstName: user.FirstName,
+		LastName:  user.LastName,
+		IsActive:  user.IsActive,
+		CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt: user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+
+	return c.Status(201).JSON(fiber.Map{"data": userResponse})
 }
 
 func (h *UserHandler) getUser(c *fiber.Ctx) error {
 	id := c.Params("id")
-	user, err := h.userService.GetUser(context.Background(), id)
+	tenantID := c.Locals("tenant_id").(string)
+
+	user, err := h.userService.GetUserByTenant(context.Background(), id, tenantID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -120,11 +155,24 @@ func (h *UserHandler) getUser(c *fiber.Ctx) error {
 		return c.Status(404).JSON(fiber.Map{"error": "User not found"})
 	}
 
-	return c.JSON(fiber.Map{"data": user})
+	// Преобразуем в DTO
+	userResponse := dto.UserResponse{
+		ID:        user.ID,
+		Email:     user.Email,
+		FirstName: user.FirstName,
+		LastName:  user.LastName,
+		IsActive:  user.IsActive,
+		CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt: user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+
+	return c.JSON(fiber.Map{"data": userResponse})
 }
 
 func (h *UserHandler) updateUser(c *fiber.Ctx) error {
 	id := c.Params("id")
+	tenantID := c.Locals("tenant_id").(string)
+
 	var req dto.UpdateUserRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
@@ -134,7 +182,7 @@ func (h *UserHandler) updateUser(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
 	}
 
-	if err := h.userService.UpdateUser(c.Context(), id, req.FirstName, req.LastName, req.IsActive, req.RoleIDs); err != nil {
+	if err := h.userService.UpdateUserByTenant(c.Context(), id, tenantID, req.FirstName, req.LastName, req.IsActive, req.RoleIDs); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
@@ -151,7 +199,17 @@ func (h *UserHandler) listPermissions(c *fiber.Ctx) error {
 }
 
 func (h *UserHandler) deleteUser(c *fiber.Ctx) error {
-	_ = c.Params("id")
+	id := c.Params("id")
+	tenantID := c.Locals("tenant_id").(string)
+
+	// Проверяем, что пользователь существует в текущем тенанте
+	user, err := h.userService.GetUserByTenant(context.Background(), id, tenantID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	if user == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "User not found"})
+	}
 
 	// В реальной системе здесь должна быть логика удаления пользователя
 	// Пока что просто возвращаем успех
@@ -160,7 +218,9 @@ func (h *UserHandler) deleteUser(c *fiber.Ctx) error {
 
 func (h *UserHandler) getUserRoles(c *fiber.Ctx) error {
 	id := c.Params("id")
-	userWithRoles, err := h.userService.GetUserWithRoles(context.Background(), id)
+	tenantID := c.Locals("tenant_id").(string)
+
+	userWithRoles, err := h.userService.GetUserWithRolesByTenant(context.Background(), id, tenantID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -173,6 +233,17 @@ func (h *UserHandler) getUserRoles(c *fiber.Ctx) error {
 
 func (h *UserHandler) assignRoleToUser(c *fiber.Ctx) error {
 	userID := c.Params("id")
+	tenantID := c.Locals("tenant_id").(string)
+
+	// Проверяем, что пользователь существует в текущем тенанте
+	user, err := h.userService.GetUserByTenant(context.Background(), userID, tenantID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	if user == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "User not found"})
+	}
+
 	var req dto.UserRoleRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
@@ -193,6 +264,16 @@ func (h *UserHandler) assignRoleToUser(c *fiber.Ctx) error {
 func (h *UserHandler) removeRoleFromUser(c *fiber.Ctx) error {
 	userID := c.Params("id")
 	roleID := c.Params("role_id")
+	tenantID := c.Locals("tenant_id").(string)
+
+	// Проверяем, что пользователь существует в текущем тенанте
+	user, err := h.userService.GetUserByTenant(context.Background(), userID, tenantID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	if user == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "User not found"})
+	}
 
 	if err := h.roleService.RemoveRoleFromUser(c.Context(), userID, roleID); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
@@ -261,8 +342,9 @@ func (h *UserHandler) getUserCatalog(c *fiber.Ctx) error {
 
 func (h *UserHandler) getUserDetail(c *fiber.Ctx) error {
 	userID := c.Params("id")
+	tenantID := c.Locals("tenant_id").(string)
 
-	user, roles, stats, err := h.userService.GetUserDetail(context.Background(), userID)
+	user, roles, stats, err := h.userService.GetUserDetailByTenant(context.Background(), userID, tenantID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}

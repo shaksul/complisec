@@ -54,3 +54,6 @@ CREATE INDEX IF NOT EXISTS idx_risks_due_date ON risks(due_date);
 CREATE INDEX IF NOT EXISTS idx_risks_level ON risks(level);
 CREATE INDEX IF NOT EXISTS idx_risks_status ON risks(status);
 
+
+
+

@@ -54,21 +54,29 @@ func (h *AuthHandler) login(c *fiber.Ctx) error {
 		return c.Status(401).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	accessToken, refreshToken, err := h.authService.GenerateTokens(user.ID, user.TenantID, roles)
+	accessToken, refreshToken, err := h.authService.GenerateTokens(user, roles)
 	if err != nil {
 		log.Printf("ERROR: AuthHandler.login token generation failed: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to generate tokens"})
+	}
+
+	// Get user permissions
+	permissions, err := h.authService.GetUserPermissions(context.Background(), user.ID)
+	if err != nil {
+		log.Printf("ERROR: AuthHandler.login failed to get permissions: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to get user permissions"})
 	}
 
 	response := dto.LoginResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		User: dto.UserResponse{
-			ID:        user.ID,
-			Email:     user.Email,
-			FirstName: user.FirstName,
-			LastName:  user.LastName,
-			Roles:     roles,
+			ID:          user.ID,
+			Email:       user.Email,
+			FirstName:   user.FirstName,
+			LastName:    user.LastName,
+			Roles:       roles,
+			Permissions: permissions,
 		},
 	}
 
@@ -85,23 +93,17 @@ func (h *AuthHandler) refresh(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
 	}
 
-	token, err := h.authService.ValidateToken(req.RefreshToken)
+	_, err := h.authService.ValidateToken(req.RefreshToken)
 	if err != nil {
 		return c.Status(401).JSON(fiber.Map{"error": "Invalid refresh token"})
 	}
 
-	userID, tenantID, _, err := h.authService.GetUserFromToken(token)
+	user, roles, err := h.authService.GetUserFromToken(req.RefreshToken)
 	if err != nil {
 		return c.Status(401).JSON(fiber.Map{"error": "Invalid token claims"})
 	}
 
-	// Get user roles from database for refresh token
-	roles, err := h.authService.GetUserRoles(context.Background(), userID)
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to get user roles"})
-	}
-
-	accessToken, refreshToken, err := h.authService.GenerateTokens(userID, tenantID, roles)
+	accessToken, refreshToken, err := h.authService.GenerateTokens(user, roles)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to generate tokens"})
 	}
@@ -127,18 +129,24 @@ func (h *AuthHandler) me(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to get user roles"})
 	}
 
+	permissions, err := h.authService.GetUserPermissions(context.Background(), userID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to get user permissions"})
+	}
+
 	return c.JSON(dto.LoginResponse{
 		AccessToken:  "",
 		RefreshToken: "",
 		User: dto.UserResponse{
-			ID:        user.ID,
-			Email:     user.Email,
-			FirstName: user.FirstName,
-			LastName:  user.LastName,
-			IsActive:  user.IsActive,
-			Roles:     roles,
-			CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-			UpdatedAt: user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			ID:          user.ID,
+			Email:       user.Email,
+			FirstName:   user.FirstName,
+			LastName:    user.LastName,
+			IsActive:    user.IsActive,
+			Roles:       roles,
+			Permissions: permissions,
+			CreatedAt:   user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			UpdatedAt:   user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		},
 	})
 }

@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"log"
+	"strconv"
 	"time"
 
 	"risknexus/backend/internal/domain"
@@ -61,6 +62,13 @@ func (h *RiskHandler) Register(r fiber.Router) {
 	riskID.Get("/tags", RequirePermission("risks.view"), h.getRiskTags)
 	riskID.Post("/tags", RequirePermission("risks.edit"), h.addRiskTag)
 	riskID.Delete("/tags/:tag_name", RequirePermission("risks.edit"), h.deleteRiskTag)
+
+	// Documents
+	riskID.Get("/documents", RequirePermission("risks.view"), h.getRiskDocuments)
+	riskID.Post("/documents/upload", RequirePermission("risks.edit"), h.uploadRiskDocument)
+	riskID.Post("/documents/link", RequirePermission("risks.edit"), h.linkRiskDocument)
+	riskID.Delete("/documents/:document_id", RequirePermission("risks.edit"), h.deleteRiskDocument)
+	riskID.Delete("/documents/:document_id/unlink", RequirePermission("risks.edit"), h.unlinkRiskDocument)
 }
 
 // convertToRiskResponse - преобразует Risk в RiskResponse с автоматическим расчетом уровня
@@ -117,7 +125,20 @@ func (h *RiskHandler) listRisks(c *fiber.Ctx) error {
 		filters["status"] = status
 	}
 	if level := c.Query("level"); level != "" {
-		filters["level"] = level
+		switch level {
+		case dto.RiskLevelLabelLow:
+			filters["level_range"] = []int{1, 2}
+		case dto.RiskLevelLabelMedium:
+			filters["level_range"] = []int{3, 4}
+		case dto.RiskLevelLabelHigh:
+			filters["level_range"] = []int{5, 6}
+		case dto.RiskLevelLabelCritical:
+			filters["level_range"] = []int{7, 16}
+		default:
+			if levelValue, err := strconv.Atoi(level); err == nil {
+				filters["level_exact"] = levelValue
+			}
+		}
 	}
 	if ownerUserID := c.Query("owner_user_id"); ownerUserID != "" {
 		filters["owner_user_id"] = ownerUserID
@@ -327,24 +348,27 @@ func (h *RiskHandler) getRisksByAsset(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: RiskHandler.getRisksByAsset assetID=%s user=%s", assetID, userID)
 
-	// Get all risks and filter by asset_id
+	// Get risks filtered by asset_id directly
 	tenantID := c.Locals("tenant_id").(string)
-	allRisks, err := h.riskService.ListRisks(context.Background(), tenantID, make(map[string]interface{}), "created_at", "desc")
+	filters := map[string]interface{}{
+		"asset_id": assetID,
+	}
+	
+	risks, err := h.riskService.ListRisks(context.Background(), tenantID, filters, "created_at", "desc")
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.getRisksByAsset service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	// Filter by asset_id
-	var risks []interface{}
-	for _, risk := range allRisks {
-		if risk.AssetID != nil && *risk.AssetID == assetID {
-			response := h.convertToRiskResponse(&risk)
-			risks = append(risks, response)
-		}
+	// Convert to response format
+	var riskResponses []interface{}
+	for _, risk := range risks {
+		response := h.convertToRiskResponse(&risk)
+		riskResponses = append(riskResponses, response)
 	}
 
-	return c.JSON(fiber.Map{"data": risks})
+	log.Printf("DEBUG: RiskHandler.getRisksByAsset returned %d risks for asset %s", len(riskResponses), assetID)
+	return c.JSON(fiber.Map{"data": riskResponses})
 }
 
 // Risk History endpoints
@@ -711,4 +735,144 @@ func (h *RiskHandler) exportRisks(c *fiber.Ctx) error {
 	// TODO: Implement export functionality
 	// For now, return a placeholder response
 	return c.Status(501).JSON(fiber.Map{"error": "Export functionality not yet implemented"})
+}
+
+// Risk Documents endpoints
+func (h *RiskHandler) getRiskDocuments(c *fiber.Ctx) error {
+	riskID := c.Params("risk_id")
+	tenantID := c.Locals("tenant_id").(string)
+	userID := c.Locals("user_id").(string)
+
+	log.Printf("DEBUG: RiskHandler.getRiskDocuments riskID=%s tenant=%s user=%s", riskID, tenantID, userID)
+
+	documents, err := h.riskService.GetRiskDocuments(context.Background(), riskID, tenantID)
+	if err != nil {
+		log.Printf("ERROR: RiskHandler.getRiskDocuments service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"data": documents})
+}
+
+func (h *RiskHandler) uploadRiskDocument(c *fiber.Ctx) error {
+	riskID := c.Params("risk_id")
+	tenantID := c.Locals("tenant_id").(string)
+	userID := c.Locals("user_id").(string)
+
+	log.Printf("DEBUG: RiskHandler.uploadRiskDocument riskID=%s tenant=%s user=%s", riskID, tenantID, userID)
+
+	// Получаем файл из multipart form
+	file, err := c.FormFile("file")
+	if err != nil {
+		log.Printf("ERROR: RiskHandler.uploadRiskDocument no file: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "No file provided"})
+	}
+
+	// Открываем файл
+	src, err := file.Open()
+	if err != nil {
+		log.Printf("ERROR: RiskHandler.uploadRiskDocument file open error: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Failed to open file"})
+	}
+	defer src.Close()
+
+	// Парсим дополнительные параметры
+	req := dto.UploadDocumentDTO{
+		Name:        c.FormValue("name", file.Filename),
+		Description: stringPtr(c.FormValue("description")),
+		FolderID:    stringPtr(c.FormValue("folder_id")),
+		Tags:        []string{}, // TODO: парсить теги из формы
+		EnableOCR:   c.FormValue("enable_ocr") == "true",
+		Metadata:    stringPtr(c.FormValue("metadata")),
+	}
+
+	// Валидация
+	if err := h.validator.Struct(req); err != nil {
+		log.Printf("ERROR: RiskHandler.uploadRiskDocument validation failed: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
+	}
+
+	document, err := h.riskService.UploadRiskDocument(context.Background(), riskID, tenantID, src, file, req, userID)
+	if err != nil {
+		log.Printf("ERROR: RiskHandler.uploadRiskDocument service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	log.Printf("DEBUG: RiskHandler.uploadRiskDocument success riskID=%s documentID=%s", riskID, document.ID)
+	return c.Status(201).JSON(fiber.Map{"data": document})
+}
+
+func (h *RiskHandler) linkRiskDocument(c *fiber.Ctx) error {
+	riskID := c.Params("risk_id")
+	tenantID := c.Locals("tenant_id").(string)
+	userID := c.Locals("user_id").(string)
+
+	log.Printf("DEBUG: RiskHandler.linkRiskDocument riskID=%s tenant=%s user=%s", riskID, tenantID, userID)
+
+	var req struct {
+		DocumentID string `json:"document_id" validate:"required"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		log.Printf("ERROR: RiskHandler.linkRiskDocument invalid body: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if err := h.validator.Struct(req); err != nil {
+		log.Printf("ERROR: RiskHandler.linkRiskDocument validation failed: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
+	}
+
+	err := h.riskService.LinkExistingDocument(context.Background(), riskID, req.DocumentID, tenantID, userID)
+	if err != nil {
+		log.Printf("ERROR: RiskHandler.linkRiskDocument service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	log.Printf("DEBUG: RiskHandler.linkRiskDocument success riskID=%s documentID=%s", riskID, req.DocumentID)
+	return c.Status(201).JSON(fiber.Map{"message": "Document linked successfully"})
+}
+
+func (h *RiskHandler) deleteRiskDocument(c *fiber.Ctx) error {
+	riskID := c.Params("risk_id")
+	documentID := c.Params("document_id")
+	tenantID := c.Locals("tenant_id").(string)
+	userID := c.Locals("user_id").(string)
+
+	log.Printf("DEBUG: RiskHandler.deleteRiskDocument riskID=%s documentID=%s tenant=%s user=%s", riskID, documentID, tenantID, userID)
+
+	err := h.riskService.DeleteRiskDocument(context.Background(), riskID, documentID, tenantID, userID)
+	if err != nil {
+		log.Printf("ERROR: RiskHandler.deleteRiskDocument service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	log.Printf("DEBUG: RiskHandler.deleteRiskDocument success riskID=%s documentID=%s", riskID, documentID)
+	return c.Status(200).JSON(fiber.Map{"message": "Document deleted successfully"})
+}
+
+func (h *RiskHandler) unlinkRiskDocument(c *fiber.Ctx) error {
+	riskID := c.Params("risk_id")
+	documentID := c.Params("document_id")
+	tenantID := c.Locals("tenant_id").(string)
+	userID := c.Locals("user_id").(string)
+
+	log.Printf("DEBUG: RiskHandler.unlinkRiskDocument riskID=%s documentID=%s tenant=%s user=%s", riskID, documentID, tenantID, userID)
+
+	err := h.riskService.UnlinkDocument(context.Background(), riskID, documentID, tenantID, userID)
+	if err != nil {
+		log.Printf("ERROR: RiskHandler.unlinkRiskDocument service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	log.Printf("DEBUG: RiskHandler.unlinkRiskDocument success riskID=%s documentID=%s", riskID, documentID)
+	return c.Status(200).JSON(fiber.Map{"message": "Document unlinked successfully"})
+}
+
+// Helper function
+func stringPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

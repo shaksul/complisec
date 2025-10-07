@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"strings"
 	"time"
 
 	"risknexus/backend/internal/repo"
@@ -74,6 +75,10 @@ func (s *UserService) GetUser(ctx context.Context, id string) (*repo.User, error
 	return s.userRepo.GetByID(ctx, id)
 }
 
+func (s *UserService) GetUserByTenant(ctx context.Context, id, tenantID string) (*repo.User, error) {
+	return s.userRepo.GetByIDAndTenant(ctx, id, tenantID)
+}
+
 func (s *UserService) ListUsers(ctx context.Context, tenantID string) ([]repo.User, error) {
 	return s.userRepo.List(ctx, tenantID)
 }
@@ -123,6 +128,78 @@ func (s *UserService) UpdateUser(ctx context.Context, id string, firstName, last
 	return nil
 }
 
+func (s *UserService) UpdateUserByTenant(ctx context.Context, id, tenantID string, firstName, lastName *string, isActive *bool, roleIDs []string) error {
+	log.Printf("DEBUG: user_service.UpdateUserByTenant id=%s tenant=%s", id, tenantID)
+	user, err := s.userRepo.GetByIDAndTenant(ctx, id, tenantID)
+	if err != nil {
+		log.Printf("ERROR: user_service.UpdateUserByTenant GetByIDAndTenant: %v", err)
+		return err
+	}
+	if user == nil {
+		log.Printf("WARN: user_service.UpdateUserByTenant not found id=%s tenant=%s", id, tenantID)
+		return errors.New("user not found")
+	}
+
+	// Update user fields
+	if firstName != nil {
+		user.FirstName = firstName
+	}
+	if lastName != nil {
+		user.LastName = lastName
+	}
+	if isActive != nil {
+		user.IsActive = *isActive
+	}
+
+	err = s.userRepo.Update(ctx, *user)
+	if err != nil {
+		log.Printf("ERROR: user_service.UpdateUserByTenant repo.Update: %v", err)
+		return err
+	}
+
+	// Update roles if provided
+	if roleIDs != nil {
+		log.Printf("DEBUG: user_service.UpdateUserByTenant roleIDs=%v", roleIDs)
+		// Convert mixed role data (names and IDs) to role IDs
+		var actualRoleIDs []string
+		roleIDSet := make(map[string]bool) // For deduplication
+
+		for _, roleData := range roleIDs {
+			var roleID string
+
+			// Check if it's a UUID (role ID) or a name
+			if len(roleData) == 36 && strings.Contains(roleData, "-") {
+				// It's a UUID, use as is
+				roleID = roleData
+			} else {
+				// It's a role name, convert to ID
+				role, err := s.roleRepo.GetByName(ctx, tenantID, roleData)
+				if err != nil {
+					log.Printf("ERROR: user_service.UpdateUserByTenant GetByName: %v", err)
+					return err
+				}
+				if role != nil {
+					roleID = role.ID
+				}
+			}
+
+			// Add to set if not already present (deduplication)
+			if roleID != "" && !roleIDSet[roleID] {
+				actualRoleIDs = append(actualRoleIDs, roleID)
+				roleIDSet[roleID] = true
+			}
+		}
+
+		err = s.userRepo.SetUserRoles(ctx, id, actualRoleIDs)
+		if err != nil {
+			log.Printf("ERROR: user_service.UpdateUserByTenant SetUserRoles: %v", err)
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (s *UserService) CreateRole(ctx context.Context, tenantID, name, description string, permissionIDs []string) (*repo.Role, error) {
 	role, err := s.roleRepo.Create(ctx, tenantID, name, description)
 	if err != nil {
@@ -150,6 +227,10 @@ func (s *UserService) GetPermissions(ctx context.Context) ([]repo.Permission, er
 
 func (s *UserService) GetUserWithRoles(ctx context.Context, userID string) (*repo.UserWithRoles, error) {
 	return s.userRepo.GetUserWithRoles(ctx, userID)
+}
+
+func (s *UserService) GetUserWithRolesByTenant(ctx context.Context, userID, tenantID string) (*repo.UserWithRoles, error) {
+	return s.userRepo.GetUserWithRolesByTenant(ctx, userID, tenantID)
 }
 
 func (s *UserService) GetUserPermissions(ctx context.Context, userID string) ([]string, error) {
@@ -221,6 +302,35 @@ func (s *UserService) GetUserRoles(ctx context.Context, userID string) ([]string
 
 func (s *UserService) GetUserDetail(ctx context.Context, userID string) (*repo.User, []string, map[string]int, error) {
 	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if user == nil {
+		return nil, nil, nil, errors.New("user not found")
+	}
+
+	roles, err := s.userRepo.GetUserRoles(ctx, userID)
+	if err != nil {
+		// Если не удается получить роли, возвращаем пустой массив
+		roles = []string{}
+	}
+
+	stats, err := s.userRepo.GetUserStats(ctx, userID)
+	if err != nil {
+		// Если не удается получить статистику, возвращаем нули
+		stats = map[string]int{
+			"documents_count": 0,
+			"risks_count":     0,
+			"incidents_count": 0,
+			"assets_count":    0,
+		}
+	}
+
+	return user, roles, stats, nil
+}
+
+func (s *UserService) GetUserDetailByTenant(ctx context.Context, userID, tenantID string) (*repo.User, []string, map[string]int, error) {
+	user, err := s.userRepo.GetByIDAndTenant(ctx, userID, tenantID)
 	if err != nil {
 		return nil, nil, nil, err
 	}

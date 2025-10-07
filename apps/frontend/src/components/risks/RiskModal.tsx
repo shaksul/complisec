@@ -1,4 +1,4 @@
-import React from 'react'
+﻿import React, { useEffect, useMemo } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -14,22 +14,23 @@ import {
   Typography,
   Slider,
   Grid,
+  Chip,
 } from '@mui/material'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { 
-  RISK_STATUSES, 
-  RISK_METHODOLOGIES, 
-  RISK_STRATEGIES, 
-  RISK_CATEGORIES 
+import {
+  RISK_STATUSES,
+  RISK_METHODOLOGIES,
+  RISK_STRATEGIES,
+  RISK_CATEGORIES,
 } from '../../shared/api/risks'
-import { User } from '../../shared/api/users'
+import type { User } from '../../shared/api/users'
 
 const riskSchema = z.object({
   title: z.string().min(1, 'Название обязательно'),
   description: z.string().optional(),
-  category: z.string().min(1, 'Категория обязательна'),
+  category: z.string().min(1, 'Выберите категорию'),
   likelihood: z.number().min(1).max(4),
   impact: z.number().min(1).max(4),
   status: z.string().min(1, 'Статус обязателен'),
@@ -39,7 +40,7 @@ const riskSchema = z.object({
   due_date: z.string().optional(),
 })
 
-type RiskFormData = z.infer<typeof riskSchema>
+export type RiskFormData = z.infer<typeof riskSchema>
 
 interface RiskModalProps {
   open: boolean
@@ -50,334 +51,336 @@ interface RiskModalProps {
   users?: User[]
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  new: 'Новый',
+  in_analysis: 'На анализе',
+  in_treatment: 'В обработке',
+  accepted: 'Принят',
+  transferred: 'Передан',
+  mitigated: 'Снижен',
+  closed: 'Закрыт',
+}
+
+const buildUserLabel = (user: User) => {
+  const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ').trim()
+  return fullName ? (user.email ? `${fullName} (${user.email})` : fullName) : user.email
+}
+
+const buildUserKey = (user: User, index: number) => {
+  if (user.id) return `owner-${user.id}`
+  if (user.email) return `owner-email-${user.email}`
+  return `owner-index-${index}`
+}
+
+const normalizeDate = (value?: string | null) => {
+  if (!value) return ''
+  try {
+    return new Date(value).toISOString().split('T')[0]
+  } catch (err) {
+    return ''
+  }
+}
+
 export const RiskModal: React.FC<RiskModalProps> = ({
   open,
   onClose,
   onSubmit,
   title,
   initialData,
-  users,
+  users = [],
 }) => {
-  console.log('RiskModal rendered, open:', open, 'users:', users, 'users length:', users?.length, 'users type:', typeof users, 'isArray:', Array.isArray(users))
-
   const {
     control,
     handleSubmit,
-    formState: { errors },
+    register,
     reset,
     watch,
+    formState: { errors },
   } = useForm<RiskFormData>({
     resolver: zodResolver(riskSchema),
     defaultValues: {
-      title: '',
-      description: '',
-      category: '',
-      likelihood: 1,
-      impact: 1,
-      status: 'new',
-      owner_user_id: '',
-      methodology: '',
-      strategy: '',
-      due_date: '',
-      ...initialData,
+      title: initialData?.title ?? '',
+      description: initialData?.description ?? '',
+      category: initialData?.category ?? '',
+      likelihood: initialData?.likelihood ?? 1,
+      impact: initialData?.impact ?? 1,
+      status: initialData?.status ?? 'new',
+      owner_user_id: initialData?.owner_user_id ?? '',
+      methodology: initialData?.methodology ?? '',
+      strategy: initialData?.strategy ?? '',
+      due_date: normalizeDate(initialData?.due_date),
     },
   })
 
-  const likelihood = watch('likelihood')
-  const impact = watch('impact')
-  const riskLevel = likelihood * impact
+  useEffect(() => {
+    reset({
+      title: initialData?.title ?? '',
+      description: initialData?.description ?? '',
+      category: initialData?.category ?? '',
+      likelihood: initialData?.likelihood ?? 1,
+      impact: initialData?.impact ?? 1,
+      status: initialData?.status ?? 'new',
+      owner_user_id: initialData?.owner_user_id ?? '',
+      methodology: initialData?.methodology ?? '',
+      strategy: initialData?.strategy ?? '',
+      due_date: normalizeDate(initialData?.due_date),
+    })
+  }, [initialData, reset])
 
-
-  const getRiskLevelLabel = (level: number) => {
-    if (level <= 2) return { label: 'Low', color: 'success' }
-    if (level <= 4) return { label: 'Medium', color: 'warning' }
-    if (level <= 6) return { label: 'High', color: 'error' }
-    return { label: 'Critical', color: 'error' }
-  }
-
-  const riskLevelInfo = getRiskLevelLabel(riskLevel)
+  const sliderMarks = useMemo(
+    () => [
+      { value: 1, label: '1' },
+      { value: 2, label: '2' },
+      { value: 3, label: '3' },
+      { value: 4, label: '4' },
+    ],
+    [],
+  )
 
   const handleFormSubmit = (data: RiskFormData) => {
-    // Преобразуем пустые строки в undefined для опциональных полей
-    const submitData = {
+    onSubmit({
       ...data,
-      description: data.description && data.description.trim() !== '' ? data.description : undefined,
-      category: data.category && data.category.trim() !== '' ? data.category : undefined,
-      owner_user_id: data.owner_user_id && data.owner_user_id.trim() !== '' ? data.owner_user_id : undefined,
-      methodology: data.methodology && data.methodology.trim() !== '' ? data.methodology : undefined,
-      strategy: data.strategy && data.strategy.trim() !== '' ? data.strategy : undefined,
-      due_date: data.due_date && data.due_date.trim() !== '' ? data.due_date : undefined,
-    }
-    
-    onSubmit(submitData)
-    reset()
-    onClose()
+      description: data.description?.trim() || undefined,
+      category: data.category?.trim() || '',
+      owner_user_id: data.owner_user_id?.trim() || undefined,
+      methodology: data.methodology?.trim() || undefined,
+      strategy: data.strategy?.trim() || undefined,
+      due_date: data.due_date?.trim() || undefined,
+    })
   }
 
-  const handleClose = () => {
-    reset()
-    onClose()
-  }
+  const likelihood = watch('likelihood')
+  const impact = watch('impact')
+  const level = likelihood * impact
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
       <DialogTitle>{title}</DialogTitle>
-      <form onSubmit={handleSubmit(handleFormSubmit)}>
-        <DialogContent>
-          <Grid container spacing={3}>
-            <Grid item xs={12}>
-              <Controller
-                name="title"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    label="Название риска"
-                    fullWidth
-                    error={!!errors.title}
-                    helperText={errors.title?.message}
-                  />
-                )}
-              />
-            </Grid>
-
-            <Grid item xs={12}>
-              <Controller
-                name="description"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    label="Описание"
-                    fullWidth
-                    multiline
-                    rows={3}
-                    error={!!errors.description}
-                    helperText={errors.description?.message}
-                  />
-                )}
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <Controller
-                name="category"
-                control={control}
-                render={({ field }) => (
-                  <FormControl fullWidth error={!!errors.category}>
-                    <InputLabel>Категория</InputLabel>
-                    <Select {...field} label="Категория">
-                      {RISK_CATEGORIES.map((category) => (
-                        <MenuItem key={category.value} value={category.value}>
-                          {category.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                )}
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <Controller
-                name="status"
-                control={control}
-                render={({ field }) => (
-                  <FormControl fullWidth error={!!errors.status}>
-                    <InputLabel>Статус</InputLabel>
-                    <Select {...field} label="Статус">
-                      {RISK_STATUSES.map((status) => (
-                        <MenuItem key={status.value} value={status.value}>
-                          {status.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                )}
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <Box>
-                <Typography gutterBottom>
-                  Вероятность: {likelihood}/4
-                </Typography>
-                <Controller
-                  name="likelihood"
-                  control={control}
-                  render={({ field }) => (
-                    <Slider
-                      {...field}
-                      min={1}
-                      max={4}
-                      step={1}
-                      marks={[
-                        { value: 1, label: '1' },
-                        { value: 2, label: '2' },
-                        { value: 3, label: '3' },
-                        { value: 4, label: '4' }
-                      ]}
-                      valueLabelDisplay="auto"
-                    />
-                  )}
-                />
-              </Box>
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <Box>
-                <Typography gutterBottom>
-                  Воздействие: {impact}/4
-                </Typography>
-                <Controller
-                  name="impact"
-                  control={control}
-                  render={({ field }) => (
-                    <Slider
-                      {...field}
-                      min={1}
-                      max={4}
-                      step={1}
-                      marks={[
-                        { value: 1, label: '1' },
-                        { value: 2, label: '2' },
-                        { value: 3, label: '3' },
-                        { value: 4, label: '4' }
-                      ]}
-                      valueLabelDisplay="auto"
-                    />
-                  )}
-                />
-              </Box>
-            </Grid>
-
-            <Grid item xs={12}>
-              <Box p={2} bgcolor="grey.100" borderRadius={1}>
-                <Typography variant="h6" gutterBottom>
-                  Уровень риска
-                </Typography>
-                <Typography variant="h4" color={`${riskLevelInfo.color}.main`}>
-                  {riskLevelInfo.label} ({riskLevel})
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Вероятность: {likelihood} × Воздействие: {impact} = {riskLevel}
-                </Typography>
-              </Box>
-            </Grid>
-
-            {/* New fields */}
-                <Grid item xs={12} sm={6}>
-                  <Controller
-                    name="owner_user_id"
-                    control={control}
-                    render={({ field }) => (
-                      <FormControl fullWidth error={!!errors.owner_user_id}>
-                        <InputLabel>Ответственный</InputLabel>
-                        <Select
-                          {...field}
-                          label="Ответственный"
-                        >
-                          <MenuItem key="empty" value="">
-                            <em>Не выбран</em>
-                          </MenuItem>
-                          {users && users.length > 0 ? (
-                            users.map((user) => (
-                              <MenuItem key={user.id} value={user.id}>
-                                {user.first_name && user.last_name 
-                                  ? `${user.first_name} ${user.last_name} (${user.email})`
-                                  : user.email
-                                }
-                              </MenuItem>
-                            ))
-                          ) : (
-                            // Fallback если пользователи не загружены
-                            <>
-                              <MenuItem key="1" value="1">
-                                Admin User (admin@demo.local)
-                              </MenuItem>
-                              <MenuItem key="2" value="2">
-                                John Doe (john@demo.local)
-                              </MenuItem>
-                            </>
-                          )}
-                        </Select>
-                      </FormControl>
-                    )}
-                  />
-                </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <Controller
-                name="methodology"
-                control={control}
-                render={({ field }) => (
-                  <FormControl fullWidth error={!!errors.methodology}>
-                    <InputLabel>Методология</InputLabel>
-                    <Select {...field} label="Методология">
-                      <MenuItem value="">
-                        <em>Не выбрана</em>
-                      </MenuItem>
-                      {RISK_METHODOLOGIES.map((methodology) => (
-                        <MenuItem key={methodology.value} value={methodology.value}>
-                          {methodology.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                )}
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <Controller
-                name="strategy"
-                control={control}
-                render={({ field }) => (
-                  <FormControl fullWidth error={!!errors.strategy}>
-                    <InputLabel>Стратегия обработки</InputLabel>
-                    <Select {...field} label="Стратегия обработки">
-                      <MenuItem value="">
-                        <em>Не выбрана</em>
-                      </MenuItem>
-                      {RISK_STRATEGIES.map((strategy) => (
-                        <MenuItem key={strategy.value} value={strategy.value}>
-                          {strategy.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                )}
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <Controller
-                name="due_date"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    label="Срок обработки"
-                    type="date"
-                    fullWidth
-                    InputLabelProps={{
-                      shrink: true,
-                    }}
-                    error={!!errors.due_date}
-                    helperText={errors.due_date?.message}
-                  />
-                )}
-              />
-            </Grid>
+      <DialogContent dividers>
+        <Grid container spacing={3} sx={{ mt: 0.5 }}>
+          <Grid item xs={12}>
+            <TextField
+              label="Название риска"
+              fullWidth
+              {...register('title')}
+              error={!!errors.title}
+              helperText={errors.title?.message}
+            />
           </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleClose}>Отмена</Button>
-          <Button type="submit" variant="contained">
-            Сохранить
-          </Button>
-        </DialogActions>
-      </form>
+
+          <Grid item xs={12}>
+            <TextField
+              label="Описание"
+              fullWidth
+              multiline
+              minRows={3}
+              {...register('description')}
+              error={!!errors.description}
+              helperText={errors.description?.message}
+            />
+          </Grid>
+
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth error={!!errors.category}>
+              <InputLabel>Категория</InputLabel>
+              <Select
+                label="Категория"
+                {...register('category')}
+                defaultValue={initialData?.category ?? ''}
+              >
+                {RISK_CATEGORIES.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+              {errors.category && (
+                <Typography variant="caption" color="error">
+                  {errors.category.message}
+                </Typography>
+              )}
+            </FormControl>
+          </Grid>
+
+          <Grid item xs={12} sm={6}>
+            <Controller
+              name="status"
+              control={control}
+              render={({ field }) => (
+                <FormControl fullWidth error={!!errors.status}>
+                  <InputLabel>Статус</InputLabel>
+                  <Select
+                    {...field}
+                    label="Статус"
+                    value={field.value ?? 'new'}
+                  >
+                    {RISK_STATUSES.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {STATUS_LABELS[option.value] ?? option.label ?? option.value}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  {errors.status && (
+                    <Typography variant="caption" color="error">
+                      {errors.status.message}
+                    </Typography>
+                  )}
+                </FormControl>
+              )}
+            />
+          </Grid>
+
+          <Grid item xs={12} md={6}>
+            <Typography variant="subtitle2" gutterBottom>
+              Вероятность
+            </Typography>
+            <Controller
+              name="likelihood"
+              control={control}
+              render={({ field }) => (
+                <Slider
+                  {...field}
+                  value={field.value ?? 1}
+                  min={1}
+                  max={4}
+                  step={1}
+                  marks={sliderMarks}
+                  valueLabelDisplay="auto"
+                />
+              )}
+            />
+          </Grid>
+
+          <Grid item xs={12} md={6}>
+            <Typography variant="subtitle2" gutterBottom>
+              Влияние
+            </Typography>
+            <Controller
+              name="impact"
+              control={control}
+              render={({ field }) => (
+                <Slider
+                  {...field}
+                  value={field.value ?? 1}
+                  min={1}
+                  max={4}
+                  step={1}
+                  marks={sliderMarks}
+                  valueLabelDisplay="auto"
+                />
+              )}
+            />
+          </Grid>
+
+          <Grid item xs={12}>
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Typography variant="subtitle2">Уровень риска: {level}</Typography>
+              <Chip
+                label={
+                  level <= 4
+                    ? 'Низкий'
+                    : level <= 8
+                    ? 'Средний'
+                    : level <= 12
+                    ? 'Высокий'
+                    : 'Критический'
+                }
+                color={level <= 4 ? 'success' : level <= 8 ? 'warning' : 'error'}
+                size="small"
+              />
+            </Box>
+          </Grid>
+
+          <Grid item xs={12} sm={6}>
+            <Controller
+              name="owner_user_id"
+              control={control}
+              render={({ field }) => (
+                <FormControl fullWidth error={!!errors.owner_user_id}>
+                  <InputLabel>Ответственный</InputLabel>
+                  <Select
+                    {...field}
+                    label="Ответственный"
+                    value={field.value ?? ''}
+                  >
+                    <MenuItem value="">
+                      <em>Не назначен</em>
+                    </MenuItem>
+                    {users.map((user, index) => (
+                      <MenuItem key={buildUserKey(user, index)} value={user.id}>
+                        {buildUserLabel(user)}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  {errors.owner_user_id && (
+                    <Typography variant="caption" color="error">
+                      {errors.owner_user_id.message}
+                    </Typography>
+                  )}
+                </FormControl>
+              )}
+            />
+          </Grid>
+
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth>
+              <InputLabel>Метод оценки</InputLabel>
+              <Select
+                {...register('methodology')}
+                label="Метод оценки"
+                defaultValue={initialData?.methodology ?? ''}
+              >
+                <MenuItem value="">
+                  <em>Не выбран</em>
+                </MenuItem>
+                {RISK_METHODOLOGIES.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth>
+              <InputLabel>Стратегия обработки</InputLabel>
+              <Select
+                {...register('strategy')}
+                label="Стратегия обработки"
+                defaultValue={initialData?.strategy ?? ''}
+              >
+                <MenuItem value="">
+                  <em>Не выбрана</em>
+                </MenuItem>
+                {RISK_STRATEGIES.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+
+          <Grid item xs={12} sm={6}>
+            <TextField
+              label="Срок завершения"
+              type="date"
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+              {...register('due_date')}
+              defaultValue={normalizeDate(initialData?.due_date)}
+            />
+          </Grid>
+        </Grid>
+      </DialogContent>
+
+      <DialogActions>
+        <Button onClick={onClose}>Отмена</Button>
+        <Button onClick={handleSubmit(handleFormSubmit)} variant="contained">
+          Сохранить
+        </Button>
+      </DialogActions>
     </Dialog>
   )
 }

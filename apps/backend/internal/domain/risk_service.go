@@ -2,7 +2,9 @@ package domain
 
 import (
 	"context"
+	"errors"
 	"log"
+	"mime/multipart"
 	"time"
 
 	"risknexus/backend/internal/dto"
@@ -12,14 +14,16 @@ import (
 )
 
 type RiskService struct {
-	riskRepo  *repo.RiskRepo
-	auditRepo *repo.AuditRepo
+	riskRepo        *repo.RiskRepo
+	auditRepo       *repo.AuditRepo
+	documentService DocumentServiceInterface
 }
 
-func NewRiskService(riskRepo *repo.RiskRepo, auditRepo *repo.AuditRepo) *RiskService {
+func NewRiskService(riskRepo *repo.RiskRepo, auditRepo *repo.AuditRepo, documentService DocumentServiceInterface) *RiskService {
 	return &RiskService{
-		riskRepo:  riskRepo,
-		auditRepo: auditRepo,
+		riskRepo:        riskRepo,
+		auditRepo:       auditRepo,
+		documentService: documentService,
 	}
 }
 
@@ -418,3 +422,127 @@ func (s *RiskService) checkRiskLevelEscalation(ctx context.Context, risk *repo.R
 			risk.Title, escalationType, newLevel)
 	}
 }
+
+// Risk Document methods - интеграция с модулем документов
+func (s *RiskService) UploadRiskDocument(ctx context.Context, riskID, tenantID string, file multipart.File, header *multipart.FileHeader, req dto.UploadDocumentDTO, uploadedBy string) (*dto.DocumentDTO, error) {
+	// Загружаем документ в модуль документов
+	document, err := s.documentService.UploadDocument(ctx, tenantID, file, header, req, uploadedBy)
+	if err != nil {
+		return nil, err
+	}
+
+	// Создаем связь с риском
+	link := dto.CreateDocumentLinkDTO{
+		DocumentID: document.ID,
+		Module:     "risks",
+		EntityID:   riskID,
+		LinkType:   "attachment",
+		Description: stringPtr("Risk attachment"),
+	}
+
+	err = s.documentService.AddDocumentLink(ctx, document.ID, link)
+	if err != nil {
+		// Если не удалось создать связь, удаляем документ
+		s.documentService.DeleteDocument(ctx, document.ID, tenantID, uploadedBy)
+		return nil, err
+	}
+
+	// Логируем аудит
+	s.auditRepo.LogAction(ctx, tenantID, uploadedBy, "upload_document", "risk", &riskID, map[string]interface{}{
+		"document_id": document.ID,
+		"file_name":   document.OriginalName,
+		"file_size":   document.FileSize,
+		"mime_type":   document.MimeType,
+	})
+
+	return document, nil
+}
+
+func (s *RiskService) GetRiskDocuments(ctx context.Context, riskID, tenantID string) ([]dto.DocumentDTO, error) {
+	// Получаем документы, связанные с риском
+	filters := dto.FileDocumentFiltersDTO{
+		Module:   stringPtr("risks"),
+		EntityID: stringPtr(riskID),
+	}
+
+	return s.documentService.ListDocuments(ctx, tenantID, filters)
+}
+
+func (s *RiskService) DeleteRiskDocument(ctx context.Context, riskID, documentID, tenantID, deletedBy string) error {
+	// Проверяем, что документ действительно связан с этим риском
+	documents, err := s.GetRiskDocuments(ctx, riskID, tenantID)
+	if err != nil {
+		return err
+	}
+
+	var found bool
+	for _, doc := range documents {
+		if doc.ID == documentID {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return errors.New("document not found or not linked to this risk")
+	}
+
+	// Удаляем документ
+	err = s.documentService.DeleteDocument(ctx, documentID, tenantID, deletedBy)
+	if err != nil {
+		return err
+	}
+
+	// Логируем аудит
+	s.auditRepo.LogAction(ctx, tenantID, deletedBy, "delete_document", "risk", &riskID, map[string]interface{}{
+		"document_id": documentID,
+	})
+
+	return nil
+}
+
+func (s *RiskService) LinkExistingDocument(ctx context.Context, riskID, documentID, tenantID, linkedBy string) error {
+	// Проверяем, что документ существует
+	document, err := s.documentService.GetDocument(ctx, documentID, tenantID)
+	if err != nil {
+		return err
+	}
+
+	// Создаем связь с риском
+	link := dto.CreateDocumentLinkDTO{
+		DocumentID:  documentID,
+		Module:      "risks",
+		EntityID:    riskID,
+		LinkType:    "attachment",
+		Description: stringPtr("Risk attachment"),
+	}
+
+	err = s.documentService.AddDocumentLink(ctx, documentID, link)
+	if err != nil {
+		return err
+	}
+
+	// Логируем аудит
+	s.auditRepo.LogAction(ctx, tenantID, linkedBy, "link_document", "risk", &riskID, map[string]interface{}{
+		"document_id": documentID,
+		"file_name":   document.OriginalName,
+	})
+
+	return nil
+}
+
+func (s *RiskService) UnlinkDocument(ctx context.Context, riskID, documentID, tenantID, unlinkedBy string) error {
+	// Удаляем связь с риском
+	err := s.documentService.RemoveDocumentLink(ctx, documentID, "risks", riskID)
+	if err != nil {
+		return err
+	}
+
+	// Логируем аудит
+	s.auditRepo.LogAction(ctx, tenantID, unlinkedBy, "unlink_document", "risk", &riskID, map[string]interface{}{
+		"document_id": documentID,
+	})
+
+	return nil
+}
+

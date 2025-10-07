@@ -88,3 +88,6 @@ CREATE INDEX idx_risk_tags_tag_name ON risk_tags(tag_name);
 ALTER TABLE risk_controls ADD CONSTRAINT fk_risk_controls_created_by FOREIGN KEY (created_by) REFERENCES users(id);
 ALTER TABLE risk_tags ADD CONSTRAINT fk_risk_tags_created_by FOREIGN KEY (created_by) REFERENCES users(id);
 
+
+
+

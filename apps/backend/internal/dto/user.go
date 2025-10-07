@@ -20,14 +20,15 @@ type UpdateUserRequest struct {
 // Role DTOs moved to dto/role.go
 
 type UserResponse struct {
-	ID        string   `json:"id"`
-	Email     string   `json:"email"`
-	FirstName *string  `json:"first_name"`
-	LastName  *string  `json:"last_name"`
-	IsActive  bool     `json:"is_active"`
-	Roles     []string `json:"roles,omitempty"`
-	CreatedAt string   `json:"created_at,omitempty"`
-	UpdatedAt string   `json:"updated_at,omitempty"`
+	ID          string   `json:"id"`
+	Email       string   `json:"email"`
+	FirstName   *string  `json:"first_name"`
+	LastName    *string  `json:"last_name"`
+	IsActive    bool     `json:"is_active"`
+	Roles       []string `json:"roles,omitempty"`
+	Permissions []string `json:"permissions,omitempty"`
+	CreatedAt   string   `json:"created_at,omitempty"`
+	UpdatedAt   string   `json:"updated_at,omitempty"`
 }
 
 // RoleResponse and PermissionResponse moved to dto/role.go

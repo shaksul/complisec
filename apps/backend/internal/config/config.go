@@ -10,7 +10,7 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
-		DatabaseURL: getEnv("DATABASE_URL", "postgres://risknexus:risknexus123@localhost:5433/risknexus?sslmode=disable"),
+		DatabaseURL: getEnv("DATABASE_URL", "postgres://complisec:complisec123@postgres:5432/complisec?sslmode=disable"),
 		JWTSecret:   getEnv("JWT_SECRET", "your-secret-key"),
 		Port:        getEnv("PORT", "8080"),
 	}

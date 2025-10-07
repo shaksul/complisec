@@ -22,19 +22,19 @@ func AuthMiddleware(authService *domain.AuthService) fiber.Handler {
 				return c.Status(401).JSON(fiber.Map{"error": "Authorization header required"})
 			}
 
-			token, err := authService.ValidateToken(tokenFromQuery)
-			if err != nil {
-				return c.Status(401).JSON(fiber.Map{"error": "Invalid token"})
-			}
+		_, err := authService.ValidateToken(tokenFromQuery)
+		if err != nil {
+			return c.Status(401).JSON(fiber.Map{"error": "Invalid token"})
+		}
 
-			userID, tenantID, roles, err := authService.GetUserFromAccessToken(token)
+		user, roles, err := authService.GetUserFromAccessToken(tokenFromQuery)
 			if err != nil {
 				return c.Status(401).JSON(fiber.Map{"error": "Invalid token claims"})
 			}
 
 			// Store user info in context
-			c.Locals("user_id", userID)
-			c.Locals("tenant_id", tenantID)
+			c.Locals("user_id", user.ID)
+			c.Locals("tenant_id", user.TenantID)
 			c.Locals("roles", roles)
 
 			return c.Next()
@@ -45,20 +45,21 @@ func AuthMiddleware(authService *domain.AuthService) fiber.Handler {
 			return c.Status(401).JSON(fiber.Map{"error": "Invalid authorization header format"})
 		}
 
-		token, err := authService.ValidateToken(tokenString)
+		_, err := authService.ValidateToken(tokenString)
 		if err != nil {
 			return c.Status(401).JSON(fiber.Map{"error": "Invalid token"})
 		}
 
-		userID, tenantID, roles, err := authService.GetUserFromAccessToken(token)
+		user, roles, err := authService.GetUserFromAccessToken(tokenString)
 		if err != nil {
 			return c.Status(401).JSON(fiber.Map{"error": "Invalid token claims"})
 		}
 
 		// Store user info in context
-		c.Locals("user_id", userID)
-		c.Locals("tenant_id", tenantID)
+		c.Locals("user_id", user.ID)
+		c.Locals("tenant_id", user.TenantID)
 		c.Locals("roles", roles)
+		fmt.Printf("DEBUG: AuthMiddleware set user_id=%s, tenant_id=%s, roles=%v\n", user.ID, user.TenantID, roles)
 
 		return c.Next()
 	}

@@ -14,52 +14,18 @@ import {
   Chip,
   Tabs,
   Tab,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
 } from "@mui/material"
 import { Add, Gavel, Assessment, Warning } from "@mui/icons-material"
-import { getStandards, getRequirements, getAssessments } from "../shared/api/compliance"
+import { 
+  getStandards, 
+  getRequirements, 
+  getAssessments,
+  type ComplianceStandard,
+  type ComplianceRequirement,
+  type ComplianceAssessment
+} from "../shared/api/compliance"
 import { api } from "../shared/api/client"
-
-interface ComplianceStandard {
-  id: string
-  name: string
-  code: string
-  description?: string
-  version: string
-  is_active: boolean
-}
-
-interface ComplianceRequirement {
-  id: string
-  code: string
-  title: string
-  description?: string
-  category?: string
-  priority: string
-  is_mandatory: boolean
-}
-
-interface ComplianceAssessment {
-  id: string
-  requirement_id: string
-  status: string
-  evidence?: string
-  assessor_id?: string
-  assessed_at?: string
-  next_review_date?: string
-  notes?: string
-  requirement_title: string
-  standard_name: string
-  assessor_name?: string
-}
+import { useAuth } from "../contexts/AuthContext"
 
 interface ComplianceGap {
   id: string
@@ -82,20 +48,19 @@ export default function CompliancePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
-  // Dialog states
-  const [openStandard, setOpenStandard] = useState(false)
-  const [openRequirement, setOpenRequirement] = useState(false)
-  const [openAssessment, setOpenAssessment] = useState(false)
-  const [openGap, setOpenGap] = useState(false)
-  
   // Form states
   const [selectedStandard, setSelectedStandard] = useState("")
   const [selectedAssessment, setSelectedAssessment] = useState("")
-  const [formData, setFormData] = useState<any>({})
+
+  const { user } = useAuth()
 
   useEffect(() => {
-    loadData()
-  }, [])
+    if (user) {
+      loadData()
+    } else {
+      setLoading(false)
+    }
+  }, [user])
 
   const loadData = async () => {
     try {
@@ -135,7 +100,7 @@ export default function CompliancePage() {
     }
   }
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue)
     if (newValue === 1 && selectedStandard) {
       loadRequirements(selectedStandard)
@@ -166,7 +131,7 @@ export default function CompliancePage() {
     <Paper>
       <Box display="flex" justifyContent="space-between" alignItems="center" p={2}>
         <Typography variant="h6">Стандарты соответствия</Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={() => setOpenStandard(true)}>
+        <Button variant="contained" startIcon={<Add />}>
           Добавить стандарт
         </Button>
       </Box>
@@ -225,7 +190,6 @@ export default function CompliancePage() {
         <Button 
           variant="contained" 
           startIcon={<Add />} 
-          onClick={() => setOpenRequirement(true)}
           disabled={!selectedStandard}
         >
           Добавить требование
@@ -236,7 +200,7 @@ export default function CompliancePage() {
           <TableHead>
             <TableRow>
               <TableCell>Код</TableCell>
-              <TableCell>Название</TableCell>
+              <TableCell>Описание</TableCell>
               <TableCell>Категория</TableCell>
               <TableCell>Приоритет</TableCell>
               <TableCell>Обязательность</TableCell>
@@ -246,19 +210,19 @@ export default function CompliancePage() {
             {requirements.map((requirement) => (
               <TableRow key={requirement.id}>
                 <TableCell>{requirement.code}</TableCell>
-                <TableCell>{requirement.title}</TableCell>
+                <TableCell>{requirement.description}</TableCell>
                 <TableCell>{requirement.category || '-'}</TableCell>
                 <TableCell>
                   <Chip
-                    label={requirement.priority}
-                    color={requirement.priority === 'high' ? 'error' : requirement.priority === 'medium' ? 'warning' : 'info'}
+                    label="Средний"
+                    color="info"
                     size="small"
                   />
                 </TableCell>
                 <TableCell>
                   <Chip
-                    label={requirement.is_mandatory ? "Обязательное" : "Рекомендуемое"}
-                    color={requirement.is_mandatory ? "error" : "default"}
+                    label="Обязательное"
+                    color="error"
                     size="small"
                   />
                 </TableCell>
@@ -274,7 +238,7 @@ export default function CompliancePage() {
     <Paper>
       <Box display="flex" justifyContent="space-between" alignItems="center" p={2}>
         <Typography variant="h6">Оценки соответствия</Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={() => setOpenAssessment(true)}>
+        <Button variant="contained" startIcon={<Add />}>
           Добавить оценку
         </Button>
       </Box>
@@ -282,8 +246,8 @@ export default function CompliancePage() {
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>Стандарт</TableCell>
-              <TableCell>Требование</TableCell>
+              <TableCell>ID</TableCell>
+              <TableCell>Требование ID</TableCell>
               <TableCell>Статус</TableCell>
               <TableCell>Оценщик</TableCell>
               <TableCell>Дата оценки</TableCell>
@@ -293,8 +257,8 @@ export default function CompliancePage() {
           <TableBody>
             {assessments.map((assessment) => (
               <TableRow key={assessment.id}>
-                <TableCell>{assessment.standard_name}</TableCell>
-                <TableCell>{assessment.requirement_title}</TableCell>
+                <TableCell>{assessment.id}</TableCell>
+                <TableCell>{assessment.requirement_id}</TableCell>
                 <TableCell>
                   <Chip
                     label={assessment.status}
@@ -302,7 +266,7 @@ export default function CompliancePage() {
                     size="small"
                   />
                 </TableCell>
-                <TableCell>{assessment.assessor_name || '-'}</TableCell>
+                <TableCell>{assessment.assessed_by || '-'}</TableCell>
                 <TableCell>{assessment.assessed_at ? new Date(assessment.assessed_at).toLocaleDateString() : '-'}</TableCell>
                 <TableCell>
                   <Button 
@@ -330,7 +294,6 @@ export default function CompliancePage() {
         <Button 
           variant="contained" 
           startIcon={<Add />} 
-          onClick={() => setOpenGap(true)}
           disabled={!selectedAssessment}
         >
           Добавить пробел

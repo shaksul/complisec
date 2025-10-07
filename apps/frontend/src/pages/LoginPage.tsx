@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+﻿import React, { useState } from 'react'
 import {
   Container,
   Paper,
@@ -7,6 +7,7 @@ import {
   Typography,
   Box,
   Alert,
+  Stack,
 } from '@mui/material'
 import { useAuth } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
@@ -19,8 +20,8 @@ export const LoginPage: React.FC = () => {
   const { login } = useAuth()
   const navigate = useNavigate()
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
     setIsLoading(true)
     setError('')
 
@@ -28,48 +29,41 @@ export const LoginPage: React.FC = () => {
       await login(email, password)
       navigate('/dashboard')
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка входа')
+      setError(err.response?.data?.error || 'Не удалось выполнить вход. Проверьте данные и попробуйте снова.')
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <Container component="main" maxWidth="sm">
-      <Box
-        sx={{
-          marginTop: 8,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-        }}
-      >
-        <Paper elevation={3} sx={{ padding: 4, width: '100%' }}>
-          <Typography component="h1" variant="h4" align="center" gutterBottom>
-            RiskNexus
-          </Typography>
-          <Typography component="h2" variant="h6" align="center" color="text.secondary" gutterBottom>
-            Система управления рисками и ИБ-документацией
-          </Typography>
-          
+    <Container component="main" maxWidth="sm" sx={{ display: 'flex', alignItems: 'center', minHeight: '100vh' }}>
+      <Paper elevation={0} sx={{ p: 5, borderRadius: 4, width: '100%' }}>
+        <Stack spacing={3}>
+          <Box textAlign="center">
+            <Typography component="h1" variant="h4" fontWeight={700} gutterBottom>
+              RiskNexus
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Единый контур управления рисками, инцидентами и комплаенсом
+            </Typography>
+          </Box>
+
           {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
+            <Alert severity="error">{error}</Alert>
           )}
 
-          <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1 }}>
+          <Box component="form" onSubmit={handleSubmit}>
             <TextField
               margin="normal"
               required
               fullWidth
               id="email"
-              label="Email"
+              label="Рабочий e-mail"
               name="email"
               autoComplete="email"
               autoFocus
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(event) => setEmail(event.target.value)}
             />
             <TextField
               margin="normal"
@@ -81,24 +75,25 @@ export const LoginPage: React.FC = () => {
               id="password"
               autoComplete="current-password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(event) => setPassword(event.target.value)}
             />
             <Button
               type="submit"
               fullWidth
               variant="contained"
-              sx={{ mt: 3, mb: 2 }}
+              size="large"
+              sx={{ mt: 3 }}
               disabled={isLoading}
             >
-              {isLoading ? 'Вход...' : 'Войти'}
+              {isLoading ? 'Выполняем вход…' : 'Войти в систему'}
             </Button>
           </Box>
-          
-          <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 2 }}>
-            Демо-аккаунт: admin@demo.local / admin123
+
+          <Typography variant="body2" color="text.secondary" textAlign="center">
+            Демо-доступ: admin@demo.local / admin123
           </Typography>
-        </Paper>
-      </Box>
+        </Stack>
+      </Paper>
     </Container>
   )
 }

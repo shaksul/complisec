@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"mime/multipart"
 	"time"
 
 	"risknexus/backend/internal/dto"
@@ -18,6 +19,10 @@ type AssetServiceInterface interface {
 	UpdateAsset(ctx context.Context, id string, req dto.UpdateAssetRequest, updatedBy string) error
 	DeleteAsset(ctx context.Context, id string, deletedBy string) error
 	AddDocument(ctx context.Context, assetID string, req dto.AssetDocumentRequest, createdBy string) error
+	UploadDocument(ctx context.Context, assetID string, req dto.AssetDocumentUploadRequest, createdBy, tenantID string) (*dto.AssetDocumentResponse, error)
+	LinkDocument(ctx context.Context, assetID string, req dto.AssetDocumentLinkRequest, createdBy string) (*dto.AssetDocumentResponse, error)
+	GetDocumentDownloadPath(ctx context.Context, documentID, userID string) (string, string, error)
+	GetDocumentStorage(ctx context.Context, tenantID string, req dto.DocumentStorageRequest) ([]dto.DocumentStorageResponse, int64, error)
 	GetAssetDocuments(ctx context.Context, assetID string) ([]repo.AssetDocument, error)
 	DeleteDocument(ctx context.Context, documentID string, deletedBy string) error
 	GetDocumentByID(ctx context.Context, documentID string) (*repo.AssetDocument, error)
@@ -86,11 +91,19 @@ type AssetRepoInterface interface {
 	GetAssetsWithoutOwner(ctx context.Context, tenantID string) ([]repo.Asset, error)
 	GetAssetsWithoutPassport(ctx context.Context, tenantID string) ([]repo.Asset, error)
 	GetAssetsWithoutCriticality(ctx context.Context, tenantID string) ([]repo.Asset, error)
+
+	// Document methods that are missing
+	AddDocumentWithFile(ctx context.Context, assetID, documentID, documentType, filePath, fileName, mimeType string, fileSize int64, createdBy string) error
+	GetDocumentFromStorage(ctx context.Context, documentID string) (*repo.AssetDocument, error)
+	LinkDocumentToAsset(ctx context.Context, assetID, documentID, storageDocumentID, documentType, createdBy string) error
+	GetDocumentStorage(ctx context.Context, tenantID string, req dto.DocumentStorageRequest) ([]dto.DocumentStorageResponse, int64, error)
 }
 
 // UserRepoInterface - интерфейс для UserRepo
 type UserRepoInterface interface {
 	GetByID(ctx context.Context, id string) (*repo.User, error)
+	GetUserRoles(ctx context.Context, userID string) ([]string, error)
+	GetUserPermissions(ctx context.Context, userID string) ([]string, error)
 }
 
 // IncidentRepoInterface - интерфейс для IncidentRepo
@@ -123,4 +136,30 @@ type IncidentRepoInterface interface {
 // RiskRepoInterface - интерфейс для RiskRepo
 type RiskRepoInterface interface {
 	GetByIDWithTenant(ctx context.Context, id, tenantID string) (*repo.Risk, error)
+}
+
+// DocumentServiceInterface - интерфейс для DocumentService
+type DocumentServiceInterface interface {
+	// Folders
+	CreateFolder(ctx context.Context, tenantID string, req dto.CreateFolderDTO, createdBy string) (*dto.FolderDTO, error)
+	GetFolder(ctx context.Context, id, tenantID string) (*dto.FolderDTO, error)
+	ListFolders(ctx context.Context, tenantID string, parentID *string) ([]dto.FolderDTO, error)
+	UpdateFolder(ctx context.Context, id, tenantID string, req dto.UpdateFolderDTO, updatedBy string) error
+	DeleteFolder(ctx context.Context, id, tenantID string, deletedBy string) error
+
+	// Documents
+	UploadDocument(ctx context.Context, tenantID string, file multipart.File, header *multipart.FileHeader, req dto.UploadDocumentDTO, createdBy string) (*dto.DocumentDTO, error)
+	GetDocument(ctx context.Context, id, tenantID string) (*dto.DocumentDTO, error)
+	ListDocuments(ctx context.Context, tenantID string, filters dto.FileDocumentFiltersDTO) ([]dto.DocumentDTO, error)
+	UpdateDocument(ctx context.Context, id, tenantID string, req dto.UpdateFileDocumentDTO, updatedBy string) error
+	DeleteDocument(ctx context.Context, id, tenantID string, deletedBy string) error
+	DownloadDocument(ctx context.Context, id, tenantID string) (*dto.DocumentDownloadDTO, error)
+
+	// Search and Stats
+	SearchDocuments(ctx context.Context, tenantID, searchTerm string) ([]dto.FileDocumentSearchResultDTO, error)
+	GetDocumentStats(ctx context.Context, tenantID string) (*dto.FileDocumentStatsDTO, error)
+
+	// Document Links
+	AddDocumentLink(ctx context.Context, documentID string, link dto.CreateDocumentLinkDTO) error
+	RemoveDocumentLink(ctx context.Context, documentID, module, entityID string) error
 }

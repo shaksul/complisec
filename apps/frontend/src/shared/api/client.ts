@@ -42,22 +42,30 @@ api.interceptors.response.use(
 
       try {
         const refreshToken = localStorage.getItem('refresh_token')
-        if (refreshToken) {
-          const response = await api.post('/auth/refresh', {
-            refresh_token: refreshToken,
-          })
-          
-          const { access_token, refresh_token } = response.data
-          localStorage.setItem('access_token', access_token)
-          localStorage.setItem('refresh_token', refresh_token)
-          
-          originalRequest.headers.Authorization = `Bearer ${access_token}`
-          return api(originalRequest)
+        if (!refreshToken) {
+          // No refresh token available, redirect to login
+          localStorage.removeItem('access_token')
+          localStorage.removeItem('refresh_token')
+          window.location.href = '/login'
+          return Promise.reject(error)
         }
+
+        const response = await api.post('/auth/refresh', {
+          refresh_token: refreshToken,
+        })
+        
+        const { access_token, refresh_token } = response.data
+        localStorage.setItem('access_token', access_token)
+        localStorage.setItem('refresh_token', refresh_token)
+        
+        originalRequest.headers.Authorization = `Bearer ${access_token}`
+        return api(originalRequest)
       } catch (refreshError) {
+        // Refresh failed, clear tokens and redirect to login
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
         window.location.href = '/login'
+        return Promise.reject(refreshError)
       }
     }
 

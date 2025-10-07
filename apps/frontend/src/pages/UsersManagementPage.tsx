@@ -1,7 +1,41 @@
 import React, { useState, useEffect } from 'react'
+import {
+  Container,
+  Typography,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Button,
+  Box,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  IconButton,
+  Tooltip,
+  CircularProgress,
+  Chip,
+  Pagination,
+  Checkbox,
+  FormControlLabel,
+  FormGroup,
+} from '@mui/material'
+import {
+  Add,
+  Edit,
+  Delete,
+  Person,
+  Security,
+} from '@mui/icons-material'
 import { usersApi, User } from '../shared/api/users'
 import { rolesApi, Role } from '../shared/api/roles'
-import Pagination from '../components/Pagination'
+import { useAuth } from '../contexts/AuthContext'
+import EmailChangeModal from '../components/EmailChangeModal'
 
 const UsersManagementPage: React.FC = () => {
   const [users, setUsers] = useState<User[]>([])
@@ -11,16 +45,22 @@ const UsersManagementPage: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [showRolesModal, setShowRolesModal] = useState(false)
+  const [showEmailChangeModal, setShowEmailChangeModal] = useState(false)
 
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
-  const [hasNext, setHasNext] = useState(false)
-  const [hasPrev, setHasPrev] = useState(false)
-  const [total, setTotal] = useState(0)
+  const [, setHasNext] = useState(false)
+  const [, setHasPrev] = useState(false)
+
+  const { user } = useAuth()
 
   useEffect(() => {
-    loadData()
-  }, [])
+    if (user) {
+      loadData()
+    } else {
+      setLoading(false)
+    }
+  }, [user])
 
   const loadData = async (page: number = currentPage) => {
     try {
@@ -41,7 +81,6 @@ const UsersManagementPage: React.FC = () => {
       setTotalPages(usersResponse.pagination.total_pages)
       setHasNext(usersResponse.pagination.has_next)
       setHasPrev(usersResponse.pagination.has_prev)
-      setTotal(usersResponse.pagination.total)
     } catch (error) {
       console.error('Ошибка загрузки данных:', error)
     } finally {
@@ -60,10 +99,10 @@ const UsersManagementPage: React.FC = () => {
       await loadData(1)
       setCurrentPage(1)
       setShowCreateModal(false)
-      alert('Пользователь успешно создан')
     } catch (error) {
       console.error('Ошибка создания пользователя:', error)
-      alert('Ошибка создания пользователя: ' + (error as Error).message)
+      // Ошибка будет показана в модальном окне
+      throw error
     }
   }
 
@@ -75,7 +114,8 @@ const UsersManagementPage: React.FC = () => {
       setSelectedUser(null)
     } catch (error) {
       console.error('Ошибка обновления пользователя:', error)
-      alert('Ошибка обновления пользователя: ' + (error as Error).message)
+      // Ошибка будет показана в модальном окне
+      throw error
     }
   }
 
@@ -92,111 +132,130 @@ const UsersManagementPage: React.FC = () => {
   }
 
   if (loading) {
-    return <div className="p-6">Загрузка...</div>
+    return (
+      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+        <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+          <CircularProgress />
+        </Box>
+      </Container>
+    )
   }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Управление пользователями</h1>
-        <button
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h4" component="h1" gutterBottom>
+          Управление пользователями
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={<Add />}
           onClick={() => setShowCreateModal(true)}
-          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+          sx={{ ml: 2 }}
         >
           Добавить пользователя
-        </button>
-      </div>
+        </Button>
+      </Box>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Пользователь
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Email
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Статус
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Дата создания
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Действия
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {users.map((user, index) => (
-              <tr key={user.id || `user-${index}`}>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm font-medium text-gray-900">
-                    {[user.first_name, user.last_name].filter(Boolean).join(' ') || '—'}
-                  </div>
-                  {user.roles && user.roles.length > 0 && (
-                    <div className="text-xs text-gray-500">
-                      {user.roles.join(', ')}
-                    </div>
-                  )}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {user.email}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span
-                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                    }`}
-                  >
-                    {user.is_active ? 'Активен' : 'Заблокирован'}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {user.created_at ? new Date(user.created_at).toLocaleDateString() : '—'}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => {
-                        setSelectedUser(user)
-                        setShowEditModal(true)
-                      }}
-                      className="text-indigo-600 hover:text-indigo-900"
-                    >
-                      Редактировать
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSelectedUser(user)
-                        setShowRolesModal(true)
-                      }}
-                      className="text-green-600 hover:text-green-900"
-                    >
-                      Роли
-                    </button>
-                    <button
-                      onClick={() => handleDeleteUser(user.id)}
-                      className="text-red-600 hover:text-red-900"
-                    >
-                      Удалить
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <Paper sx={{ width: '100%', overflow: 'hidden' }}>
+        <TableContainer>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Пользователь</TableCell>
+                <TableCell>Email</TableCell>
+                <TableCell>Статус</TableCell>
+                <TableCell>Дата создания</TableCell>
+                <TableCell align="center">Действия</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {users.map((user, index) => (
+                <TableRow key={user.id || `user-${index}`} hover>
+                  <TableCell>
+                    <Box display="flex" alignItems="center">
+                      <Person sx={{ mr: 1, color: 'primary.main' }} />
+                      <Box>
+                        <Typography variant="body2" fontWeight="medium">
+                          {[user.first_name, user.last_name].filter(Boolean).join(' ') || '—'}
+                        </Typography>
+                        {user.roles && user.roles.length > 0 && (
+                          <Typography variant="caption" color="text.secondary">
+                            {user.roles.join(', ')}
+                          </Typography>
+                        )}
+                      </Box>
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">
+                      {user.email}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={user.is_active ? 'Активен' : 'Заблокирован'}
+                      color={user.is_active ? 'success' : 'error'}
+                      size="small"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">
+                      {user.created_at ? new Date(user.created_at).toLocaleDateString('ru-RU') : '—'}
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="center">
+                    <Tooltip title="Редактировать">
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          setSelectedUser(user)
+                          setShowEditModal(true)
+                        }}
+                        color="primary"
+                      >
+                        <Edit />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Роли">
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          setSelectedUser(user)
+                          setShowRolesModal(true)
+                        }}
+                        color="secondary"
+                      >
+                        <Security />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Удалить">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleDeleteUser(user.id)}
+                        color="error"
+                      >
+                        <Delete />
+                      </IconButton>
+                    </Tooltip>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
 
-      <Pagination
-        currentPage={currentPage}
-        totalPages={totalPages}
-        hasNext={hasNext}
-        hasPrev={hasPrev}
-        onPageChange={handlePageChange}
-      />
+      {totalPages > 1 && (
+        <Box display="flex" justifyContent="center" p={2}>
+          <Pagination
+            count={totalPages}
+            page={currentPage}
+            onChange={(_, page) => handlePageChange(page)}
+            color="primary"
+          />
+        </Box>
+      )}
 
       {showCreateModal && (
         <CreateUserModal
@@ -215,6 +274,7 @@ const UsersManagementPage: React.FC = () => {
           }}
           onSubmit={handleUpdateUser}
           roles={roles}
+          onEmailChange={() => setShowEmailChangeModal(true)}
         />
       )}
 
@@ -228,7 +288,18 @@ const UsersManagementPage: React.FC = () => {
           roles={roles}
         />
       )}
-    </div>
+
+      {showEmailChangeModal && selectedUser && (
+        <EmailChangeModal
+          open={showEmailChangeModal}
+          onClose={() => {
+            setShowEmailChangeModal(false)
+            setSelectedUser(null)
+          }}
+          currentEmail={selectedUser.email}
+        />
+      )}
+    </Container>
   )
 }
 
@@ -240,124 +311,159 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSubmit: (data: any) => 
     last_name: '',
     role_ids: [] as string[]
   })
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+  const [submitting, setSubmitting] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {}
+
+    if (!formData.email.trim()) {
+      errors.email = 'Email обязателен'
+    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      errors.email = 'Некорректный email'
+    }
+
+    if (!formData.password) {
+      errors.password = 'Пароль обязателен'
+    } else if (formData.password.length < 6) {
+      errors.password = 'Пароль должен содержать минимум 6 символов'
+    }
+
+    if (!formData.first_name.trim()) {
+      errors.first_name = 'Имя обязательно'
+    }
+
+    if (!formData.last_name.trim()) {
+      errors.last_name = 'Фамилия обязательна'
+    }
+
+    const filteredRoleIds = formData.role_ids.filter(id => id !== null && id !== undefined && id !== '')
+    if (filteredRoleIds.length === 0) {
+      errors.roles = 'Выберите хотя бы одну роль'
+    }
+
+    setFormErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!formData.email || !formData.password || !formData.first_name || !formData.last_name) {
-      alert('Пожалуйста, заполните все обязательные поля')
-      return
-    }
+    if (!validateForm()) return
 
-    if (formData.password.length < 6) {
-      alert('Пароль должен содержать минимум 6 символов')
-      return
+    try {
+      setSubmitting(true)
+      const filteredRoleIds = formData.role_ids.filter(id => id !== null && id !== undefined && id !== '')
+      const submitData = {
+        ...formData,
+        role_ids: filteredRoleIds
+      }
+      await onSubmit(submitData)
+    } finally {
+      setSubmitting(false)
     }
-
-    // Фильтруем null значения из role_ids
-    const filteredRoleIds = formData.role_ids.filter(id => id !== null && id !== undefined && id !== '')
-    
-    if (filteredRoleIds.length === 0) {
-      alert('Выберите хотя бы одну роль')
-      return
-    }
-
-    // Отправляем данные с отфильтрованными role_ids
-    const submitData = {
-      ...formData,
-      role_ids: filteredRoleIds
-    }
-    console.log('Отправляемые данные:', submitData)
-    onSubmit(submitData)
   }
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-96">
-        <h2 className="text-xl font-bold mb-4">Создать пользователя</h2>
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="w-full border border-gray-300 rounded px-3 py-2"
-              autoComplete="email"
-              required
-            />
-          </div>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Пароль</label>
-            <input
-              type="password"
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              className="w-full border border-gray-300 rounded px-3 py-2"
-              autoComplete="new-password"
-              required
-            />
-          </div>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Имя</label>
-            <input
-              type="text"
-              value={formData.first_name}
-              onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-              className="w-full border border-gray-300 rounded px-3 py-2"
-              required
-            />
-          </div>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Фамилия</label>
-            <input
-              type="text"
-              value={formData.last_name}
-              onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-              className="w-full border border-gray-300 rounded px-3 py-2"
-              required
-            />
-          </div>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Роли</label>
-            <div className="space-y-2">
+    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Создать пользователя</DialogTitle>
+      <form onSubmit={handleSubmit}>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Email"
+            type="email"
+            fullWidth
+            variant="outlined"
+            value={formData.email}
+            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            error={!!formErrors.email}
+            helperText={formErrors.email}
+            autoComplete="email"
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            margin="dense"
+            label="Пароль"
+            type="password"
+            fullWidth
+            variant="outlined"
+            value={formData.password}
+            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+            error={!!formErrors.password}
+            helperText={formErrors.password}
+            autoComplete="new-password"
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            margin="dense"
+            label="Имя"
+            fullWidth
+            variant="outlined"
+            value={formData.first_name}
+            onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+            error={!!formErrors.first_name}
+            helperText={formErrors.first_name}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            margin="dense"
+            label="Фамилия"
+            fullWidth
+            variant="outlined"
+            value={formData.last_name}
+            onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+            error={!!formErrors.last_name}
+            helperText={formErrors.last_name}
+            sx={{ mb: 2 }}
+          />
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Роли
+            </Typography>
+            {formErrors.roles && (
+              <Typography variant="caption" color="error">
+                {formErrors.roles}
+              </Typography>
+            )}
+            <FormGroup>
               {roles.map((role, index) => (
-                <label key={role.id || `role-${index}`} className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={formData.role_ids.includes(role.id)}
-                    onChange={(e) => {
-                      if (e.target.checked && role.id) {
-                        setFormData({ ...formData, role_ids: [...formData.role_ids, role.id] })
-                      } else if (role.id) {
-                        setFormData({
-                          ...formData,
-                          role_ids: formData.role_ids.filter((id) => id !== role.id)
-                        })
-                      }
-                    }}
-                    className="mr-2"
-                  />
-                  {role.name}
-                </label>
+                <FormControlLabel
+                  key={role.id || `role-${index}`}
+                  control={
+                    <Checkbox
+                      checked={formData.role_ids.includes(role.id)}
+                      onChange={(e) => {
+                        if (e.target.checked && role.id) {
+                          setFormData({ ...formData, role_ids: [...formData.role_ids, role.id] })
+                        } else if (role.id) {
+                          setFormData({
+                            ...formData,
+                            role_ids: formData.role_ids.filter((id) => id !== role.id)
+                          })
+                        }
+                      }}
+                    />
+                  }
+                  label={role.name}
+                />
               ))}
-            </div>
-          </div>
-          <div className="flex justify-end space-x-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
-            >
-              Отмена
-            </button>
-            <button type="submit" className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
-              Создать
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+            </FormGroup>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose}>Отмена</Button>
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={submitting}
+          >
+            {submitting ? <CircularProgress size={20} /> : 'Создать'}
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
   )
 }
 
@@ -366,19 +472,24 @@ const EditUserModal: React.FC<{
   onClose: () => void;
   onSubmit: (id: string, data: any) => void;
   roles: Role[];
-}> = ({ user, onClose, onSubmit, roles }) => {
+  onEmailChange: () => void;
+}> = ({ user, onClose, onSubmit, roles, onEmailChange }) => {
   const [formData, setFormData] = useState({
     first_name: user.first_name || '',
     last_name: user.last_name || '',
     is_active: user.is_active,
     role_ids: [] as string[]
   });
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     // Загружаем роли пользователя
     const loadUserRoles = async () => {
       try {
         const userRoles = await rolesApi.getUserRoles(user.id);
+        console.log('EditUserModal loadUserRoles - userRoles:', userRoles);
+        // userRoles теперь содержит ID ролей, а не имена
         setFormData(prev => ({ ...prev, role_ids: userRoles }));
       } catch (error) {
         console.error('Ошибка загрузки ролей пользователя:', error);
@@ -387,117 +498,158 @@ const EditUserModal: React.FC<{
     loadUserRoles();
   }, [user.id]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {}
+
+    if (!formData.first_name.trim()) {
+      errors.first_name = 'Имя обязательно'
+    }
+
+    if (!formData.last_name.trim()) {
+      errors.last_name = 'Фамилия обязательна'
+    }
+
+    const filteredRoleIds = formData.role_ids.filter(id => id !== null && id !== undefined && id !== '')
+    if (filteredRoleIds.length === 0) {
+      errors.roles = 'Выберите хотя бы одну роль'
+    }
+
+    setFormErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Фильтруем null значения из role_ids
-    const filteredRoleIds = formData.role_ids.filter(id => id !== null && id !== undefined && id !== '')
-    
-    onSubmit(user.id, {
-      ...formData,
-      role_ids: filteredRoleIds
-    });
+    if (!validateForm()) return
+
+    try {
+      setSubmitting(true)
+      // Фильтруем null значения из role_ids
+      const filteredRoleIds = formData.role_ids.filter(id => id !== null && id !== undefined && id !== '')
+      
+      console.log('EditUserModal handleSubmit - formData.role_ids:', formData.role_ids);
+      console.log('EditUserModal handleSubmit - filteredRoleIds:', filteredRoleIds);
+      
+      await onSubmit(user.id, {
+        ...formData,
+        role_ids: filteredRoleIds
+      });
+    } finally {
+      setSubmitting(false)
+    }
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-96">
-        <h2 className="text-xl font-bold mb-4">Редактировать пользователя</h2>
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Редактировать пользователя</DialogTitle>
+      <form onSubmit={handleSubmit}>
+        <DialogContent>
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
               Email
-            </label>
-            <input
-              type="email"
-              value={user.email}
-              disabled
-              className="w-full border border-gray-300 rounded px-3 py-2 bg-gray-100"
-            />
-          </div>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Имя
-            </label>
-            <input
-              type="text"
-              value={formData.first_name}
-              onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-              className="w-full border border-gray-300 rounded px-3 py-2"
-              required
-            />
-          </div>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Фамилия
-            </label>
-            <input
-              type="text"
-              value={formData.last_name}
-              onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-              className="w-full border border-gray-300 rounded px-3 py-2"
-              required
-            />
-          </div>
-          <div className="mb-4">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
+            </Typography>
+            <Box display="flex" alignItems="center" gap={1}>
+              <TextField
+                fullWidth
+                value={user.email}
+                disabled
+                variant="outlined"
+                size="small"
+              />
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => {
+                  onEmailChange();
+                  onClose();
+                }}
+              >
+                Сменить
+              </Button>
+            </Box>
+          </Box>
+          <TextField
+            margin="dense"
+            label="Имя"
+            fullWidth
+            variant="outlined"
+            value={formData.first_name}
+            onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+            error={!!formErrors.first_name}
+            helperText={formErrors.first_name}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            margin="dense"
+            label="Фамилия"
+            fullWidth
+            variant="outlined"
+            value={formData.last_name}
+            onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+            error={!!formErrors.last_name}
+            helperText={formErrors.last_name}
+            sx={{ mb: 2 }}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
                 checked={formData.is_active}
                 onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                className="mr-2"
               />
-              Активен
-            </label>
-          </div>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            }
+            label="Активен"
+            sx={{ mb: 2 }}
+          />
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
               Роли
-            </label>
-            <div className="space-y-2">
+            </Typography>
+            {formErrors.roles && (
+              <Typography variant="caption" color="error">
+                {formErrors.roles}
+              </Typography>
+            )}
+            <FormGroup>
               {roles.map((role) => (
-                <label key={role.id} className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={formData.role_ids.includes(role.id)}
-                    onChange={(e) => {
-                      if (e.target.checked && role.id) {
-                        setFormData({
-                          ...formData,
-                          role_ids: [...formData.role_ids, role.id]
-                        });
-                      } else if (role.id) {
-                        setFormData({
-                          ...formData,
-                          role_ids: formData.role_ids.filter(id => id !== role.id)
-                        });
-                      }
-                    }}
-                    className="mr-2"
-                  />
-                  {role.name}
-                </label>
+                <FormControlLabel
+                  key={role.id}
+                  control={
+                    <Checkbox
+                      checked={formData.role_ids.includes(role.id)}
+                      onChange={(e) => {
+                        if (e.target.checked && role.id) {
+                          setFormData({
+                            ...formData,
+                            role_ids: [...formData.role_ids, role.id]
+                          });
+                        } else if (role.id) {
+                          setFormData({
+                            ...formData,
+                            role_ids: formData.role_ids.filter(id => id !== role.id)
+                          });
+                        }
+                      }}
+                    />
+                  }
+                  label={role.name}
+                />
               ))}
-            </div>
-          </div>
-          <div className="flex justify-end space-x-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
-            >
-              Отмена
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-            >
-              Сохранить
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+            </FormGroup>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose}>Отмена</Button>
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={submitting}
+          >
+            {submitting ? <CircularProgress size={20} /> : 'Сохранить'}
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
   );
 };
 
@@ -540,49 +692,58 @@ const UserRolesModal: React.FC<{
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg p-6">
-          <div>Загрузка...</div>
-        </div>
-      </div>
+      <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+        <DialogContent>
+          <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+            <CircularProgress />
+          </Box>
+        </DialogContent>
+      </Dialog>
     );
   }
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-96">
-        <h2 className="text-xl font-bold mb-4">Роли пользователя: {user.first_name} {user.last_name}</h2>
-        <div className="space-y-2">
+    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>
+        Роли пользователя: {user.first_name} {user.last_name}
+      </DialogTitle>
+      <DialogContent>
+        <FormGroup>
           {roles.map((role) => {
             const isAssigned = userRoles.includes(role.id);
             return (
-              <label key={role.id} className="flex items-center justify-between">
-                <div>
-                  <div className="font-medium">{role.name}</div>
-                  {role.description && (
-                    <div className="text-sm text-gray-500">{role.description}</div>
-                  )}
-                </div>
-                <input
-                  type="checkbox"
-                  checked={isAssigned}
-                  onChange={(e) => handleRoleToggle(role.id, isAssigned)}
-                  className="ml-4"
-                />
-              </label>
+              <FormControlLabel
+                key={role.id}
+                control={
+                  <Checkbox
+                    checked={isAssigned}
+                    onChange={(_e) => handleRoleToggle(role.id, isAssigned)}
+                  />
+                }
+                label={
+                  <Box>
+                    <Typography variant="body2" fontWeight="medium">
+                      {role.name}
+                    </Typography>
+                    {role.description && (
+                      <Typography variant="caption" color="text.secondary">
+                        {role.description}
+                      </Typography>
+                    )}
+                  </Box>
+                }
+                sx={{ mb: 1 }}
+              />
             );
           })}
-        </div>
-        <div className="flex justify-end mt-6">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
-          >
-            Закрыть
-          </button>
-        </div>
-      </div>
-    </div>
+        </FormGroup>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} variant="contained">
+          Закрыть
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 };
 

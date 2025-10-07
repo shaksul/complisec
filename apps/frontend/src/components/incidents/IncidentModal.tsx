@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -8,11 +8,9 @@ import {
   UpdateIncidentRequest,
   INCIDENT_CATEGORIES,
   INCIDENT_CRITICALITY,
-  INCIDENT_STATUS,
   INCIDENT_SOURCE,
   getCategoryLabel,
   getCriticalityLabel,
-  getStatusLabel,
   getSourceLabel,
 } from '../../shared/api/incidents';
 import { User } from '../../shared/api/users';
@@ -58,7 +56,6 @@ const IncidentModal: React.FC<IncidentModalProps> = ({
     handleSubmit,
     formState: { errors },
     reset,
-    watch,
   } = useForm<IncidentFormData>({
     resolver: zodResolver(incidentSchema),
     defaultValues: {

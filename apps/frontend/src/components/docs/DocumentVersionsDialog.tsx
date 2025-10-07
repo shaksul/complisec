@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -21,7 +21,6 @@ import {
   Alert,
 } from '@mui/material'
 import {
-  Download,
   Visibility,
   CloudDownload,
   Security,
@@ -32,7 +31,7 @@ import {
   TextSnippet,
   Image,
 } from '@mui/icons-material'
-import { getDocumentVersions, downloadDocumentVersion, getDocumentVersionPreview, type DocumentVersion } from '../../shared/api/documents'
+import { getDocumentVersions, downloadDocumentVersion, type DocumentVersion } from '../../shared/api/documents'
 import UploadNewVersionDialog from './UploadNewVersionDialog'
 import DocumentViewer from './DocumentViewer'
 

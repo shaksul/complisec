@@ -8,13 +8,15 @@ import { UsersPage } from './pages/UsersPage'
 import { AssetsPage } from './pages/AssetsPage'
 import { RisksPage } from './pages/RisksPage'
 import { DocumentsPage } from './pages/DocumentsPage'
+import FileDocumentsPage from './pages/FileDocumentsPage'
 import IncidentsPage from './pages/IncidentsPage'
-import { TrainingPage } from './pages/TrainingPage'
+import TrainingPage from './pages/TrainingPage'
 import CompliancePage from './pages/CompliancePage'
 import AIProvidersPage from './pages/AIProvidersPage'
 import AIQueryPage from './pages/AIQueryPage'
 import UsersManagementPage from './pages/UsersManagementPage'
 import RolesManagementPage from './pages/RolesManagementPage'
+import OrganizationsPage from './pages/OrganizationsPage'
 
 function App() {
   return (
@@ -32,9 +34,11 @@ function App() {
                   <Route path="/users" element={<UsersPage />} />
                   <Route path="/admin/users" element={<UsersManagementPage />} />
                   <Route path="/admin/roles" element={<RolesManagementPage />} />
+                  <Route path="/admin/organizations" element={<OrganizationsPage />} />
                   <Route path="/assets" element={<AssetsPage />} />
                   <Route path="/risks" element={<RisksPage />} />
                   <Route path="/documents" element={<DocumentsPage />} />
+                  <Route path="/file-documents" element={<FileDocumentsPage />} />
                   <Route path="/incidents" element={<IncidentsPage />} />
                   <Route path="/training" element={<TrainingPage />} />
                   <Route path="/compliance" element={<CompliancePage />} />

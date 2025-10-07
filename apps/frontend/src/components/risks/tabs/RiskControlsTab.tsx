@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   Box,
   Typography,
@@ -24,36 +24,46 @@ import { Add, MoreVert, Edit, Delete, Security } from '@mui/icons-material'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import {
+  risksApi,
+  RiskControl,
+  CONTROL_TYPES,
+  CONTROL_IMPLEMENTATION_STATUSES,
+  CONTROL_EFFECTIVENESS,
+} from '../../../shared/api/risks'
 
 const controlSchema = z.object({
-  name: z.string().min(1, 'Название обязательно'),
+  control_id: z.string().uuid().optional(),
+  control_name: z.string().min(1, 'Название обязательно'),
+  control_type: z.enum(['preventive', 'detective', 'corrective'], {
+    errorMap: () => ({ message: 'Тип обязателен' }),
+  }),
+  implementation_status: z.enum(['planned', 'in_progress', 'implemented', 'not_applicable'], {
+    errorMap: () => ({ message: 'Статус обязателен' }),
+  }),
+  effectiveness: z.enum(['high', 'medium', 'low']).optional(),
   description: z.string().optional(),
-  type: z.string().min(1, 'Тип обязателен'),
-  effectiveness: z.number().min(1).max(4),
-  status: z.string().min(1, 'Статус обязателен'),
 })
 
 type ControlFormData = z.infer<typeof controlSchema>
-
-interface RiskControl {
-  id: string
-  risk_id: string
-  name: string
-  description?: string
-  type: string
-  effectiveness: number
-  status: string
-  created_at: string
-  updated_at: string
-}
 
 interface RiskControlsTabProps {
   riskId: string
 }
 
+const getControlTypeLabel = (type: string) =>
+  CONTROL_TYPES.find((item) => item.value === type)?.label ?? type
+
+const getImplementationStatusLabel = (status: string) =>
+  CONTROL_IMPLEMENTATION_STATUSES.find((item) => item.value === status)?.label ?? status
+
+const getEffectivenessLabel = (value?: string | null) =>
+  CONTROL_EFFECTIVENESS.find((item) => item.value === value)?.label ?? 'Не указана'
+
 export const RiskControlsTab: React.FC<RiskControlsTabProps> = ({ riskId }) => {
   const [controls, setControls] = useState<RiskControl[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const [selectedControl, setSelectedControl] = useState<RiskControl | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
@@ -67,60 +77,36 @@ export const RiskControlsTab: React.FC<RiskControlsTabProps> = ({ riskId }) => {
   } = useForm<ControlFormData>({
     resolver: zodResolver(controlSchema),
     defaultValues: {
-      name: '',
+      control_name: '',
+      control_type: 'preventive',
+      implementation_status: 'planned',
+      effectiveness: undefined,
       description: '',
-      type: '',
-      effectiveness: 1,
-      status: 'planned',
     },
   })
 
   useEffect(() => {
-    loadControls()
+    void loadControls()
   }, [riskId])
 
   const loadControls = async () => {
     try {
       setLoading(true)
-      // TODO: Implement API call to load controls
-      // const response = await riskControlsApi.list(riskId)
-      // setControls(response.data || [])
-      
-      // Mock data for now
-      setControls([
-        {
-          id: '1',
-          risk_id: riskId,
-          name: 'Многофакторная аутентификация',
-          description: 'Внедрение MFA для всех пользователей',
-          type: 'preventive',
-          effectiveness: 4,
-          status: 'implemented',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        {
-          id: '2',
-          risk_id: riskId,
-          name: 'Мониторинг безопасности',
-          description: 'Система непрерывного мониторинга',
-          type: 'detective',
-          effectiveness: 3,
-          status: 'planned',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-      ])
+      setError(null)
+      const response = await risksApi.getControls(riskId)
+      setControls(response)
     } catch (err) {
       console.error('Error loading controls:', err)
+      setError('Не удалось загрузить контроли')
+      setControls([])
     } finally {
       setLoading(false)
     }
   }
 
-  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, control: RiskControl) => {
+  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, controlItem: RiskControl) => {
     setAnchorEl(event.currentTarget)
-    setSelectedControl(control)
+    setSelectedControl(controlItem)
   }
 
   const handleMenuClose = () => {
@@ -129,109 +115,76 @@ export const RiskControlsTab: React.FC<RiskControlsTabProps> = ({ riskId }) => {
   }
 
   const handleEdit = () => {
-    if (selectedControl) {
-      setEditingControl(selectedControl)
-      reset({
-        name: selectedControl.name,
-        description: selectedControl.description || '',
-        type: selectedControl.type,
-        effectiveness: selectedControl.effectiveness,
-        status: selectedControl.status,
-      })
-      setModalOpen(true)
-    }
+    if (!selectedControl) return
+    setEditingControl(selectedControl)
+    reset({
+      control_id: selectedControl.control_id,
+      control_name: selectedControl.control_name,
+          control_type: selectedControl.control_type as 'preventive' | 'detective' | 'corrective',
+          implementation_status: selectedControl.implementation_status as 'planned' | 'in_progress' | 'implemented' | 'not_applicable',
+      effectiveness: selectedControl.effectiveness as 'high' | 'medium' | 'low' | undefined,
+      description: selectedControl.description ?? '',
+    })
+    setModalOpen(true)
     handleMenuClose()
   }
 
   const handleDelete = async () => {
-    if (selectedControl) {
-      try {
-        // TODO: Implement API call to delete control
-        // await riskControlsApi.delete(selectedControl.id)
-        setControls(prev => prev.filter(c => c.id !== selectedControl.id))
-      } catch (err) {
-        console.error('Error deleting control:', err)
-      }
+    if (!selectedControl) return
+    try {
+      await risksApi.deleteControl(riskId, selectedControl.id)
+      await loadControls()
+    } catch (err) {
+      console.error('Error deleting control:', err)
+      setError('Не удалось удалить контроль')
+    } finally {
+      handleMenuClose()
     }
-    handleMenuClose()
   }
 
   const handleCreateNew = () => {
     setEditingControl(null)
     reset({
-      name: '',
+      control_id: undefined,
+      control_name: '',
+      control_type: 'preventive',
+      implementation_status: 'planned',
+      effectiveness: undefined,
       description: '',
-      type: '',
-      effectiveness: 1,
-      status: 'planned',
     })
     setModalOpen(true)
   }
 
   const onSubmit = async (data: ControlFormData) => {
     try {
+      setError(null)
       if (editingControl) {
-        // TODO: Implement API call to update control
-        // await riskControlsApi.update(editingControl.id, data)
-        setControls(prev => prev.map(c => 
-          c.id === editingControl.id 
-            ? { ...c, ...data, updated_at: new Date().toISOString() }
-            : c
-        ))
+        await risksApi.updateControl(riskId, editingControl.id, {
+          control_name: data.control_name,
+          control_type: data.control_type,
+          implementation_status: data.implementation_status,
+          effectiveness: data.effectiveness || undefined,
+          description: data.description?.trim() || undefined,
+        })
       } else {
-        // TODO: Implement API call to create control
-        // const response = await riskControlsApi.create({ ...data, risk_id: riskId })
-        const newControl: RiskControl = {
-          id: Date.now().toString(),
-          risk_id: riskId,
-          ...data,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
-        setControls(prev => [...prev, newControl])
+        const controlId = data.control_id ?? (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2))
+        await risksApi.createControl(riskId, {
+          control_id: controlId,
+          control_name: data.control_name,
+          control_type: data.control_type,
+          implementation_status: data.implementation_status,
+          effectiveness: data.effectiveness || undefined,
+          description: data.description?.trim() || undefined,
+        })
       }
+
       setModalOpen(false)
       setEditingControl(null)
+      await loadControls()
     } catch (err) {
       console.error('Error saving control:', err)
+      setError('Не удалось сохранить контроль')
     }
-  }
-
-  const getControlTypeLabel = (type: string) => {
-    switch (type) {
-      case 'preventive': return 'Предупреждающий'
-      case 'detective': return 'Обнаруживающий'
-      case 'corrective': return 'Корректирующий'
-      case 'compensating': return 'Компенсирующий'
-      default: return type
-    }
-  }
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'planned': return 'Запланирован'
-      case 'implemented': return 'Реализован'
-      case 'testing': return 'Тестирование'
-      case 'operational': return 'Эксплуатация'
-      default: return status
-    }
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'planned': return 'warning'
-      case 'implemented': return 'success'
-      case 'testing': return 'info'
-      case 'operational': return 'primary'
-      default: return 'default'
-    }
-  }
-
-  const getEffectivenessColor = (effectiveness: number) => {
-    if (effectiveness >= 4) return 'success'
-    if (effectiveness >= 3) return 'warning'
-    if (effectiveness >= 2) return 'error'
-    return 'default'
   }
 
   if (loading) {
@@ -246,82 +199,69 @@ export const RiskControlsTab: React.FC<RiskControlsTabProps> = ({ riskId }) => {
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h6">
-          Контроли риска ({controls.length})
+          Контроли ({controls.length})
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<Add />}
-          onClick={handleCreateNew}
-        >
+        <Button variant="contained" startIcon={<Add />} onClick={handleCreateNew}>
           Добавить контроль
         </Button>
       </Box>
+
+      {error && (
+        <Box mb={2}>
+          <Typography color="error">{error}</Typography>
+        </Box>
+      )}
 
       {controls.length === 0 ? (
         <Card>
           <CardContent>
             <Box textAlign="center" py={4}>
-              <Security sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
               <Typography variant="h6" color="text.secondary" gutterBottom>
-                Контроли не найдены
+                Контроли ещё не добавлены
               </Typography>
-              <Typography variant="body2" color="text.secondary" mb={3}>
-                Добавьте контроли для управления данным риском
+              <Typography variant="body2" color="text.secondary">
+                Используйте кнопку «Добавить контроль», чтобы связать контроль с риском.
               </Typography>
-              <Button
-                variant="contained"
-                startIcon={<Add />}
-                onClick={handleCreateNew}
-              >
-                Добавить первый контроль
-              </Button>
             </Box>
           </CardContent>
         </Card>
       ) : (
         <Grid container spacing={2}>
-          {controls.map((control) => (
-            <Grid item xs={12} key={control.id}>
+          {controls.map((controlItem) => (
+            <Grid item xs={12} md={6} key={controlItem.id}>
               <Card>
                 <CardContent>
-                  <Box display="flex" justifyContent="space-between" alignItems="flex-start">
-                    <Box flex={1}>
-                      <Typography variant="h6" gutterBottom>
-                        {control.name}
-                      </Typography>
-                      
-                      {control.description && (
-                        <Typography variant="body2" color="text.secondary" paragraph>
-                          {control.description}
-                        </Typography>
-                      )}
-
-                      <Box display="flex" gap={1} flexWrap="wrap" mt={2}>
-                        <Chip
-                          label={getControlTypeLabel(control.type)}
-                          size="small"
-                          color="primary"
-                          variant="outlined"
-                        />
-                        <Chip
-                          label={getStatusLabel(control.status)}
-                          size="small"
-                          color={getStatusColor(control.status) as any}
-                        />
-                        <Chip
-                          label={`Эффективность: ${control.effectiveness}/4`}
-                          size="small"
-                          color={getEffectivenessColor(control.effectiveness) as any}
-                        />
-                      </Box>
+                  <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <Security color="primary" />
+                      <Typography variant="h6">{controlItem.control_name}</Typography>
                     </Box>
-
-                    <IconButton
-                      onClick={(e) => handleMenuOpen(e, control)}
-                    >
+                    <IconButton onClick={(event) => handleMenuOpen(event, controlItem)}>
                       <MoreVert />
                     </IconButton>
                   </Box>
+
+                  {controlItem.description && (
+                    <Typography variant="body2" color="text.secondary" mb={2}>
+                      {controlItem.description}
+                    </Typography>
+                  )}
+
+                  <Grid container spacing={1}>
+                    <Grid item>
+                      <Chip label={getControlTypeLabel(controlItem.control_type)} variant="outlined" />
+                    </Grid>
+                    <Grid item>
+                      <Chip
+                        label={getImplementationStatusLabel(controlItem.implementation_status)}
+                        color={controlItem.implementation_status === 'implemented' ? 'success' : 'default'}
+                        variant="outlined"
+                      />
+                    </Grid>
+                    <Grid item>
+                      <Chip label={`Эффективность: ${getEffectivenessLabel(controlItem.effectiveness)}`} variant="outlined" />
+                    </Grid>
+                  </Grid>
                 </CardContent>
               </Card>
             </Grid>
@@ -329,41 +269,31 @@ export const RiskControlsTab: React.FC<RiskControlsTabProps> = ({ riskId }) => {
         </Grid>
       )}
 
-      {/* Context Menu */}
-      <Menu
-        anchorEl={anchorEl}
-        open={Boolean(anchorEl)}
-        onClose={handleMenuClose}
-      >
+      <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
         <MenuItem onClick={handleEdit}>
-          <Edit sx={{ mr: 1 }} />
-          Редактировать
+          <Edit sx={{ mr: 1 }} /> Редактировать
         </MenuItem>
         <MenuItem onClick={handleDelete}>
-          <Delete sx={{ mr: 1 }} />
-          Удалить
+          <Delete sx={{ mr: 1 }} /> Удалить
         </MenuItem>
       </Menu>
 
-      {/* Add/Edit Control Modal */}
       <Dialog open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          {editingControl ? 'Редактирование контроля' : 'Добавление контроля'}
-        </DialogTitle>
+        <DialogTitle>{editingControl ? 'Редактирование контроля' : 'Добавление контроля'}</DialogTitle>
         <form onSubmit={handleSubmit(onSubmit)}>
           <DialogContent>
             <Grid container spacing={2}>
               <Grid item xs={12}>
                 <Controller
-                  name="name"
+                  name="control_name"
                   control={control}
                   render={({ field }) => (
                     <TextField
                       {...field}
                       label="Название контроля"
                       fullWidth
-                      error={!!errors.name}
-                      helperText={errors.name?.message}
+                      error={!!errors.control_name}
+                      helperText={errors.control_name?.message}
                     />
                   )}
                 />
@@ -389,16 +319,17 @@ export const RiskControlsTab: React.FC<RiskControlsTabProps> = ({ riskId }) => {
 
               <Grid item xs={12} sm={6}>
                 <Controller
-                  name="type"
+                  name="control_type"
                   control={control}
                   render={({ field }) => (
-                    <FormControl fullWidth error={!!errors.type}>
+                    <FormControl fullWidth error={!!errors.control_type}>
                       <InputLabel>Тип контроля</InputLabel>
                       <Select {...field} label="Тип контроля">
-                        <MenuItem value="preventive">Предупреждающий</MenuItem>
-                        <MenuItem value="detective">Обнаруживающий</MenuItem>
-                        <MenuItem value="corrective">Корректирующий</MenuItem>
-                        <MenuItem value="compensating">Компенсирующий</MenuItem>
+                        {CONTROL_TYPES.map((item) => (
+                          <MenuItem key={item.value} value={item.value}>
+                            {item.label}
+                          </MenuItem>
+                        ))}
                       </Select>
                     </FormControl>
                   )}
@@ -407,45 +338,51 @@ export const RiskControlsTab: React.FC<RiskControlsTabProps> = ({ riskId }) => {
 
               <Grid item xs={12} sm={6}>
                 <Controller
-                  name="status"
+                  name="implementation_status"
                   control={control}
                   render={({ field }) => (
-                    <FormControl fullWidth error={!!errors.status}>
-                      <InputLabel>Статус</InputLabel>
-                      <Select {...field} label="Статус">
-                        <MenuItem value="planned">Запланирован</MenuItem>
-                        <MenuItem value="testing">Тестирование</MenuItem>
-                        <MenuItem value="implemented">Реализован</MenuItem>
-                        <MenuItem value="operational">Эксплуатация</MenuItem>
+                    <FormControl fullWidth error={!!errors.implementation_status}>
+                      <InputLabel>Статус внедрения</InputLabel>
+                      <Select {...field} label="Статус внедрения">
+                        {CONTROL_IMPLEMENTATION_STATUSES.map((item) => (
+                          <MenuItem key={item.value} value={item.value}>
+                            {item.label}
+                          </MenuItem>
+                        ))}
                       </Select>
                     </FormControl>
                   )}
                 />
               </Grid>
 
-              <Grid item xs={12}>
+              <Grid item xs={12} sm={6}>
                 <Controller
                   name="effectiveness"
                   control={control}
                   render={({ field }) => (
-                    <TextField
-                      {...field}
-                      label="Эффективность (1-4)"
-                      type="number"
-                      inputProps={{ min: 1, max: 4 }}
-                      fullWidth
-                      error={!!errors.effectiveness}
-                      helperText={errors.effectiveness?.message}
-                    />
+                    <FormControl fullWidth>
+                      <InputLabel>Эффективность</InputLabel>
+                      <Select
+                        {...field}
+                        label="Эффективность"
+                        value={field.value ?? ''}
+                        onChange={(event) => field.onChange(event.target.value || undefined)}
+                      >
+                        <MenuItem value="">Не указана</MenuItem>
+                        {CONTROL_EFFECTIVENESS.map((item) => (
+                          <MenuItem key={item.value} value={item.value}>
+                            {item.label}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
                   )}
                 />
               </Grid>
             </Grid>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setModalOpen(false)}>
-              Отмена
-            </Button>
+            <Button onClick={() => setModalOpen(false)}>Отмена</Button>
             <Button type="submit" variant="contained">
               {editingControl ? 'Обновить' : 'Создать'}
             </Button>

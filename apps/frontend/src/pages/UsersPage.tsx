@@ -30,7 +30,7 @@ import {
   Edit, 
   Refresh
 } from '@mui/icons-material'
-import { getUserCatalog, getUsersPaginated, UserCatalog, UserCatalogParams, PaginatedResponse, User } from '../shared/api/users'
+import { getUserCatalog, UserCatalog, UserCatalogParams, PaginatedResponse } from '../shared/api/users'
 import Pagination from '../components/Pagination'
 import { UserDetailModal } from '../components/users/UserDetailModal'
 

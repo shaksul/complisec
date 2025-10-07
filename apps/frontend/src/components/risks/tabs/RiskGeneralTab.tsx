@@ -22,12 +22,27 @@ interface RiskGeneralTabProps {
 
 export const RiskGeneralTab: React.FC<RiskGeneralTabProps> = ({ risk }) => {
 
-  const getRiskLevel = (level?: number) => {
-    if (!level) return { color: 'default', label: 'Не определен' }
-    if (level <= 2) return { color: 'success', label: 'Low' }
-    if (level <= 4) return { color: 'warning', label: 'Medium' }
-    if (level <= 6) return { color: 'warning', label: 'High' }
-    return { color: 'error', label: 'Critical' }
+  const getRiskLevel = () => {
+    const label = risk.level_label ?? (() => {
+      if (!risk.level) return 'Не определен'
+      if (risk.level <= 2) return 'Низкий'
+      if (risk.level <= 4) return 'Средний'
+      if (risk.level <= 6) return 'Высокий'
+      return 'Критический'
+    })()
+
+    switch (label) {
+      case 'Низкий':
+        return { color: 'success', label, progressColor: 'success' as const }
+      case 'Средний':
+        return { color: 'warning', label, progressColor: 'warning' as const }
+      case 'Высокий':
+        return { color: 'warning', label, progressColor: 'warning' as const }
+      case 'Критический':
+        return { color: 'error', label, progressColor: 'error' as const }
+      default:
+        return { color: 'default', label: 'Не определен', progressColor: 'primary' as const }
+    }
   }
 
   const getStatusColor = (status: string) => {
@@ -66,7 +81,7 @@ export const RiskGeneralTab: React.FC<RiskGeneralTabProps> = ({ risk }) => {
     return strat ? strat.label : strategy
   }
 
-  const riskLevel = getRiskLevel(risk.level)
+  const riskLevel = getRiskLevel()
 
   return (
     <Box>
@@ -82,7 +97,7 @@ export const RiskGeneralTab: React.FC<RiskGeneralTabProps> = ({ risk }) => {
                 </Typography>
                 <Box display="flex" gap={1} flexWrap="wrap">
                   <Chip
-                    label={`${riskLevel.label} (${risk.level})`}
+                    label={`${riskLevel.label}${risk.level ? ` (${risk.level})` : ''}`}
                     color={riskLevel.color as any}
                     size="medium"
                     sx={{ fontWeight: 'bold' }}
@@ -123,34 +138,34 @@ export const RiskGeneralTab: React.FC<RiskGeneralTabProps> = ({ risk }) => {
               
               <Box mb={2}>
                 <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Вероятность: {risk.likelihood || 1}/4
+                  Вероятность: {risk.likelihood ?? 0}/4
                 </Typography>
                 <LinearProgress
                   variant="determinate"
-                  value={(risk.likelihood || 1) / 4 * 100}
+                  value={Math.min(((risk.likelihood ?? 0) / 4) * 100, 100)}
                   sx={{ mb: 1 }}
                 />
               </Box>
 
               <Box mb={2}>
                 <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Воздействие: {risk.impact || 1}/4
+                  Воздействие: {risk.impact ?? 0}/4
                 </Typography>
                 <LinearProgress
                   variant="determinate"
-                  value={(risk.impact || 1) / 4 * 100}
+                  value={Math.min(((risk.impact ?? 0) / 4) * 100, 100)}
                   sx={{ mb: 1 }}
                 />
               </Box>
 
               <Box>
                 <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Уровень риска: {riskLevel.label} ({risk.level})
+                  Уровень риска: {riskLevel.label}{risk.level ? ` (${risk.level})` : ''}
                 </Typography>
                 <LinearProgress
                   variant="determinate"
-                  value={Math.min((risk.level || 1) / 16 * 100, 100)}
-                  color={riskLevel.color as any}
+                  value={Math.min(((risk.level ?? 0) / 16) * 100, 100)}
+                  color={riskLevel.progressColor}
                   sx={{ height: 8, borderRadius: 4 }}
                 />
               </Box>
@@ -170,7 +185,7 @@ export const RiskGeneralTab: React.FC<RiskGeneralTabProps> = ({ risk }) => {
                   Категория:
                 </Typography>
                 <Typography variant="body1">
-                  {getCategoryLabel(risk.category)}
+                  {getCategoryLabel(risk.category ?? undefined)}
                 </Typography>
               </Box>
 
@@ -179,7 +194,7 @@ export const RiskGeneralTab: React.FC<RiskGeneralTabProps> = ({ risk }) => {
                   Методология:
                 </Typography>
                 <Typography variant="body1">
-                  {getMethodologyLabel(risk.methodology)}
+                  {getMethodologyLabel(risk.methodology ?? undefined)}
                 </Typography>
               </Box>
 
@@ -188,7 +203,7 @@ export const RiskGeneralTab: React.FC<RiskGeneralTabProps> = ({ risk }) => {
                   Стратегия обработки:
                 </Typography>
                 <Typography variant="body1">
-                  {getStrategyLabel(risk.strategy)}
+                  {getStrategyLabel(risk.strategy ?? undefined)}
                 </Typography>
               </Box>
             </CardContent>

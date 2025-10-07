@@ -2,17 +2,14 @@ package main
 
 import (
 	"fmt"
-	"log"
-
 	"golang.org/x/crypto/bcrypt"
 )
 
 func main() {
-	password := "admin123"
+	password := "password"
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
-	fmt.Printf("Password: %s\n", password)
-	fmt.Printf("Hash: %s\n", string(hash))
+	fmt.Println(string(hash))
 }

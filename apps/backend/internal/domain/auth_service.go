@@ -62,13 +62,15 @@ func (s *AuthService) Login(ctx context.Context, email, password, tenantID strin
 	return user, roles, nil
 }
 
-func (s *AuthService) GenerateTokens(userID, tenantID string, roles []string) (string, string, error) {
-	// Access token (15 minutes)
+func (s *AuthService) GenerateTokens(user *repo.User, roles []string) (string, string, error) {
+	// Generate access token
 	accessClaims := jwt.MapClaims{
-		"user_id":   userID,
-		"tenant_id": tenantID,
+		"user_id":   user.ID,
+		"email":     user.Email,
+		"tenant_id": user.TenantID,
 		"roles":     roles,
-		"exp":       time.Now().Add(15 * time.Minute).Unix(),
+		"exp":       time.Now().Add(time.Hour * 24).Unix(),
+		"iat":       time.Now().Unix(),
 		"type":      "access",
 	}
 
@@ -78,11 +80,12 @@ func (s *AuthService) GenerateTokens(userID, tenantID string, roles []string) (s
 		return "", "", err
 	}
 
-	// Refresh token (7 days)
+	// Generate refresh token
 	refreshClaims := jwt.MapClaims{
-		"user_id":   userID,
-		"tenant_id": tenantID,
-		"exp":       time.Now().Add(7 * 24 * time.Hour).Unix(),
+		"user_id":   user.ID,
+		"tenant_id": user.TenantID,
+		"exp":       time.Now().Add(time.Hour * 24 * 7).Unix(), // 7 days
+		"iat":       time.Now().Unix(),
 		"type":      "refresh",
 	}
 
@@ -114,7 +117,7 @@ func (s *AuthService) ValidateToken(tokenString string) (*jwt.Token, error) {
 	return token, nil
 }
 
-func (s *AuthService) GetUserFromToken(token *jwt.Token) (string, string, []string, error) {
+func (s *AuthService) ExtractUserFromToken(token *jwt.Token) (string, string, []string, error) {
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
 		return "", "", nil, errors.New("invalid token claims")
@@ -122,48 +125,106 @@ func (s *AuthService) GetUserFromToken(token *jwt.Token) (string, string, []stri
 
 	userID, ok := claims["user_id"].(string)
 	if !ok {
-		return "", "", nil, errors.New("invalid user_id in token")
+		return "", "", nil, errors.New("user_id not found in token")
 	}
 
 	tenantID, ok := claims["tenant_id"].(string)
 	if !ok {
-		return "", "", nil, errors.New("invalid tenant_id in token")
-	}
-
-	// For refresh tokens, roles are not included in the token
-	// We'll need to get them from the database
-	return userID, tenantID, nil, nil
-}
-
-func (s *AuthService) GetUserFromAccessToken(token *jwt.Token) (string, string, []string, error) {
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return "", "", nil, errors.New("invalid token claims")
-	}
-
-	userID, ok := claims["user_id"].(string)
-	if !ok {
-		return "", "", nil, errors.New("invalid user_id in token")
-	}
-
-	tenantID, ok := claims["tenant_id"].(string)
-	if !ok {
-		return "", "", nil, errors.New("invalid tenant_id in token")
-	}
-
-	rolesInterface, ok := claims["roles"].([]interface{})
-	if !ok {
-		return "", "", nil, errors.New("invalid roles in token")
+		return "", "", nil, errors.New("tenant_id not found in token")
 	}
 
 	var roles []string
-	for _, role := range rolesInterface {
-		if roleStr, ok := role.(string); ok {
-			roles = append(roles, roleStr)
+	if rolesClaim, ok := claims["roles"].([]interface{}); ok {
+		for _, role := range rolesClaim {
+			if roleStr, ok := role.(string); ok {
+				roles = append(roles, roleStr)
+			}
 		}
 	}
 
 	return userID, tenantID, roles, nil
+}
+
+func (s *AuthService) RefreshToken(refreshTokenString string) (string, string, error) {
+	token, err := s.ValidateToken(refreshTokenString)
+	if err != nil {
+		return "", "", err
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", "", errors.New("invalid token claims")
+	}
+
+	tokenType, ok := claims["type"].(string)
+	if !ok || tokenType != "refresh" {
+		return "", "", errors.New("invalid token type")
+	}
+
+	userID, ok := claims["user_id"].(string)
+	if !ok {
+		return "", "", errors.New("user_id not found in token")
+	}
+
+	_, ok = claims["tenant_id"].(string)
+	if !ok {
+		return "", "", errors.New("tenant_id not found in token")
+	}
+
+	// Get user from database
+	user, err := s.userRepo.GetByID(context.Background(), userID)
+	if err != nil {
+		return "", "", err
+	}
+
+	if user == nil {
+		return "", "", errors.New("user not found")
+	}
+
+	if !user.IsActive {
+		return "", "", errors.New("account is disabled")
+	}
+
+	// Get user roles
+	roles, err := s.userRepo.GetUserRoles(context.Background(), user.ID)
+	if err != nil {
+		return "", "", err
+	}
+
+	// Generate new tokens
+	return s.GenerateTokens(user, roles)
+}
+
+func (s *AuthService) GetUserFromToken(tokenString string) (*repo.User, []string, error) {
+	token, err := s.ValidateToken(tokenString)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	userID, tenantID, roles, err := s.ExtractUserFromToken(token)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Get user from database
+	user, err := s.userRepo.GetByID(context.Background(), userID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if user == nil {
+		return nil, nil, errors.New("user not found")
+	}
+
+	if user.TenantID != tenantID {
+		return nil, nil, errors.New("tenant mismatch")
+	}
+
+	return user, roles, nil
+}
+
+func (s *AuthService) GetUserFromAccessToken(tokenString string) (*repo.User, []string, error) {
+	return s.GetUserFromToken(tokenString)
 }
 
 func (s *AuthService) GetUser(ctx context.Context, userID string) (*repo.User, error) {
@@ -174,21 +235,6 @@ func (s *AuthService) GetUserRoles(ctx context.Context, userID string) ([]string
 	return s.userRepo.GetUserRoles(ctx, userID)
 }
 
-func (s *AuthService) CheckPermission(ctx context.Context, userID, permission string) (bool, error) {
-	// Get user roles
-	roles, err := s.userRepo.GetUserRoles(ctx, userID)
-	if err != nil {
-		return false, err
-	}
-
-	// Check if any role has the permission
-	for _, roleName := range roles {
-		// Get role by name (simplified - in production, get by ID)
-		// For demo, we'll check if user has admin role
-		if roleName == "Admin" {
-			return true, nil
-		}
-	}
-
-	return false, nil
+func (s *AuthService) GetUserPermissions(ctx context.Context, userID string) ([]string, error) {
+	return s.userRepo.GetUserPermissions(ctx, userID)
 }

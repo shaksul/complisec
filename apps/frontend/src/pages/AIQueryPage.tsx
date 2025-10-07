@@ -1,8 +1,5 @@
-import { useState } from "react"
+﻿import { useState } from 'react'
 import {
-  Container,
-  Typography,
-  Paper,
   TextField,
   Button,
   Box,
@@ -11,109 +8,128 @@ import {
   FormControl,
   InputLabel,
   Chip,
-} from "@mui/material"
-import { Send, Psychology } from "@mui/icons-material"
-import { queryAI } from "@/shared/api/ai"
+  Stack,
+} from '@mui/material'
+import { SendRounded, PsychologyAltRounded } from '@mui/icons-material'
+import { queryAI } from '@/shared/api/ai'
+import { PageContainer, PageHeader, SectionCard } from '@/components/common/Page'
+
+type RoleKey = 'docs' | 'risks' | 'incidents' | 'compliance'
+
+const ROLES: Array<{ value: RoleKey; label: string }> = [
+  { value: 'docs', label: 'Документы и политики' },
+  { value: 'risks', label: 'Риски и оценка' },
+  { value: 'incidents', label: 'Инциденты и реагирование' },
+  { value: 'compliance', label: 'Комплаенс и аудит' },
+]
+
+const ROLE_HINTS: Record<RoleKey, string> = {
+  docs: 'docs — поиск и анализ регламентов, политик и процедур',
+  risks: 'risks — оценка рисков и рекомендации по обработке',
+  incidents: 'incidents — реагирование на инциденты и уроки, извлечённые из них',
+  compliance: 'compliance — соответствие стандартам и подготовка к проверкам',
+}
 
 export default function AIQueryPage() {
-  const [input, setInput] = useState("")
-  const [output, setOutput] = useState("")
-  const [role, setRole] = useState("docs")
+  const [input, setInput] = useState('')
+  const [output, setOutput] = useState('')
+  const [role, setRole] = useState<RoleKey>('docs')
   const [isLoading, setIsLoading] = useState(false)
 
   async function handleSend() {
     setIsLoading(true)
     try {
-      const res = await queryAI({
-        provider_id: "demo",
-        role: role,
-        input: input,
-        context: {}
+      const response = await queryAI({
+        provider_id: 'demo',
+        role,
+        input,
+        context: {},
       })
-      setOutput(res.output)
+      setOutput(response.output)
     } catch (error) {
-      setOutput("Ошибка: " + (error as any).message)
+      const message = (error as any)?.message ?? 'произошла ошибка'
+      setOutput(`Ошибка запроса: ${message}`)
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <Container maxWidth="lg">
-      <Box display="flex" alignItems="center" mb={3}>
-        <Psychology sx={{ mr: 1 }} />
-        <Typography variant="h4">AI Запросы</Typography>
-      </Box>
+    <PageContainer>
+      <PageHeader
+        title="AI-аналитика"
+        subtitle="Сформулируйте задачу для корпоративного ассистента: политика, риск, инцидент или комплаенс"
+        actions={<PsychologyAltRounded color="primary" fontSize="large" />}
+      />
 
-      <Paper sx={{ p: 3 }}>
-        <Box mb={3}>
-          <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel>Роль</InputLabel>
-            <Select
+      <SectionCard
+        title="Формулировка запроса"
+        description="Выберите контекст и опишите задачу, которую нужно решить"
+      >
+        <Stack spacing={2.5}>
+          <FormControl fullWidth>
+            <InputLabel id="ai-role">Контекст</InputLabel>
+            <Select<RoleKey>
+              labelId="ai-role"
               value={role}
-              label="Роль"
-              onChange={(e) => setRole(e.target.value)}
+              label="Контекст"
+              onChange={(event) => setRole(event.target.value as RoleKey)}
             >
-              <MenuItem value="docs">Анализ документов</MenuItem>
-              <MenuItem value="risks">Анализ рисков</MenuItem>
-              <MenuItem value="incidents">Анализ инцидентов</MenuItem>
-              <MenuItem value="compliance">Соответствие стандартам</MenuItem>
+              {ROLES.map((item) => (
+                <MenuItem key={item.value} value={item.value}>
+                  {item.label}
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
 
           <TextField
-            fullWidth
+            label="Опишите задачу"
             multiline
-            rows={4}
-            label="Введите ваш запрос"
+            minRows={5}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Например: Проанализируй этот документ на соответствие требованиям ИСО 27001..."
-            sx={{ mb: 2 }}
+            placeholder="Например: подготовь краткий обзор требований ISO 27001 для отчёта руководству"
+            onChange={(event) => setInput(event.target.value)}
           />
 
           <Button
             variant="contained"
-            startIcon={<Send />}
+            size="large"
+            startIcon={<SendRounded />}
             onClick={handleSend}
             disabled={!input.trim() || isLoading}
-            fullWidth
           >
-            {isLoading ? "Отправка..." : "Отправить запрос"}
+            {isLoading ? 'Запрос обрабатывается…' : 'Отправить ассистенту'}
           </Button>
-        </Box>
+        </Stack>
+      </SectionCard>
 
-        {output && (
-          <Box>
-            <Typography variant="h6" gutterBottom>
-              Ответ AI:
-            </Typography>
-            <Paper
-              variant="outlined"
-              sx={{
-                p: 2,
-                backgroundColor: "#f5f5f5",
-                whiteSpace: "pre-wrap",
-                fontFamily: "monospace",
-              }}
-            >
-              {output}
-            </Paper>
+      {output && (
+        <SectionCard title="Ответ ассистента" description="Результат можно скопировать или прикрепить к задаче">
+          <Box
+            component="pre"
+            sx={{
+              m: 0,
+              fontFamily: 'JetBrains Mono, Menlo, monospace',
+              whiteSpace: 'pre-wrap',
+              p: 2,
+              borderRadius: 2,
+              backgroundColor: (theme) => theme.palette.background.default,
+              border: (theme) => `1px solid ${theme.palette.divider}`,
+            }}
+          >
+            {output}
           </Box>
-        )}
+        </SectionCard>
+      )}
 
-        <Box mt={3}>
-          <Typography variant="body2" color="text.secondary">
-            <strong>Доступные роли:</strong>
-          </Typography>
-          <Box display="flex" gap={1} mt={1} flexWrap="wrap">
-            <Chip label="docs - Анализ документов" size="small" />
-            <Chip label="risks - Анализ рисков" size="small" />
-            <Chip label="incidents - Анализ инцидентов" size="small" />
-            <Chip label="compliance - Соответствие стандартам" size="small" />
-          </Box>
-        </Box>
-      </Paper>
-    </Container>
+      <SectionCard title="Подсказки по профилям">
+        <Stack direction="row" spacing={1} flexWrap="wrap">
+          {ROLES.map((item) => (
+            <Chip key={item.value} label={ROLE_HINTS[item.value]} size="small" />
+          ))}
+        </Stack>
+      </SectionCard>
+    </PageContainer>
   )
 }

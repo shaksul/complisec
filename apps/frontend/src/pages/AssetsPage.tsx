@@ -1,14 +1,51 @@
 import React, { useState, useEffect } from 'react';
 import {
-  assetsApi, 
-  Asset, 
-  AssetListParams, 
-  ASSET_TYPES, 
-  ASSET_CLASSES, 
-  CRITICALITY_LEVELS, 
-  ASSET_STATUSES 
+  Container,
+  Typography,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Button,
+  Box,
+  Chip,
+  LinearProgress,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Grid,
+  IconButton,
+  Tooltip,
+  TableSortLabel,
+} from '@mui/material';
+import {
+  Add,
+  Computer,
+  Edit,
+  Search,
+  FilterList,
+  Download,
+  Clear,
+  Delete,
+  Visibility
+} from '@mui/icons-material';
+import {
+  assetsApi,
+  Asset,
+  AssetListParams,
+  ASSET_TYPES,
+  ASSET_CLASSES,
+  CRITICALITY_LEVELS,
+  ASSET_STATUSES,
+  PaginationMeta,
 } from '../shared/api/assets';
-import { usersApi, User, UserCatalog } from '../shared/api/users';
+import { usersApi, UserCatalog } from '../shared/api/users';
+import { useAuth } from '../contexts/AuthContext';
 import Pagination from '../components/Pagination';
 import AssetModal from '../components/assets/AssetModal';
 import AssetDetailsModal from '../components/assets/AssetDetailsModal';
@@ -23,16 +60,21 @@ interface AssetFilters {
   search: string;
 }
 
+type SortField = 'name' | 'created_at' | 'type' | 'criticality' | 'status'
+type SortDirection = 'asc' | 'desc'
+
 export const AssetsPage: React.FC = () => {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [users, setUsers] = useState<UserCatalog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [pagination, setPagination] = useState({
+  const [pagination, setPagination] = useState<PaginationMeta>({
     page: 1,
     page_size: 20,
     total: 0,
-    total_pages: 0
+    total_pages: 0,
+    has_next: false,
+    has_prev: false,
   });
   const [filters, setFilters] = useState<AssetFilters>({
     type: '',
@@ -42,73 +84,60 @@ export const AssetsPage: React.FC = () => {
     owner_id: '',
     search: ''
   });
-  const [searchTerm, setSearchTerm] = useState('');
+  const [sortField, setSortField] = useState<SortField>('created_at');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [showFilters, setShowFilters] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [viewingAssetId, setViewingAssetId] = useState<string | null>(null);
   const [selectedAssets, setSelectedAssets] = useState<Asset[]>([]);
   const [showBulkModal, setShowBulkModal] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
-    loadAssets();
-    loadUsers();
-  }, [pagination.page, filters]);
+    if (user) {
+      void loadAssets();
+    } else {
+      setLoading(false);
+    }
+  }, [filters, pagination.page, pagination.page_size, user]);
 
-      // Debounce search
-      useEffect(() => {
-        console.log('Search term changed:', searchTerm);
-        const timer = setTimeout(() => {
-          console.log('Setting search filter:', searchTerm);
-          setFilters(prev => {
-            const newFilters = { 
-              type: prev.type || '',
-              class: prev.class || '',
-              status: prev.status || '',
-              criticality: prev.criticality || '',
-              owner_id: prev.owner_id || '',
-              search: searchTerm
-            };
-            console.log('New filters with search:', newFilters);
-            return newFilters;
-          });
-        }, searchTerm === '' ? 0 : 500); // No delay for empty search
+  useEffect(() => {
+    if (user) {
+      void loadUsers();
+    }
+  }, [user]);
 
-        return () => clearTimeout(timer);
-      }, [searchTerm]);
+  useEffect(() => {
+    setSelectedAssets([]);
+  }, [filters, pagination.page]);
 
   const loadAssets = async () => {
     try {
       setLoading(true);
+      setError(null);
       const params: AssetListParams = {
         page: pagination.page,
         page_size: pagination.page_size,
         ...filters
       };
       
-      console.log('Loading assets with params:', params);
-      console.log('Filters state:', filters);
-      console.log('Search term in filters:', filters.search);
       const response = await assetsApi.list(params);
-      console.log('Assets API response:', response);
-      console.log('Assets data:', response.data);
-      console.log('Assets pagination:', response.pagination);
-      if (response.data && response.data.length > 0) {
-        console.log('First asset:', response.data[0]);
+      setAssets(response.data ?? []);
+      if (response.pagination) {
+        setPagination(response.pagination);
       }
-      setAssets(response.data);
-      setPagination(response.pagination);
     } catch (err) {
       setError('Ошибка загрузки активов');
       console.error('Error loading assets:', err);
     } finally {
-      console.log('Setting loading to false');
       setLoading(false);
     }
   };
 
   const loadUsers = async () => {
     try {
-      const response = await usersApi.getUserCatalog();
+      const response = await usersApi.getUserCatalog({ page: 1, page_size: 100 });
       setUsers(response.data || []);
     } catch (err) {
       console.error('Error loading users:', err);
@@ -122,7 +151,20 @@ export const AssetsPage: React.FC = () => {
   };
 
   const handlePageChange = (page: number) => {
+    if (page < 1 || page === pagination.page || page > pagination.total_pages) {
+      return;
+    }
     setPagination(prev => ({ ...prev, page }));
+    setSelectedAssets([]);
+  };
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('desc');
+    }
   };
 
   const handleCreateAsset = async (assetData: any) => {
@@ -163,6 +205,10 @@ export const AssetsPage: React.FC = () => {
     setViewingAssetId(id);
   };
 
+  const handleEditAsset = (asset: Asset) => {
+    setEditingAsset(asset);
+  };
+
   const handleSelectAsset = (asset: Asset, selected: boolean) => {
     if (selected) {
       setSelectedAssets(prev => [...prev, asset]);
@@ -173,7 +219,7 @@ export const AssetsPage: React.FC = () => {
 
   const handleSelectAll = (selected: boolean) => {
     if (selected) {
-      setSelectedAssets(assets);
+      setSelectedAssets([...assets]);
     } else {
       setSelectedAssets([]);
     }
@@ -211,306 +257,396 @@ export const AssetsPage: React.FC = () => {
 
   const getCriticalityColor = (criticality: string) => {
     switch (criticality) {
-      case 'high': return 'text-red-600 bg-red-100';
-      case 'medium': return 'text-yellow-600 bg-yellow-100';
-      case 'low': return 'text-green-600 bg-green-100';
-      default: return 'text-gray-600 bg-gray-100';
+      case 'high': return 'error'
+      case 'medium': return 'warning'
+      case 'low': return 'success'
+      default: return 'default'
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'active': return 'text-green-600 bg-green-100';
-      case 'in_repair': return 'text-yellow-600 bg-yellow-100';
-      case 'storage': return 'text-blue-600 bg-blue-100';
-      case 'decommissioned': return 'text-red-600 bg-red-100';
-      default: return 'text-gray-600 bg-gray-100';
+      case 'active': return 'success'
+      case 'in_repair': return 'warning'
+      case 'storage': return 'info'
+      case 'decommissioned': return 'error'
+      default: return 'default'
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="text-lg">Загрузка...</div>
-      </div>
-    );
-  }
+  const clearFilters = () => {
+    setFilters({
+      type: '',
+      class: '',
+      status: '',
+      criticality: '',
+      owner_id: '',
+      search: ''
+    });
+  };
+
+  const getTypeLabel = (type: string) => {
+    return ASSET_TYPES?.find(t => t.value === type)?.label || type;
+  };
+
+  const getStatusLabel = (status: string) => {
+    return ASSET_STATUSES?.find(s => s.value === status)?.label || status;
+  };
+
+  const getCriticalityLabel = (criticality: string) => {
+    return CRITICALITY_LEVELS?.find(c => c.value === criticality)?.label || criticality;
+  };
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-4">Управление активами</h1>
-        
-        {/* Filters */}
-        <div className="bg-white p-4 rounded-lg shadow mb-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Поиск</label>
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Название или инв. номер"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Тип</label>
-              <select
-                value={filters.type}
-                onChange={(e) => handleFilterChange('type', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Все типы</option>
-                {ASSET_TYPES?.map(type => (
-                  <option key={type.value} value={type.value}>{type.label}</option>
-                )) || []}
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Класс</label>
-              <select
-                value={filters.class}
-                onChange={(e) => handleFilterChange('class', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Все классы</option>
-                {ASSET_CLASSES?.map(cls => (
-                  <option key={cls.value} value={cls.value}>{cls.label}</option>
-                )) || []}
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Статус</label>
-              <select
-                value={filters.status}
-                onChange={(e) => handleFilterChange('status', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Все статусы</option>
-                {ASSET_STATUSES?.map(status => (
-                  <option key={status.value} value={status.value}>{status.label}</option>
-                )) || []}
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Критичность</label>
-              <select
-                value={filters.criticality}
-                onChange={(e) => handleFilterChange('criticality', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Все уровни</option>
-                {CRITICALITY_LEVELS?.map(level => (
-                  <option key={level.value} value={level.value}>{level.label}</option>
-                )) || []}
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Владелец</label>
-              <select
-                value={filters.owner_id}
-                onChange={(e) => handleFilterChange('owner_id', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Все владельцы</option>
-                {users?.map(user => (
-                  <option key={user.id} value={user.id}>
-                    {user.first_name} {user.last_name}
-                  </option>
-                )) || []}
-              </select>
-            </div>
-          </div>
-        </div>
+    <Container maxWidth="lg">
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h4">Активы</Typography>
+        <Box display="flex" gap={1}>
+          <Button 
+            variant="outlined" 
+            startIcon={<FilterList />}
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            Фильтры
+          </Button>
+          <Button 
+            variant="outlined" 
+            startIcon={<Download />}
+            onClick={handleExport}
+          >
+            Экспорт
+          </Button>
+          <Button 
+            variant="contained" 
+            startIcon={<Add />} 
+            onClick={() => setShowCreateModal(true)}
+          >
+            Добавить актив
+          </Button>
+        </Box>
+      </Box>
 
-        {/* Actions */}
-        <div className="flex justify-between items-center">
-          <div className="flex space-x-2">
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              Добавить актив
-            </button>
-            <button
-              onClick={handleBulkOperation}
-              disabled={selectedAssets.length === 0}
-              className="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Массовые операции ({selectedAssets.length})
-            </button>
-            <button
-              onClick={handleExport}
-              className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
-            >
-              Экспорт
-            </button>
-          </div>
-          
-          <div className="text-sm text-gray-500">
-            Всего: {pagination.total} активов
-            {selectedAssets.length > 0 && ` • Выбрано: ${selectedAssets.length}`}
-          </div>
-        </div>
-      </div>
-
-      {/* Error message */}
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-          {error}
-        </div>
+        <Box mb={2} p={2} bgcolor="error.light" borderRadius={1}>
+          <Typography color="error">{error}</Typography>
+        </Box>
       )}
 
-      {/* Assets table */}
-      <div className="bg-white shadow overflow-hidden sm:rounded-md">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+      {/* Search and Filters */}
+      <Paper sx={{ mb: 2, p: 2 }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              placeholder="Поиск по названию или инв. номеру..."
+              value={filters.search}
+              onChange={(e) => handleFilterChange('search', e.target.value)}
+              InputProps={{
+                startAdornment: <Search sx={{ mr: 1, color: 'text.secondary' }} />
+              }}
+            />
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <Button
+              variant="outlined"
+              startIcon={<Clear />}
+              onClick={clearFilters}
+              fullWidth
+            >
+              Очистить
+            </Button>
+          </Grid>
+        </Grid>
+
+        {showFilters && (
+          <Grid container spacing={2} sx={{ mt: 2 }}>
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Тип</InputLabel>
+                <Select
+                value={filters.type}
+                onChange={(e) => handleFilterChange('type', e.target.value)}
+                  label="Тип"
+              >
+                  <MenuItem value="">Все</MenuItem>
+                {ASSET_TYPES?.map(type => (
+                    <MenuItem key={type.value} value={type.value}>
+                      {type.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Класс</InputLabel>
+                <Select
+                value={filters.class}
+                onChange={(e) => handleFilterChange('class', e.target.value)}
+                  label="Класс"
+              >
+                  <MenuItem value="">Все</MenuItem>
+                {ASSET_CLASSES?.map(cls => (
+                    <MenuItem key={cls.value} value={cls.value}>
+                      {cls.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Статус</InputLabel>
+                <Select
+                value={filters.status}
+                onChange={(e) => handleFilterChange('status', e.target.value)}
+                  label="Статус"
+              >
+                  <MenuItem value="">Все</MenuItem>
+                {ASSET_STATUSES?.map(status => (
+                    <MenuItem key={status.value} value={status.value}>
+                      {status.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Критичность</InputLabel>
+                <Select
+                value={filters.criticality}
+                onChange={(e) => handleFilterChange('criticality', e.target.value)}
+                  label="Критичность"
+              >
+                  <MenuItem value="">Все</MenuItem>
+                {CRITICALITY_LEVELS?.map(level => (
+                    <MenuItem key={level.value} value={level.value}>
+                      {level.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+        )}
+      </Paper>
+
+      {/* Bulk Actions */}
+      {selectedAssets.length > 0 && (
+        <Paper sx={{ mb: 2, p: 2 }}>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Typography variant="body2">
+              Выбрано активов: {selectedAssets.length}
+            </Typography>
+            <Button
+              variant="contained"
+              color="secondary"
+              onClick={handleBulkOperation}
+            >
+              Массовые операции
+            </Button>
+          </Box>
+        </Paper>
+      )}
+
+      <Paper>
+        <TableContainer>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell padding="checkbox">
                   <input
                     type="checkbox"
                     checked={selectedAssets.length === assets.length && assets.length > 0}
                     onChange={(e) => handleSelectAll(e.target.checked)}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    style={{ transform: 'scale(1.2)' }}
                   />
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Инв. номер
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={sortField === 'name'}
+                    direction={sortField === 'name' ? sortDirection : 'asc'}
+                    onClick={() => handleSort('name')}
+                  >
                   Название
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Тип
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Владелец
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Ответственный
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>Тип</TableCell>
+                <TableCell>Владелец</TableCell>
+                <TableCell>Ответственный</TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={sortField === 'criticality'}
+                    direction={sortField === 'criticality' ? sortDirection : 'asc'}
+                    onClick={() => handleSort('criticality')}
+                  >
                   Критичность
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={sortField === 'status'}
+                    direction={sortField === 'status' ? sortDirection : 'asc'}
+                    onClick={() => handleSort('status')}
+                  >
                   Статус
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Действия
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {assets?.map((asset) => (
-                <tr key={asset.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={sortField === 'created_at'}
+                    direction={sortField === 'created_at' ? sortDirection : 'asc'}
+                    onClick={() => handleSort('created_at')}
+                  >
+                    Дата создания
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>Действия</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={9} align="center">
+                    <LinearProgress />
+                    <Typography sx={{ mt: 1 }}>Загрузка активов...</Typography>
+                  </TableCell>
+                </TableRow>
+              ) : assets.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={9} align="center">
+                    <Typography>Нет активов для отображения.</Typography>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                assets.map((asset) => (
+                  <TableRow key={asset.id} hover>
+                    <TableCell padding="checkbox">
                     <input
                       type="checkbox"
                       checked={selectedAssets.some(a => a.id === asset.id)}
                       onChange={(e) => handleSelectAsset(asset, e.target.checked)}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {asset.inventory_number}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        style={{ transform: 'scale(1.2)' }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Box display="flex" alignItems="center">
+                        <Computer sx={{ mr: 1 }} />
+                        <Box>
+                          <Typography variant="body2" fontWeight="medium">
                       {asset.name}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {ASSET_TYPES?.find(t => t.value === asset.type)?.label || asset.type}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {asset.owner_name || 'Организация'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Инв. №: {asset.inventory_number}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">
+                        {getTypeLabel(asset.type)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">
+                    {asset.owner_name || 'Не назначен'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">
                     {asset.responsible_user_name || 'Не назначен'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getCriticalityColor(asset.criticality)}`}>
-                      {CRITICALITY_LEVELS?.find(c => c.value === asset.criticality)?.label || asset.criticality}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(asset.status)}`}>
-                      {ASSET_STATUSES?.find(s => s.value === asset.status)?.label || asset.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex space-x-2">
-                      <button
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={getCriticalityLabel(asset.criticality)}
+                        color={getCriticalityColor(asset.criticality) as any}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={getStatusLabel(asset.status)}
+                        color={getStatusColor(asset.status) as any}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">
+                        {new Date(asset.created_at).toLocaleDateString('ru-RU')}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Box display="flex" gap={0.5}>
+                        <Tooltip title="Просмотр деталей">
+                          <IconButton 
+                            size="small"
+                            color="primary"
                         onClick={() => handleViewAsset(asset.id)}
-                        className="text-green-600 hover:text-green-900"
-                        title="Просмотр деталей"
-                      >
-                        Просмотр
-                      </button>
-                      <button
-                        onClick={() => setEditingAsset(asset)}
-                        className="text-blue-600 hover:text-blue-900"
-                        title="Редактировать"
-                      >
-                        Редактировать
-                      </button>
-                      <button
+                          >
+                            <Visibility />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Редактировать актив">
+                          <IconButton 
+                            size="small"
+                            color="primary"
+                            onClick={() => handleEditAsset(asset)}
+                          >
+                            <Edit />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Удалить актив">
+                          <IconButton 
+                            size="small"
+                            color="error"
                         onClick={() => handleDeleteAsset(asset.id)}
-                        className="text-red-600 hover:text-red-900"
-                        title="Удалить"
-                      >
-                        Удалить
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )) || []}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                          >
+                            <Delete />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
 
       {/* Pagination */}
-      <div className="mt-4">
+      <Box mt={2}>
         <Pagination
           currentPage={pagination.page}
           totalPages={pagination.total_pages}
-          hasNext={pagination.page < pagination.total_pages}
-          hasPrev={pagination.page > 1}
+          hasNext={pagination.has_next}
+          hasPrev={pagination.has_prev}
           onPageChange={handlePageChange}
         />
-      </div>
+      </Box>
 
       {/* Create/Edit Modal */}
-      {(showCreateModal || editingAsset) && (
-        <AssetModal
-          asset={editingAsset}
-          users={users}
-          onSave={editingAsset ? 
-            (data) => handleUpdateAsset(editingAsset.id, data) : 
-            handleCreateAsset
-          }
-          onClose={() => {
-            setShowCreateModal(false);
-            setEditingAsset(null);
-          }}
-        />
-      )}
+      <AssetModal
+        open={showCreateModal || !!editingAsset}
+        asset={editingAsset}
+        users={users}
+        onSave={editingAsset ? 
+          (data) => handleUpdateAsset(editingAsset.id, data) : 
+          handleCreateAsset
+        }
+        onClose={() => {
+          setShowCreateModal(false);
+          setEditingAsset(null);
+        }}
+      />
 
       {/* Asset Details Modal */}
       {viewingAssetId && (
         <AssetDetailsModal
           assetId={viewingAssetId}
           onClose={() => setViewingAssetId(null)}
-          onEdit={(asset) => {
-            setViewingAssetId(null);
-            setEditingAsset(asset);
-          }}
         />
       )}
 
@@ -522,6 +658,6 @@ export const AssetsPage: React.FC = () => {
           onSuccess={handleBulkSuccess}
         />
       )}
-    </div>
+    </Container>
   );
 };

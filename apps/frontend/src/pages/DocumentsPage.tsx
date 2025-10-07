@@ -34,7 +34,6 @@ import {
   Visibility,
   History,
   Search,
-  FilterList,
 } from "@mui/icons-material"
 import {
   getDocuments,
@@ -46,33 +45,12 @@ import {
   getDocumentStatusColor,
   type Document,
   type CreateDocumentDTO,
-  type UpdateDocumentDTO,
   type DocumentFilters,
 } from "../shared/api/documents"
+import { useAuth } from "../contexts/AuthContext"
 import CreateDocumentWizard from "../components/docs/CreateDocumentWizard"
 import DocumentVersionsDialog from "../components/docs/DocumentVersionsDialog"
 
-interface TabPanelProps {
-  children?: React.ReactNode
-  index: number
-  value: number
-}
-
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props
-
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`documents-tabpanel-${index}`}
-      aria-labelledby={`documents-tab-${index}`}
-      {...other}
-    >
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
-    </div>
-  )
-}
 
 function DocumentsPage() {
   const [documents, setDocuments] = useState<Document[]>([])
@@ -94,23 +72,21 @@ function DocumentsPage() {
   // Form states
   const [formData, setFormData] = useState<CreateDocumentDTO>({
     title: "",
-    code: "",
     description: "",
     type: "policy",
     category: "",
     tags: [],
-    ownerId: "",
-    classification: "Internal",
-    effectiveFrom: "",
-    reviewPeriodMonths: 12,
-    assetIds: [],
-    riskIds: [],
-    controlIds: [],
   })
 
+  const { user } = useAuth()
+
   useEffect(() => {
-    loadDocuments()
-  }, [searchTerm, statusFilter, typeFilter])
+    if (user) {
+      loadDocuments()
+    } else {
+      setLoading(false)
+    }
+  }, [searchTerm, statusFilter, typeFilter, user])
 
   const loadDocuments = async () => {
     try {
@@ -186,18 +162,10 @@ function DocumentsPage() {
   const resetForm = () => {
     setFormData({
       title: "",
-      code: "",
       description: "",
       type: "policy",
       category: "",
       tags: [],
-      ownerId: "",
-      classification: "Internal",
-      effectiveFrom: "",
-      reviewPeriodMonths: 12,
-      assetIds: [],
-      riskIds: [],
-      controlIds: [],
     })
     setSelectedDocument(null)
   }

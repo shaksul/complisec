@@ -7,6 +7,7 @@ interface User {
   firstName: string
   lastName: string
   roles: string[]
+  permissions: string[]
 }
 
 interface AuthContextType {
@@ -37,14 +38,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     const init = async () => {
       const token = localStorage.getItem('access_token')
-      if (!token) {
+      const refreshToken = localStorage.getItem('refresh_token')
+      
+      if (!token || !refreshToken) {
         setIsLoading(false)
         return
       }
+      
       try {
         const response = await authApi.me()
         if (response && response.user) {
-          setUser(response.user as unknown as User)
+          setUser({
+            id: response.user.id,
+            email: response.user.email,
+            firstName: response.user.firstName,
+            lastName: response.user.lastName,
+            roles: response.user.roles || [],
+            permissions: response.user.permissions || []
+          })
         }
       } catch (e) {
         localStorage.removeItem('access_token')
@@ -62,7 +73,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const response = await authApi.login({ email, password, tenant_id: DEMO_TENANT_ID })
       localStorage.setItem('access_token', response.access_token)
       localStorage.setItem('refresh_token', response.refresh_token)
-      setUser(response.user as unknown as User)
+      
+      // Загружаем полные данные пользователя с правами
+      const userResponse = await authApi.me()
+      if (userResponse && userResponse.user) {
+        setUser({
+          id: userResponse.user.id,
+          email: userResponse.user.email,
+          firstName: userResponse.user.firstName,
+          lastName: userResponse.user.lastName,
+          roles: userResponse.user.roles || [],
+          permissions: userResponse.user.permissions || []
+        })
+      }
     } catch (error) {
       throw error
     }

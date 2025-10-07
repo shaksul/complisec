@@ -1,17 +1,22 @@
+version: '3.8'
+
 services:
   postgres:
-    image: postgres:15
+    image: postgres:15-alpine
     environment:
-      POSTGRES_DB: risknexus
-      POSTGRES_USER: risknexus
-      POSTGRES_PASSWORD: risknexus123
+      POSTGRES_DB: complisec
+      POSTGRES_USER: complisec
+      POSTGRES_PASSWORD: complisec123
+      # Принудительная установка UTF-8 кодировки
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=ru_RU.UTF-8 --lc-ctype=ru_RU.UTF-8"
+      LC_ALL: "ru_RU.UTF-8"
+      LANG: "ru_RU.UTF-8"
     ports:
-      - "5433:5432"
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./apps/backend/migrations:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U risknexus -d risknexus"]
+      test: ["CMD-SHELL", "pg_isready -U complisec -d complisec"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -23,49 +28,28 @@ services:
     ports:
       - "8080:8080"
     environment:
-      DATABASE_URL: postgres://risknexus:risknexus123@postgres:5432/risknexus?sslmode=disable
-      JWT_SECRET: your-secret-key-change-in-production
+      - DATABASE_URL=postgres://complisec:complisec123@postgres:5432/complisec?sslmode=disable&client_encoding=UTF8
+      - JWT_SECRET=your-secret-key-here
+      - PORT=8080
+      # Принудительная установка UTF-8 для Go приложения
+      - LC_ALL=ru_RU.UTF-8
+      - LANG=ru_RU.UTF-8
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
-      - ./apps/backend:/app
+      - ./storage:/root/storage
+    restart: unless-stopped
 
   frontend:
     build:
       context: ./apps/frontend
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
-    environment:
-      VITE_API_URL: http://localhost:8080/api
-    volumes:
-      - ./apps/frontend:/app
-      - /app/node_modules
-    command: npm run dev
-
-  open-webui:
-    image: ghcr.io/open-webui/open-webui:ollama
-    container_name: open-webui
-    ports:
-      - "11434:8080"
-    deploy:
-      restart_policy:
-        condition: always
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    volumes:
-      - open-webui:/app/backend/data
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
 
 volumes:
   postgres_data:
-  open-webui:
-
-

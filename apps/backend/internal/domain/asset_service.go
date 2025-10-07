@@ -3,7 +3,11 @@ package domain
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
+	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"risknexus/backend/internal/dto"
@@ -349,6 +353,151 @@ func (s *AssetService) AddDocument(ctx context.Context, assetID string, req dto.
 
 func (s *AssetService) GetAssetDocuments(ctx context.Context, assetID string) ([]repo.AssetDocument, error) {
 	return s.assetRepo.GetAssetDocuments(ctx, assetID)
+}
+
+// UploadDocument uploads a new document file to an asset
+func (s *AssetService) UploadDocument(ctx context.Context, assetID string, req dto.AssetDocumentUploadRequest, createdBy, tenantID string) (*dto.AssetDocumentResponse, error) {
+	log.Printf("DEBUG: asset_service.UploadDocument assetID=%s type=%s", assetID, req.DocumentType)
+
+	// Check if asset exists
+	asset, err := s.assetRepo.GetByID(ctx, assetID)
+	if err != nil {
+		return nil, err
+	}
+	if asset == nil {
+		return nil, errors.New("asset not found")
+	}
+
+	// Generate unique filename
+	fileID := uuid.New().String()
+	fileName := fileID
+	if req.Title != "" {
+		fileName = fmt.Sprintf("%s_%s", fileID, req.Title)
+	}
+
+	// Create upload directory
+	uploadDir := fmt.Sprintf("./uploads/%s/assets/%s", tenantID, assetID)
+	err = os.MkdirAll(uploadDir, 0755)
+	if err != nil {
+		log.Printf("ERROR: asset_service.UploadDocument MkdirAll: %v", err)
+		return nil, err
+	}
+
+	// Save file
+	filePath := filepath.Join(uploadDir, fileName)
+	err = os.WriteFile(filePath, req.File, 0644)
+	if err != nil {
+		log.Printf("ERROR: asset_service.UploadDocument WriteFile: %v", err)
+		return nil, err
+	}
+
+	// Detect MIME type
+	mimeType := http.DetectContentType(req.File)
+
+	// Add document to database
+	documentID := uuid.New().String()
+	err = s.assetRepo.AddDocumentWithFile(ctx, assetID, documentID, req.DocumentType, filePath, fileName, mimeType, int64(len(req.File)), createdBy)
+	if err != nil {
+		log.Printf("ERROR: asset_service.UploadDocument repo.AddDocumentWithFile: %v", err)
+		// Clean up file
+		os.Remove(filePath)
+		return nil, err
+	}
+
+	// Log in history
+	err = s.assetRepo.AddHistory(ctx, assetID, "document_uploaded", "", req.DocumentType, createdBy)
+	if err != nil {
+		log.Printf("WARN: asset_service.UploadDocument AddHistory: %v", err)
+	}
+
+	// Return response
+	response := &dto.AssetDocumentResponse{
+		ID:           documentID,
+		AssetID:      assetID,
+		Title:        req.Title,
+		DocumentType: req.DocumentType,
+		Mime:         mimeType,
+		SizeBytes:    int64(len(req.File)),
+		DownloadURL:  fmt.Sprintf("/api/v1/assets/documents/%s/download", documentID),
+		CreatedBy:    createdBy,
+		CreatedAt:    time.Now(),
+	}
+
+	log.Printf("DEBUG: asset_service.UploadDocument success id=%s", documentID)
+	return response, nil
+}
+
+// LinkDocument links an existing document to an asset
+func (s *AssetService) LinkDocument(ctx context.Context, assetID string, req dto.AssetDocumentLinkRequest, createdBy string) (*dto.AssetDocumentResponse, error) {
+	log.Printf("DEBUG: asset_service.LinkDocument assetID=%s docID=%s", assetID, req.DocumentID)
+
+	// Check if asset exists
+	asset, err := s.assetRepo.GetByID(ctx, assetID)
+	if err != nil {
+		return nil, err
+	}
+	if asset == nil {
+		return nil, errors.New("asset not found")
+	}
+
+	// Get document from storage
+	doc, err := s.assetRepo.GetDocumentFromStorage(ctx, req.DocumentID)
+	if err != nil {
+		return nil, err
+	}
+	if doc == nil {
+		return nil, errors.New("document not found in storage")
+	}
+
+	// Link document to asset
+	documentID := uuid.New().String()
+	err = s.assetRepo.LinkDocumentToAsset(ctx, assetID, documentID, req.DocumentID, req.DocumentType, createdBy)
+	if err != nil {
+		log.Printf("ERROR: asset_service.LinkDocument repo.LinkDocumentToAsset: %v", err)
+		return nil, err
+	}
+
+	// Log in history
+	err = s.assetRepo.AddHistory(ctx, assetID, "document_linked", "", req.DocumentType, createdBy)
+	if err != nil {
+		log.Printf("WARN: asset_service.LinkDocument AddHistory: %v", err)
+	}
+
+	// Return response
+	response := &dto.AssetDocumentResponse{
+		ID:           documentID,
+		AssetID:      assetID,
+		Title:        doc.Title,
+		DocumentType: req.DocumentType,
+		Mime:         doc.Mime,
+		SizeBytes:    doc.SizeBytes,
+		DownloadURL:  fmt.Sprintf("/api/v1/assets/documents/%s/download", documentID),
+		CreatedBy:    createdBy,
+		CreatedAt:    time.Now(),
+	}
+
+	log.Printf("DEBUG: asset_service.LinkDocument success id=%s", documentID)
+	return response, nil
+}
+
+// GetDocumentDownloadPath returns the file path for downloading a document
+func (s *AssetService) GetDocumentDownloadPath(ctx context.Context, documentID, userID string) (string, string, error) {
+	doc, err := s.assetRepo.GetDocumentByID(ctx, documentID)
+	if err != nil {
+		return "", "", err
+	}
+	if doc == nil {
+		return "", "", errors.New("document not found")
+	}
+
+	// Extract filename from file path
+	fileName := filepath.Base(doc.FilePath)
+	return doc.FilePath, fileName, nil
+}
+
+// GetDocumentStorage returns documents from storage with pagination and filtering
+func (s *AssetService) GetDocumentStorage(ctx context.Context, tenantID string, req dto.DocumentStorageRequest) ([]dto.DocumentStorageResponse, int64, error) {
+	return s.assetRepo.GetDocumentStorage(ctx, tenantID, req)
 }
 
 func (s *AssetService) AddSoftware(ctx context.Context, assetID string, req dto.AssetSoftwareRequest, addedBy string) error {

@@ -1,8 +1,10 @@
-import React, { useState } from 'react'
+﻿import React, { useState } from 'react'
 import {
   AppBar,
+  Avatar,
   Box,
   CssBaseline,
+  Divider,
   Drawer,
   IconButton,
   List,
@@ -10,52 +12,73 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  Toolbar,
-  Typography,
-  Avatar,
+  ListSubheader,
   Menu,
   MenuItem,
+  Toolbar,
+  Typography,
 } from '@mui/material'
-import {
-  Menu as MenuIcon,
-  Dashboard,
-  People,
-  Computer,
-  Warning,
-  Description,
-  Report,
-  School,
-  Psychology,
-  Gavel,
-  Logout,
-  AdminPanelSettings,
-  Security,
-} from '@mui/icons-material'
+import { MenuRounded } from '@mui/icons-material'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { PRIMARY_NAVIGATION, ADMIN_NAVIGATION } from '../shared/navigation'
+import { usePermissions } from '../hooks/usePermissions'
+import { LogoutIcon } from '../shared/icons'
 
-const drawerWidth = 240
-
-const menuItems = [
-  { text: 'Дашборд', icon: <Dashboard />, path: '/dashboard' },
-  { text: 'Пользователи', icon: <People />, path: '/users' },
-  { text: 'Активы', icon: <Computer />, path: '/assets' },
-  { text: 'Риски', icon: <Warning />, path: '/risks' },
-  { text: 'Документы', icon: <Description />, path: '/documents' },
-  { text: 'Инциденты', icon: <Report />, path: '/incidents' },
-  { text: 'Обучение', icon: <School />, path: '/training' },
-  { text: 'Соответствие', icon: <Gavel />, path: '/compliance' },
-  { text: 'AI Провайдеры', icon: <Psychology />, path: '/ai/providers' },
-  { text: 'AI Запросы', icon: <Psychology />, path: '/ai/query' },
-]
-
-const adminMenuItems = [
-  { text: 'Управление пользователями', icon: <AdminPanelSettings />, path: '/admin/users' },
-  { text: 'Роли и права', icon: <Security />, path: '/admin/roles' },
-]
+const drawerWidth = 264
 
 interface LayoutProps {
   children: React.ReactNode
+}
+
+const NavigationList: React.FC<{
+  items: typeof PRIMARY_NAVIGATION
+  currentPath: string
+  onNavigate: (url: string) => void
+}> = ({ items, currentPath, onNavigate }) => {
+  const { hasPermission, hasAnyPermission, hasAllPermissions } = usePermissions()
+
+  // Фильтруем элементы навигации по правам доступа
+  const filteredItems = items.filter(item => {
+    // Если нет требований к правам, показываем элемент
+    if (!item.permission && !item.permissions) {
+      return true
+    }
+
+    // Проверяем конкретное право
+    if (item.permission) {
+      return hasPermission(item.permission)
+    }
+
+    // Проверяем массив прав
+    if (item.permissions && item.permissions.length > 0) {
+      return item.requireAll 
+        ? hasAllPermissions(item.permissions)
+        : hasAnyPermission(item.permissions)
+    }
+
+    return true
+  })
+
+  return (
+    <List disablePadding sx={{ px: 1 }}>
+      {filteredItems.map((item) => (
+        <ListItem key={item.to} disablePadding sx={{ mb: 0.5 }}>
+          <ListItemButton
+            selected={currentPath.startsWith(item.to)}
+            onClick={() => onNavigate(item.to)}
+            sx={{ px: 2, py: 1.1 }}
+          >
+            <ListItemIcon sx={{ minWidth: 40, color: 'inherit' }}>{item.icon}</ListItemIcon>
+            <ListItemText
+              primary={item.label}
+              primaryTypographyProps={{ variant: 'body2', fontWeight: 600 }}
+            />
+          </ListItemButton>
+        </ListItem>
+      ))}
+    </List>
+  )
 }
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
@@ -65,70 +88,65 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation()
   const { user, logout } = useAuth()
 
-  const handleDrawerToggle = () => {
-    setMobileOpen(!mobileOpen)
-  }
-
-  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget)
-  }
-
-  const handleMenuClose = () => {
-    setAnchorEl(null)
-  }
-
-  const handleLogout = () => {
-    logout()
-    handleMenuClose()
-  }
-
-  const drawer = (
-    <div>
-      <Toolbar>
-        <Typography variant="h6" noWrap component="div">
-          RiskNexus
-        </Typography>
+  const drawerContent = (
+    <Box height="100%" display="flex" flexDirection="column">
+      <Toolbar sx={{ px: 3, py: 2.5 }}>
+        <Box>
+          <Typography variant="h6" fontWeight={700} letterSpacing="0.08em">
+            RISKNEXUS
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Центр управления безопасностью
+          </Typography>
+        </Box>
       </Toolbar>
-      <List>
-        {menuItems.map((item) => (
-          <ListItem key={item.text} disablePadding>
-            <ListItemButton
-              selected={location.pathname === item.path}
-              onClick={() => navigate(item.path)}
-            >
-              <ListItemIcon>{item.icon}</ListItemIcon>
-              <ListItemText primary={item.text} />
-            </ListItemButton>
-          </ListItem>
-        ))}
-        
-        {/* Раздел администрирования */}
-        <ListItem disablePadding>
-          <ListItemText 
-            primary="Администрирование" 
-            sx={{ 
-              px: 2, 
-              py: 1, 
-              color: 'text.secondary',
-              fontSize: '0.875rem',
-              fontWeight: 'bold'
-            }} 
-          />
-        </ListItem>
-        {adminMenuItems.map((item) => (
-          <ListItem key={item.text} disablePadding>
-            <ListItemButton
-              selected={location.pathname === item.path}
-              onClick={() => navigate(item.path)}
-              sx={{ pl: 4 }}
-            >
-              <ListItemIcon>{item.icon}</ListItemIcon>
-              <ListItemText primary={item.text} />
-            </ListItemButton>
-          </ListItem>
-        ))}
-      </List>
-    </div>
+
+      <Divider sx={{ mx: 2, mb: 1 }} />
+
+      <Box flexGrow={1} overflow="auto" sx={{ pb: 2 }}>
+        <NavigationList
+          items={PRIMARY_NAVIGATION}
+          currentPath={location.pathname}
+          onNavigate={(url) => {
+            navigate(url)
+            setMobileOpen(false)
+          }}
+        />
+
+        <Divider sx={{ mx: 2, my: 2 }} />
+        <ListSubheader
+          inset
+          sx={{
+            px: 3,
+            py: 1.5,
+            fontSize: 12,
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            color: 'text.secondary',
+          }}
+        >
+          Администрирование
+        </ListSubheader>
+        <NavigationList
+          items={ADMIN_NAVIGATION}
+          currentPath={location.pathname}
+          onNavigate={(url) => {
+            navigate(url)
+            setMobileOpen(false)
+          }}
+        />
+      </Box>
+
+      <Box
+        px={3}
+        py={2}
+        sx={{ borderTop: (theme) => `1px solid ${theme.palette.divider}` }}
+      >
+        <Typography variant="caption" color="text.secondary">
+          © {new Date().getFullYear()} RiskNexus Platform
+        </Typography>
+      </Box>
+    </Box>
   )
 
   return (
@@ -136,100 +154,110 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       <CssBaseline />
       <AppBar
         position="fixed"
+        color="default"
+        elevation={0}
         sx={{
+          backgroundColor: 'background.paper',
+          color: 'text.primary',
+          borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
           width: { sm: `calc(100% - ${drawerWidth}px)` },
           ml: { sm: `${drawerWidth}px` },
         }}
       >
-        <Toolbar>
+        <Toolbar sx={{ gap: 2 }}>
           <IconButton
             color="inherit"
-            aria-label="open drawer"
             edge="start"
-            onClick={handleDrawerToggle}
-            sx={{ mr: 2, display: { sm: 'none' } }}
+            onClick={() => setMobileOpen((prev) => !prev)}
+            sx={{ display: { sm: 'none' } }}
+            aria-label="Открыть меню"
           >
-            <MenuIcon />
+            <MenuRounded />
           </IconButton>
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            Система управления рисками и ИБ-документацией
-          </Typography>
+
+          <Box flexGrow={1} minWidth={0}>
+            <Typography variant="h6" fontWeight={600} noWrap>
+              Консоль управления кибербезопасностью
+            </Typography>
+            <Typography variant="body2" color="text.secondary" noWrap>
+              Единый мониторинг инцидентов, активов, рисков и соблюдения требований
+            </Typography>
+          </Box>
+
           <IconButton
             size="large"
-            aria-label="account of current user"
-            aria-controls="menu-appbar"
+            onClick={(event) => setAnchorEl(event.currentTarget)}
             aria-haspopup="true"
-            onClick={handleMenuOpen}
+            aria-controls="user-menu"
             color="inherit"
           >
-            <Avatar sx={{ width: 32, height: 32 }}>
-              {user?.firstName?.[0]}{user?.lastName?.[0]}
+            <Avatar sx={{ width: 36, height: 36, fontWeight: 600 }}>
+              {(user?.firstName?.[0] ?? '').toUpperCase()}
+              {(user?.lastName?.[0] ?? '').toUpperCase()}
             </Avatar>
           </IconButton>
+
           <Menu
-            id="menu-appbar"
+            id="user-menu"
             anchorEl={anchorEl}
-            anchorOrigin={{
-              vertical: 'top',
-              horizontal: 'right',
-            }}
-            keepMounted
-            transformOrigin={{
-              vertical: 'top',
-              horizontal: 'right',
-            }}
             open={Boolean(anchorEl)}
-            onClose={handleMenuClose}
+            onClose={() => setAnchorEl(null)}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
           >
-            <MenuItem onClick={handleLogout}>
+            <MenuItem
+              onClick={() => {
+                logout()
+                setAnchorEl(null)
+              }}
+            >
               <ListItemIcon>
-                <Logout fontSize="small" />
+                <LogoutIcon fontSize="small" />
               </ListItemIcon>
-              <ListItemText>Выйти</ListItemText>
+              <ListItemText primary="Выйти" />
             </MenuItem>
           </Menu>
         </Toolbar>
       </AppBar>
-      <Box
-        component="nav"
-        sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}
-        aria-label="mailbox folders"
-      >
+
+      <Box component="nav" sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}>
         <Drawer
           variant="temporary"
           open={mobileOpen}
-          onClose={handleDrawerToggle}
-          ModalProps={{
-            keepMounted: true,
-          }}
+          onClose={() => setMobileOpen(false)}
+          ModalProps={{ keepMounted: true }}
           sx={{
             display: { xs: 'block', sm: 'none' },
             '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
           }}
         >
-          {drawer}
+          {drawerContent}
         </Drawer>
         <Drawer
           variant="permanent"
+          open
           sx={{
             display: { xs: 'none', sm: 'block' },
             '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
           }}
-          open
         >
-          {drawer}
+          {drawerContent}
         </Drawer>
       </Box>
+
       <Box
         component="main"
         sx={{
           flexGrow: 1,
-          p: 3,
+          minHeight: '100vh',
+          backgroundColor: 'background.default',
           width: { sm: `calc(100% - ${drawerWidth}px)` },
         }}
       >
         <Toolbar />
-        {children}
+        <Box component="section" sx={{ px: { xs: 2, sm: 4 }, py: 4 }}>
+          {children}
+        </Box>
       </Box>
     </Box>
   )

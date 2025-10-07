@@ -101,6 +101,7 @@ func (r *CachedRoleRepo) Update(ctx context.Context, id, name, description strin
 	if err == nil && role != nil {
 		r.invalidateRoleCache(ctx, role.TenantID)
 		r.cache.Delete(ctx, cache.GenerateKey("role", role.ID))
+		r.cache.Delete(ctx, cache.GenerateKey("role_with_permissions", role.ID))
 	}
 
 	return nil
@@ -183,6 +184,8 @@ func (r *CachedRoleRepo) SetRolePermissions(ctx context.Context, roleID string, 
 
 	// Инвалидируем кэш прав роли
 	r.cache.Delete(ctx, cache.GenerateKey("role_permissions", roleID))
+	// Инвалидируем кэш роли с правами
+	r.cache.Delete(ctx, cache.GenerateKey("role_with_permissions", roleID))
 
 	return nil
 }

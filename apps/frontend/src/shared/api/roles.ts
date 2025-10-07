@@ -57,7 +57,12 @@ export const rolesApi = {
 
   // Обновить роль
   updateRole: async (id: string, data: UpdateRoleRequest): Promise<void> => {
-    await apiClient.put(`/roles/${id}`, data);
+    console.log('API updateRole called with:', { id, data });
+    console.log('data.permission_ids:', data.permission_ids);
+    console.log('data.permission_ids length:', data.permission_ids?.length);
+    
+    const response = await apiClient.put(`/roles/${id}`, data);
+    console.log('API updateRole response:', response);
   },
 
   // Удалить роль

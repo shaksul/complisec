@@ -2,87 +2,80 @@ package domain
 
 import (
 	"context"
-	"time"
 
+	"risknexus/backend/internal/dto"
 	"risknexus/backend/internal/repo"
-
-	"github.com/google/uuid"
 )
 
-type TrainingService struct {
-	trainingRepo *repo.TrainingRepo
-	auditRepo    *repo.AuditRepo
-}
+// TrainingServiceInterface - интерфейс для TrainingService
+type TrainingServiceInterface interface {
+	// Materials management
+	CreateMaterial(ctx context.Context, tenantID string, req dto.CreateMaterialRequest, createdBy string) (*repo.Material, error)
+	GetMaterial(ctx context.Context, id string) (*repo.Material, error)
+	ListMaterials(ctx context.Context, tenantID string, filters map[string]interface{}) ([]repo.Material, error)
+	UpdateMaterial(ctx context.Context, id string, req dto.UpdateMaterialRequest, updatedBy string) error
+	DeleteMaterial(ctx context.Context, id string, deletedBy string) error
 
-func NewTrainingService(trainingRepo *repo.TrainingRepo, auditRepo *repo.AuditRepo) *TrainingService {
-	return &TrainingService{
-		trainingRepo: trainingRepo,
-		auditRepo:    auditRepo,
-	}
-}
+	// Courses management
+	CreateCourse(ctx context.Context, tenantID string, req dto.CreateCourseRequest, createdBy string) (*repo.TrainingCourse, error)
+	GetCourse(ctx context.Context, id string) (*repo.TrainingCourse, error)
+	ListCourses(ctx context.Context, tenantID string, filters map[string]interface{}) ([]repo.TrainingCourse, error)
+	UpdateCourse(ctx context.Context, id string, req dto.UpdateCourseRequest, updatedBy string) error
+	DeleteCourse(ctx context.Context, id string, deletedBy string) error
+	AddMaterialToCourse(ctx context.Context, courseID, materialID string, req dto.CourseMaterialRequest, addedBy string) error
+	RemoveMaterialFromCourse(ctx context.Context, courseID, materialID string, removedBy string) error
+	GetCourseMaterials(ctx context.Context, courseID string) ([]repo.CourseMaterial, error)
 
-func (s *TrainingService) CreateMaterial(ctx context.Context, tenantID, title, materialType, uri string, description, createdBy *string) (*repo.Material, error) {
-	material := repo.Material{
-		ID:          uuid.New().String(),
-		TenantID:    tenantID,
-		Title:       title,
-		Description: description,
-		URI:         uri,
-		Type:        materialType,
-		CreatedBy:   createdBy,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
-	}
+	// Quiz management
+	CreateQuizQuestion(ctx context.Context, materialID string, req dto.CreateQuizQuestionRequest, createdBy string) (*repo.QuizQuestion, error)
+	GetQuizQuestion(ctx context.Context, id string) (*repo.QuizQuestion, error)
+	ListQuizQuestions(ctx context.Context, materialID string) ([]repo.QuizQuestion, error)
+	UpdateQuizQuestion(ctx context.Context, id string, req dto.UpdateQuizQuestionRequest, updatedBy string) error
+	DeleteQuizQuestion(ctx context.Context, id string, deletedBy string) error
 
-	err := s.trainingRepo.CreateMaterial(ctx, material)
-	if err != nil {
-		return nil, err
-	}
+	// Assignments
+	AssignMaterial(ctx context.Context, tenantID string, req dto.AssignMaterialRequest, assignedBy string) (*repo.TrainingAssignment, error)
+	AssignCourse(ctx context.Context, tenantID string, req dto.AssignCourseRequest, assignedBy string) (*repo.TrainingAssignment, error)
+	AssignToRole(ctx context.Context, tenantID string, req dto.AssignToRoleRequest, assignedBy string) error
+	GetUserAssignments(ctx context.Context, userID string, filters map[string]interface{}) ([]repo.TrainingAssignment, error)
+	GetAssignment(ctx context.Context, id string) (*repo.TrainingAssignment, error)
+	UpdateAssignment(ctx context.Context, id string, req dto.UpdateAssignmentRequest, updatedBy string) error
+	DeleteAssignment(ctx context.Context, id string, deletedBy string) error
 
-	// Log audit
-	s.auditRepo.LogAction(ctx, tenantID, "system", "create", "material", &material.ID, material)
+	// Progress tracking
+	UpdateProgress(ctx context.Context, assignmentID, materialID string, req dto.UpdateProgressRequest, updatedBy string) error
+	GetProgress(ctx context.Context, assignmentID string) ([]repo.TrainingProgress, error)
+	MarkAsCompleted(ctx context.Context, assignmentID, materialID string, completedBy string) error
 
-	return &material, nil
-}
+	// Quiz attempts
+	SubmitQuizAttempt(ctx context.Context, assignmentID, materialID string, req dto.SubmitQuizAttemptRequest, submittedBy string) (*repo.QuizAttempt, error)
+	GetQuizAttempts(ctx context.Context, assignmentID, materialID string) ([]repo.QuizAttempt, error)
+	GetQuizAttempt(ctx context.Context, id string) (*repo.QuizAttempt, error)
 
-func (s *TrainingService) ListMaterials(ctx context.Context, tenantID string) ([]repo.Material, error) {
-	return s.trainingRepo.ListMaterials(ctx, tenantID)
-}
+	// Certificates
+	GenerateCertificate(ctx context.Context, assignmentID string, generatedBy string) (*repo.Certificate, error)
+	GetUserCertificates(ctx context.Context, userID string, filters map[string]interface{}) ([]repo.Certificate, error)
+	GetCertificate(ctx context.Context, id string) (*repo.Certificate, error)
+	ValidateCertificate(ctx context.Context, certificateNumber string) (*repo.Certificate, error)
 
-func (s *TrainingService) CreateAssignment(ctx context.Context, tenantID, materialID, userID string, dueAt *time.Time) (*repo.TrainingAssignment, error) {
-	assignment := repo.TrainingAssignment{
-		ID:         uuid.New().String(),
-		TenantID:   tenantID,
-		MaterialID: materialID,
-		UserID:     userID,
-		Status:     "assigned",
-		DueAt:      dueAt,
-		CreatedAt:  time.Now(),
-	}
+	// Notifications
+	CreateNotification(ctx context.Context, tenantID string, req dto.CreateNotificationRequest, createdBy string) (*repo.TrainingNotification, error)
+	GetUserNotifications(ctx context.Context, userID string, unreadOnly bool) ([]repo.TrainingNotification, error)
+	MarkNotificationAsRead(ctx context.Context, notificationID string, userID string) error
 
-	err := s.trainingRepo.CreateAssignment(ctx, assignment)
-	if err != nil {
-		return nil, err
-	}
+	// Analytics
+	GetUserProgress(ctx context.Context, userID string) (*repo.TrainingAnalytics, error)
+	GetCourseProgress(ctx context.Context, courseID string) (*repo.CourseAnalytics, error)
+	GetOrganizationAnalytics(ctx context.Context, tenantID string) (*repo.OrganizationAnalytics, error)
+	RecordAnalytics(ctx context.Context, tenantID string, req dto.RecordAnalyticsRequest) error
 
-	// Log audit
-	s.auditRepo.LogAction(ctx, tenantID, "system", "create", "assignment", &assignment.ID, assignment)
+	// Bulk operations
+	BulkAssignMaterial(ctx context.Context, tenantID string, req dto.BulkAssignMaterialRequest, assignedBy string) error
+	BulkAssignCourse(ctx context.Context, tenantID string, req dto.BulkAssignCourseRequest, assignedBy string) error
+	BulkUpdateProgress(ctx context.Context, req dto.BulkUpdateProgressRequest, updatedBy string) error
 
-	return &assignment, nil
-}
-
-func (s *TrainingService) GetUserAssignments(ctx context.Context, userID string) ([]repo.TrainingAssignment, error) {
-	return s.trainingRepo.GetUserAssignments(ctx, userID)
-}
-
-func (s *TrainingService) CompleteAssignment(ctx context.Context, assignmentID string) error {
-	err := s.trainingRepo.UpdateAssignmentStatus(ctx, assignmentID, "completed")
-	if err != nil {
-		return err
-	}
-
-	// Log audit
-	s.auditRepo.LogAction(ctx, "system", "system", "complete", "assignment", &assignmentID, map[string]string{"assignment_id": assignmentID})
-
-	return nil
+	// Deadline management
+	GetOverdueAssignments(ctx context.Context, tenantID string) ([]repo.TrainingAssignment, error)
+	SendReminderNotifications(ctx context.Context, tenantID string) error
+	GetUpcomingDeadlines(ctx context.Context, tenantID string, days int) ([]repo.TrainingAssignment, error)
 }

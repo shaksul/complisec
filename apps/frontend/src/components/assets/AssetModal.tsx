@@ -1,338 +1,410 @@
-import React, { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { Asset, ASSET_TYPES, ASSET_CLASSES, CRITICALITY_LEVELS, ASSET_STATUSES } from '../../shared/api/assets';
-import { User, UserCatalog } from '../../shared/api/users';
-import { createAssetSchema, updateAssetSchema, CreateAssetFormData, UpdateAssetFormData } from '../../shared/validation/assets';
+﻿import React, { useEffect, useMemo } from 'react'
+import { useForm, Controller } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Typography,
+  Grid,
+  CircularProgress,
+} from '@mui/material'
+import {
+  Asset,
+  ASSET_TYPES,
+  ASSET_CLASSES,
+  CRITICALITY_LEVELS,
+  ASSET_STATUSES,
+} from '../../shared/api/assets'
+import type { UserCatalog } from '../../shared/api/users'
+import {
+  createAssetSchema,
+  updateAssetSchema,
+  type CreateAssetFormData,
+  type UpdateAssetFormData,
+} from '../../shared/validation/assets'
 
 interface AssetModalProps {
-  asset?: Asset | null;
-  users: UserCatalog[];
-  onSave: (data: any) => void;
-  onClose: () => void;
+  open: boolean
+  asset?: Asset | null
+  users: UserCatalog[]
+  onSave: (data: CreateAssetFormData | Partial<UpdateAssetFormData>) => void
+  onClose: () => void
 }
 
-const AssetModal: React.FC<AssetModalProps> = ({ asset, users, onSave, onClose }) => {
-  const isEdit = !!asset;
-  const schema = isEdit ? updateAssetSchema : createAssetSchema;
-  
+type AssetFormData = CreateAssetFormData
+
+type SelectOption = { value: string; label: string }
+
+const typeOptions: SelectOption[] = ASSET_TYPES
+const classOptions: SelectOption[] = ASSET_CLASSES
+const statusOptions: SelectOption[] = ASSET_STATUSES
+const ciaOptions: SelectOption[] = CRITICALITY_LEVELS
+
+const buildUserLabel = (user: UserCatalog) => {
+  const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ').trim()
+  return fullName ? `${fullName} (${user.email})` : user.email
+}
+
+const buildUserKey = (user: UserCatalog, index: number) => user.id || `user-${index}`
+
+const AssetModal: React.FC<AssetModalProps> = ({ open, asset, users, onSave, onClose }) => {
+  const isEdit = Boolean(asset)
+  const schema = useMemo(() => (isEdit ? updateAssetSchema : createAssetSchema), [isEdit])
+
   const {
+    control,
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-    reset
-  } = useForm<CreateAssetFormData | UpdateAssetFormData>({
-    resolver: zodResolver(schema),
+    reset,
+  } = useForm<AssetFormData>({
+    resolver: zodResolver(schema as any),
     defaultValues: {
-      name: asset?.name || '',
-      type: asset?.type || '',
-      class: asset?.class || '',
-      owner_id: asset?.owner_id || '',
-      responsible_user_id: asset?.responsible_user_id || '',
-      location: asset?.location || '',
-      criticality: asset?.criticality || '',
-      confidentiality: asset?.confidentiality || '',
-      integrity: asset?.integrity || '',
-      availability: asset?.availability || '',
-      status: asset?.status || 'active'
-    }
-  });
+      name: asset?.name ?? '',
+      type: asset?.type ?? '',
+      class: asset?.class ?? '',
+      owner_id: asset?.owner_id ?? '',
+      responsible_user_id: asset?.responsible_user_id ?? '',
+      location: asset?.location ?? '',
+      criticality: asset?.criticality ?? '',
+      confidentiality: asset?.confidentiality ?? '',
+      integrity: asset?.integrity ?? '',
+      availability: asset?.availability ?? '',
+      status: asset?.status ?? 'active',
+    },
+  })
 
-  // Сброс формы при изменении актива
   useEffect(() => {
-    if (asset) {
-      reset({
-        name: asset.name,
-        type: asset.type,
-        class: asset.class,
-        owner_id: asset.owner_id || '',
-        responsible_user_id: asset.responsible_user_id || '',
-        location: asset.location || '',
-        criticality: asset.criticality,
-        confidentiality: asset.confidentiality,
-        integrity: asset.integrity,
-        availability: asset.availability,
-        status: asset.status
-      });
-    } else {
-      reset({
-        name: '',
-        type: '',
-        class: '',
-        owner_id: '',
-        responsible_user_id: '',
-        location: '',
-        criticality: '',
-        confidentiality: '',
-        integrity: '',
-        availability: '',
-        status: 'active'
-      });
-    }
-  }, [asset, reset]);
+    reset({
+      name: asset?.name ?? '',
+      type: asset?.type ?? '',
+      class: asset?.class ?? '',
+      owner_id: asset?.owner_id ?? '',
+      responsible_user_id: asset?.responsible_user_id ?? '',
+      location: asset?.location ?? '',
+      criticality: asset?.criticality ?? '',
+      confidentiality: asset?.confidentiality ?? '',
+      integrity: asset?.integrity ?? '',
+      availability: asset?.availability ?? '',
+      status: asset?.status ?? 'active',
+    })
+  }, [asset, reset])
 
-  const onSubmit = (data: CreateAssetFormData | UpdateAssetFormData) => {
-    // Очистка пустых строковых полей для обновления
+  const onSubmit = (formData: AssetFormData) => {
     if (isEdit) {
-      const updateData = { ...data };
-      Object.keys(updateData).forEach(key => {
-        const value = updateData[key as keyof typeof updateData];
-        if (value === '' || value === null || value === undefined) {
-          delete updateData[key as keyof typeof updateData];
+      const payload: Partial<UpdateAssetFormData> = {}
+      Object.entries(formData).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && `${value}`.trim() !== '') {
+          payload[key as keyof UpdateAssetFormData] = value as never
         }
-      });
-      onSave(updateData);
+      })
+      onSave(payload)
     } else {
-      onSave(data);
+      onSave(formData)
     }
-  };
+  }
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-      <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
-        <div className="mt-3">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">
-            {asset ? 'Редактировать актив' : 'Создать актив'}
-          </h3>
-          
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Название {!isEdit && '*'}
-                </label>
-                <input
-                  type="text"
-                  {...register('name')}
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.name ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  placeholder="Введите название актива"
-                />
-                {errors.name && (
-                  <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Тип {!isEdit && '*'}
-                </label>
-                <select
-                  {...register('type')}
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.type ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                >
-                  <option value="">Выберите тип</option>
-                  {ASSET_TYPES.map(type => (
-                    <option key={type.value} value={type.value}>{type.label}</option>
-                  ))}
-                </select>
-                {errors.type && (
-                  <p className="mt-1 text-sm text-red-600">{errors.type.message}</p>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Класс {!isEdit && '*'}
-                </label>
-                <select
-                  {...register('class')}
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.class ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                >
-                  <option value="">Выберите класс</option>
-                  {ASSET_CLASSES.map(cls => (
-                    <option key={cls.value} value={cls.value}>{cls.label}</option>
-                  ))}
-                </select>
-                {errors.class && (
-                  <p className="mt-1 text-sm text-red-600">{errors.class.message}</p>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Владелец (организация)</label>
-                <select
-                  {...register('owner_id')}
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.owner_id ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                >
-                  <option value="">Организация</option>
-                  {users.map(user => (
-                    <option key={user.id} value={user.id}>
-                      {user.first_name && user.last_name 
-                        ? `${user.first_name} ${user.last_name}` 
-                        : user.email}
-                    </option>
-                  ))}
-                </select>
-                {errors.owner_id && (
-                  <p className="mt-1 text-sm text-red-600">{errors.owner_id.message}</p>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Ответственный пользователь</label>
-                <select
-                  {...register('responsible_user_id')}
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.responsible_user_id ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                >
-                  <option value="">Не назначен</option>
-                  {users.map(user => (
-                    <option key={user.id} value={user.id}>
-                      {user.first_name && user.last_name 
-                        ? `${user.first_name} ${user.last_name}` 
-                        : user.email}
-                    </option>
-                  ))}
-                </select>
-                {errors.responsible_user_id && (
-                  <p className="mt-1 text-sm text-red-600">{errors.responsible_user_id.message}</p>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Местоположение</label>
-                <input
-                  type="text"
-                  {...register('location')}
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.location ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  placeholder="Введите местоположение"
-                />
-                {errors.location && (
-                  <p className="mt-1 text-sm text-red-600">{errors.location.message}</p>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Критичность {!isEdit && '*'}
-                </label>
-                <select
-                  {...register('criticality')}
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.criticality ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                >
-                  <option value="">Выберите критичность</option>
-                  {CRITICALITY_LEVELS.map(level => (
-                    <option key={level.value} value={level.value}>{level.label}</option>
-                  ))}
-                </select>
-                {errors.criticality && (
-                  <p className="mt-1 text-sm text-red-600">{errors.criticality.message}</p>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Конфиденциальность {!isEdit && '*'}
-                </label>
-                <select
-                  {...register('confidentiality')}
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.confidentiality ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                >
-                  <option value="">Выберите уровень</option>
-                  {CRITICALITY_LEVELS.map(level => (
-                    <option key={level.value} value={level.value}>{level.label}</option>
-                  ))}
-                </select>
-                {errors.confidentiality && (
-                  <p className="mt-1 text-sm text-red-600">{errors.confidentiality.message}</p>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Целостность {!isEdit && '*'}
-                </label>
-                <select
-                  {...register('integrity')}
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.integrity ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                >
-                  <option value="">Выберите уровень</option>
-                  {CRITICALITY_LEVELS.map(level => (
-                    <option key={level.value} value={level.value}>{level.label}</option>
-                  ))}
-                </select>
-                {errors.integrity && (
-                  <p className="mt-1 text-sm text-red-600">{errors.integrity.message}</p>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Доступность {!isEdit && '*'}
-                </label>
-                <select
-                  {...register('availability')}
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.availability ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                >
-                  <option value="">Выберите уровень</option>
-                  {CRITICALITY_LEVELS.map(level => (
-                    <option key={level.value} value={level.value}>{level.label}</option>
-                  ))}
-                </select>
-                {errors.availability && (
-                  <p className="mt-1 text-sm text-red-600">{errors.availability.message}</p>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Статус</label>
-                <select
-                  {...register('status')}
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.status ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                >
-                  {ASSET_STATUSES.map(status => (
-                    <option key={status.value} value={status.value}>{status.label}</option>
-                  ))}
-                </select>
-                {errors.status && (
-                  <p className="mt-1 text-sm text-red-600">{errors.status.message}</p>
-                )}
-              </div>
-            </div>
-            
-            <div className="flex justify-end space-x-2 pt-4">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={isSubmitting}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Отмена
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSubmitting ? 'Сохранение...' : (asset ? 'Сохранить' : 'Создать')}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
-};
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>{isEdit ? 'Редактирование актива' : 'Создание актива'}</DialogTitle>
 
-export default AssetModal;
+      <form onSubmit={handleSubmit(onSubmit)}>
+        <DialogContent>
+          <Grid container spacing={3}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label={`Название${isEdit ? '' : ' *'}`}
+                placeholder="Введите название актива"
+                fullWidth
+                {...register('name')}
+                error={!!errors.name}
+                helperText={errors.name?.message}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <Controller
+                name="type"
+                control={control}
+                defaultValue={asset?.type ?? ''}
+                render={({ field }) => (
+                  <FormControl fullWidth error={!!errors.type}>
+                    <InputLabel>Тип актива</InputLabel>
+                    <Select {...field} label="Тип актива" value={field.value ?? ''}>
+                      <MenuItem value="">
+                        <em>Не выбран</em>
+                      </MenuItem>
+                      {typeOptions.map((option) => (
+                        <MenuItem key={option.value} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    {errors.type && (
+                      <Typography variant="caption" color="error">
+                        {errors.type.message as string}
+                      </Typography>
+                    )}
+                  </FormControl>
+                )}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <Controller
+                name="class"
+                control={control}
+                defaultValue={asset?.class ?? ''}
+                render={({ field }) => (
+                  <FormControl fullWidth error={!!errors.class}>
+                    <InputLabel>Класс актива</InputLabel>
+                    <Select {...field} label="Класс актива" value={field.value ?? ''}>
+                      <MenuItem value="">
+                        <em>Не выбран</em>
+                      </MenuItem>
+                      {classOptions.map((option) => (
+                        <MenuItem key={option.value} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    {errors.class && (
+                      <Typography variant="caption" color="error">
+                        {errors.class.message as string}
+                      </Typography>
+                    )}
+                  </FormControl>
+                )}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <Controller
+                name="owner_id"
+                control={control}
+                defaultValue={asset?.owner_id ?? ''}
+                render={({ field }) => (
+                  <FormControl fullWidth error={!!errors.owner_id}>
+                    <InputLabel>Владелец (бизнес)</InputLabel>
+                    <Select {...field} label="Владелец (бизнес)" value={field.value ?? ''}>
+                      <MenuItem value="">
+                        <em>Не назначен</em>
+                      </MenuItem>
+                      {users.map((user, index) => (
+                        <MenuItem key={buildUserKey(user, index)} value={user.id}>
+                          {buildUserLabel(user)}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    {errors.owner_id && (
+                      <Typography variant="caption" color="error">
+                        {errors.owner_id.message as string}
+                      </Typography>
+                    )}
+                  </FormControl>
+                )}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <Controller
+                name="responsible_user_id"
+                control={control}
+                defaultValue={asset?.responsible_user_id ?? ''}
+                render={({ field }) => (
+                  <FormControl fullWidth error={!!errors.responsible_user_id}>
+                    <InputLabel>Ответственный (ИТ)</InputLabel>
+                    <Select {...field} label="Ответственный (ИТ)" value={field.value ?? ''}>
+                      <MenuItem value="">
+                        <em>Не назначен</em>
+                      </MenuItem>
+                      {users.map((user, index) => (
+                        <MenuItem key={`responsible-${buildUserKey(user, index)}`} value={user.id}>
+                          {buildUserLabel(user)}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    {errors.responsible_user_id && (
+                      <Typography variant="caption" color="error">
+                        {errors.responsible_user_id.message as string}
+                      </Typography>
+                    )}
+                  </FormControl>
+                )}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Расположение"
+                placeholder="Например: Москва, дата-центр"
+                fullWidth
+                {...register('location')}
+                error={!!errors.location}
+                helperText={errors.location?.message}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <Controller
+                name="criticality"
+                control={control}
+                defaultValue={asset?.criticality ?? ''}
+                render={({ field }) => (
+                  <FormControl fullWidth error={!!errors.criticality}>
+                    <InputLabel>Критичность</InputLabel>
+                    <Select {...field} label="Критичность" value={field.value ?? ''}>
+                      <MenuItem value="">
+                        <em>Не выбрано</em>
+                      </MenuItem>
+                      {ciaOptions.map((option) => (
+                        <MenuItem key={`criticality-${option.value}`} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    {errors.criticality && (
+                      <Typography variant="caption" color="error">
+                        {errors.criticality.message as string}
+                      </Typography>
+                    )}
+                  </FormControl>
+                )}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <Controller
+                name="confidentiality"
+                control={control}
+                defaultValue={asset?.confidentiality ?? ''}
+                render={({ field }) => (
+                  <FormControl fullWidth error={!!errors.confidentiality}>
+                    <InputLabel>Конфиденциальность</InputLabel>
+                    <Select {...field} label="Конфиденциальность" value={field.value ?? ''}>
+                      <MenuItem value="">
+                        <em>Не выбрано</em>
+                      </MenuItem>
+                      {ciaOptions.map((option) => (
+                        <MenuItem key={`conf-${option.value}`} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    {errors.confidentiality && (
+                      <Typography variant="caption" color="error">
+                        {errors.confidentiality.message as string}
+                      </Typography>
+                    )}
+                  </FormControl>
+                )}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <Controller
+                name="integrity"
+                control={control}
+                defaultValue={asset?.integrity ?? ''}
+                render={({ field }) => (
+                  <FormControl fullWidth error={!!errors.integrity}>
+                    <InputLabel>Целостность</InputLabel>
+                    <Select {...field} label="Целостность" value={field.value ?? ''}>
+                      <MenuItem value="">
+                        <em>Не выбрано</em>
+                      </MenuItem>
+                      {ciaOptions.map((option) => (
+                        <MenuItem key={`integrity-${option.value}`} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    {errors.integrity && (
+                      <Typography variant="caption" color="error">
+                        {errors.integrity.message as string}
+                      </Typography>
+                    )}
+                  </FormControl>
+                )}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <Controller
+                name="availability"
+                control={control}
+                defaultValue={asset?.availability ?? ''}
+                render={({ field }) => (
+                  <FormControl fullWidth error={!!errors.availability}>
+                    <InputLabel>Доступность</InputLabel>
+                    <Select {...field} label="Доступность" value={field.value ?? ''}>
+                      <MenuItem value="">
+                        <em>Не выбрано</em>
+                      </MenuItem>
+                      {ciaOptions.map((option) => (
+                        <MenuItem key={`availability-${option.value}`} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    {errors.availability && (
+                      <Typography variant="caption" color="error">
+                        {errors.availability.message as string}
+                      </Typography>
+                    )}
+                  </FormControl>
+                )}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <Controller
+                name="status"
+                control={control}
+                defaultValue={asset?.status ?? 'active'}
+                render={({ field }) => (
+                  <FormControl fullWidth error={!!errors.status}>
+                    <InputLabel>Статус</InputLabel>
+                    <Select {...field} label="Статус" value={field.value ?? 'active'}>
+                      {statusOptions.map((option) => (
+                        <MenuItem key={option.value} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    {errors.status && (
+                      <Typography variant="caption" color="error">
+                        {errors.status.message as string}
+                      </Typography>
+                    )}
+                  </FormControl>
+                )}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={onClose} disabled={isSubmitting}>
+            Отмена
+          </Button>
+          <Button type="submit" variant="contained" disabled={isSubmitting}
+            startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
+          >
+            {isSubmitting ? 'Сохраняем…' : isEdit ? 'Сохранить изменения' : 'Создать актив'}
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
+  )
+}
+
+export default AssetModal

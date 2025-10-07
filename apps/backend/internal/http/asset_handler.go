@@ -3,7 +3,9 @@ package http
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 
 	"risknexus/backend/internal/domain"
 	"risknexus/backend/internal/dto"
@@ -35,9 +37,14 @@ func (h *AssetHandler) Register(r fiber.Router) {
 	assets.Delete("/:id", RequirePermission("assets.delete"), h.deleteAsset)
 	assets.Get("/:id/details", RequirePermission("assets.view"), h.getAssetDetails)
 	assets.Get("/:id/documents", RequirePermission("assets.view"), h.getAssetDocuments)
-	assets.Post("/:id/documents", RequirePermission("assets.edit"), h.addAssetDocument)
+	assets.Post("/:id/documents", RequirePermission("assets.documents:create"), h.addAssetDocument)
+	assets.Post("/:id/documents/upload", RequirePermission("assets.documents:create"), h.uploadAssetDocument)
+	assets.Post("/:id/documents/link", RequirePermission("assets.documents:link"), h.linkAssetDocument)
 	assets.Delete("/documents/:docId", RequirePermission("assets.edit"), h.deleteAssetDocument)
 	assets.Get("/documents/:docId", RequirePermission("assets.view"), h.getAssetDocument)
+	assets.Get("/documents/:docId/download", RequirePermission("assets.view"), h.downloadAssetDocument)
+	// Document storage endpoints
+	assets.Get("/documents/storage", RequirePermission("assets.view"), h.getDocumentStorage)
 	assets.Get("/:id/software", RequirePermission("assets.view"), h.getAssetSoftware)
 	assets.Post("/:id/software", RequirePermission("assets.edit"), h.addAssetSoftware)
 	assets.Get("/:id/history", RequirePermission("assets.view"), h.getAssetHistory)
@@ -259,6 +266,180 @@ func (h *AssetHandler) addAssetDocument(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: AssetHandler.addAssetDocument success id=%s", id)
 	return c.Status(201).JSON(fiber.Map{"message": "Document added successfully"})
+}
+
+func (h *AssetHandler) uploadAssetDocument(c *fiber.Ctx) error {
+	id := c.Params("id")
+	userID := c.Locals("user_id").(string)
+	tenantID := c.Locals("tenant_id").(string)
+
+	log.Printf("DEBUG: AssetHandler.uploadAssetDocument id=%s user=%s", id, userID)
+
+	// Parse multipart form
+	_, err := c.MultipartForm()
+	if err != nil {
+		log.Printf("ERROR: AssetHandler.uploadAssetDocument invalid form: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid multipart form"})
+	}
+
+	// Get document type
+	documentType := c.FormValue("document_type")
+	if documentType == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Document type is required"})
+	}
+
+	// Get title (optional)
+	title := c.FormValue("title")
+
+	// Get file
+	file, err := c.FormFile("file")
+	if err != nil {
+		log.Printf("ERROR: AssetHandler.uploadAssetDocument no file: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "File is required"})
+	}
+
+	// Validate file size (50MB limit)
+	const maxFileSize = 50 * 1024 * 1024 // 50MB
+	if file.Size > maxFileSize {
+		return c.Status(400).JSON(fiber.Map{"error": "File size exceeds 50MB limit"})
+	}
+
+	// Validate file type
+	allowedTypes := map[string]bool{
+		"application/pdf":    true,
+		"image/jpeg":         true,
+		"image/png":          true,
+		"application/msword": true,
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
+		"application/vnd.ms-excel": true,
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": true,
+	}
+
+	// Get content type from file header
+	fileHeader, err := file.Open()
+	if err != nil {
+		log.Printf("ERROR: AssetHandler.uploadAssetDocument file open: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Cannot open file"})
+	}
+	defer fileHeader.Close()
+
+	// Read first 512 bytes to detect content type
+	buffer := make([]byte, 512)
+	_, err = fileHeader.Read(buffer)
+	if err != nil {
+		log.Printf("ERROR: AssetHandler.uploadAssetDocument file read: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Cannot read file"})
+	}
+
+	contentType := http.DetectContentType(buffer)
+	if !allowedTypes[contentType] {
+		return c.Status(400).JSON(fiber.Map{"error": "Unsupported file type"})
+	}
+
+	// Reset file pointer
+	fileHeader.Seek(0, 0)
+
+	// Read file content
+	fileContent, err := io.ReadAll(fileHeader)
+	if err != nil {
+		log.Printf("ERROR: AssetHandler.uploadAssetDocument file read all: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Cannot read file content"})
+	}
+
+	// Create upload request
+	uploadReq := dto.AssetDocumentUploadRequest{
+		DocumentType: documentType,
+		Title:        title,
+		File:         fileContent,
+	}
+
+	// Upload document
+	document, err := h.assetService.UploadDocument(context.Background(), id, uploadReq, userID, tenantID)
+	if err != nil {
+		log.Printf("ERROR: AssetHandler.uploadAssetDocument service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	log.Printf("DEBUG: AssetHandler.uploadAssetDocument success id=%s", id)
+	return c.Status(201).JSON(fiber.Map{"data": document})
+}
+
+func (h *AssetHandler) linkAssetDocument(c *fiber.Ctx) error {
+	id := c.Params("id")
+	userID := c.Locals("user_id").(string)
+
+	log.Printf("DEBUG: AssetHandler.linkAssetDocument id=%s user=%s", id, userID)
+
+	var req dto.AssetDocumentLinkRequest
+	if err := c.BodyParser(&req); err != nil {
+		log.Printf("ERROR: AssetHandler.linkAssetDocument invalid body: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if err := h.validator.Struct(req); err != nil {
+		log.Printf("ERROR: AssetHandler.linkAssetDocument validation failed: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
+	}
+
+	document, err := h.assetService.LinkDocument(context.Background(), id, req, userID)
+	if err != nil {
+		log.Printf("ERROR: AssetHandler.linkAssetDocument service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	log.Printf("DEBUG: AssetHandler.linkAssetDocument success id=%s", id)
+	return c.Status(200).JSON(fiber.Map{"data": document})
+}
+
+func (h *AssetHandler) downloadAssetDocument(c *fiber.Ctx) error {
+	docID := c.Params("docId")
+	userID := c.Locals("user_id").(string)
+
+	log.Printf("DEBUG: AssetHandler.downloadAssetDocument docID=%s user=%s", docID, userID)
+
+	filePath, fileName, err := h.assetService.GetDocumentDownloadPath(context.Background(), docID, userID)
+	if err != nil {
+		log.Printf("ERROR: AssetHandler.downloadAssetDocument service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.Download(filePath, fileName)
+}
+
+func (h *AssetHandler) getDocumentStorage(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(string)
+	tenantID := c.Locals("tenant_id").(string)
+
+	log.Printf("DEBUG: AssetHandler.getDocumentStorage user=%s", userID)
+
+	// Parse query parameters
+	query := c.Query("query", "")
+	docType := c.Query("type", "")
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 25)
+
+	req := dto.DocumentStorageRequest{
+		Query:    query,
+		Type:     docType,
+		Page:     page,
+		PageSize: pageSize,
+	}
+
+	documents, total, err := h.assetService.GetDocumentStorage(context.Background(), tenantID, req)
+	if err != nil {
+		log.Printf("ERROR: AssetHandler.getDocumentStorage service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{
+		"data": documents,
+		"pagination": fiber.Map{
+			"page":        page,
+			"page_size":   pageSize,
+			"total":       total,
+			"total_pages": (total + int64(pageSize) - 1) / int64(pageSize),
+		},
+	})
 }
 
 func (h *AssetHandler) getAssetSoftware(c *fiber.Ctx) error {

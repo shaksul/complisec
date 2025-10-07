@@ -85,6 +85,40 @@ func (r *UserRepo) GetByID(ctx context.Context, id string) (*User, error) {
 	return &u, nil
 }
 
+func (r *UserRepo) GetByIDAndTenant(ctx context.Context, id, tenantID string) (*User, error) {
+	row := r.db.QueryRow(`
+		SELECT id, tenant_id, email, password_hash, first_name, last_name, is_active, created_at, updated_at
+		FROM users WHERE id = $1 AND tenant_id = $2
+	`, id, tenantID)
+
+	var u User
+	err := row.Scan(&u.ID, &u.TenantID, &u.Email, &u.PasswordHash, &u.FirstName, &u.LastName, &u.IsActive, &u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &u, nil
+}
+
+func (r *UserRepo) GetByEmailAndTenant(ctx context.Context, email, tenantID string) (*User, error) {
+	row := r.db.QueryRow(`
+		SELECT id, tenant_id, email, password_hash, first_name, last_name, is_active, created_at, updated_at
+		FROM users WHERE email = $1 AND tenant_id = $2
+	`, email, tenantID)
+
+	var u User
+	err := row.Scan(&u.ID, &u.TenantID, &u.Email, &u.PasswordHash, &u.FirstName, &u.LastName, &u.IsActive, &u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &u, nil
+}
+
 func (r *UserRepo) List(ctx context.Context, tenantID string) ([]User, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, tenant_id, email, password_hash, first_name, last_name, is_active, created_at, updated_at
@@ -95,7 +129,7 @@ func (r *UserRepo) List(ctx context.Context, tenantID string) ([]User, error) {
 	}
 	defer rows.Close()
 
-	var users []User
+	users := make([]User, 0)
 	for rows.Next() {
 		var u User
 		err := rows.Scan(&u.ID, &u.TenantID, &u.Email, &u.PasswordHash, &u.FirstName, &u.LastName, &u.IsActive, &u.CreatedAt, &u.UpdatedAt)
@@ -129,7 +163,7 @@ func (r *UserRepo) ListPaginated(ctx context.Context, tenantID string, page, pag
 	}
 	defer rows.Close()
 
-	var users []User
+	users := make([]User, 0)
 	for rows.Next() {
 		var u User
 		err := rows.Scan(&u.ID, &u.TenantID, &u.Email, &u.PasswordHash, &u.FirstName, &u.LastName, &u.IsActive, &u.CreatedAt, &u.UpdatedAt)
@@ -150,8 +184,8 @@ func (r *UserRepo) GetUsersByTenant(ctx context.Context, tenantID string) ([]Use
 func (r *UserRepo) Update(ctx context.Context, u User) error {
 	_, err := r.db.Exec(`
 		UPDATE users SET first_name = $1, last_name = $2, is_active = $3, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $4
-	`, u.FirstName, u.LastName, u.IsActive, u.ID)
+		WHERE id = $4 AND tenant_id = $5
+	`, u.FirstName, u.LastName, u.IsActive, u.ID, u.TenantID)
 	return err
 }
 
@@ -159,14 +193,15 @@ func (r *UserRepo) GetUserRoles(ctx context.Context, userID string) ([]string, e
 	rows, err := r.db.Query(`
 		SELECT r.name FROM roles r
 		JOIN user_roles ur ON r.id = ur.role_id
-		WHERE ur.user_id = $1
+		JOIN users u ON ur.user_id = u.id
+		WHERE ur.user_id = $1 AND u.tenant_id = r.tenant_id
 	`, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var roles []string
+	roles := make([]string, 0)
 	for rows.Next() {
 		var role string
 		if err := rows.Scan(&role); err != nil {
@@ -177,16 +212,83 @@ func (r *UserRepo) GetUserRoles(ctx context.Context, userID string) ([]string, e
 	return roles, nil
 }
 
+// GetUserPermissions получает все права пользователя через его роли
+func (r *UserRepo) GetUserPermissions(ctx context.Context, userID string) ([]string, error) {
+	rows, err := r.db.Query(`
+		SELECT DISTINCT p.code FROM permissions p
+		JOIN role_permissions rp ON p.id = rp.permission_id
+		JOIN user_roles ur ON rp.role_id = ur.role_id
+		JOIN users u ON ur.user_id = u.id
+		WHERE ur.user_id = $1 AND u.tenant_id = (
+			SELECT tenant_id FROM roles WHERE id = ur.role_id
+		)
+		ORDER BY p.code
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	permissions := make([]string, 0)
+	for rows.Next() {
+		var permission string
+		if err := rows.Scan(&permission); err != nil {
+			return nil, err
+		}
+		permissions = append(permissions, permission)
+	}
+	return permissions, nil
+}
+
+func (r *UserRepo) GetUserRoleIDs(ctx context.Context, userID string) ([]string, error) {
+	rows, err := r.db.Query(`
+		SELECT r.id FROM roles r
+		JOIN user_roles ur ON r.id = ur.role_id
+		JOIN users u ON ur.user_id = u.id
+		WHERE ur.user_id = $1 AND u.tenant_id = r.tenant_id
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	roleIDs := make([]string, 0)
+	for rows.Next() {
+		var roleID string
+		if err := rows.Scan(&roleID); err != nil {
+			return nil, err
+		}
+		roleIDs = append(roleIDs, roleID)
+	}
+	return roleIDs, nil
+}
+
 func (r *UserRepo) SetUserRoles(ctx context.Context, userID string, roleIDs []string) error {
+	// Get user's tenant ID first
+	user, err := r.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return errors.New("user not found")
+	}
+
 	// Remove existing roles
-	_, err := r.db.Exec("DELETE FROM user_roles WHERE user_id = $1", userID)
+	_, err = r.db.Exec("DELETE FROM user_roles WHERE user_id = $1", userID)
 	if err != nil {
 		return err
 	}
 
-	// Add new roles
+	// Add new roles (only if they belong to the same tenant)
 	for _, roleID := range roleIDs {
-		_, err = r.db.Exec("INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)", userID, roleID)
+		_, err = r.db.Exec(`
+			INSERT INTO user_roles (user_id, role_id) 
+			SELECT $1, $2 
+			WHERE EXISTS (
+				SELECT 1 FROM roles r 
+				WHERE r.id = $2 AND r.tenant_id = $3
+			)
+		`, userID, roleID, user.TenantID)
 		if err != nil {
 			return err
 		}
@@ -215,27 +317,24 @@ func (r *UserRepo) GetUserWithRoles(ctx context.Context, userID string) (*UserWi
 	}, nil
 }
 
-func (r *UserRepo) GetUserPermissions(ctx context.Context, userID string) ([]string, error) {
-	rows, err := r.db.Query(`
-		SELECT DISTINCT p.code FROM permissions p
-		JOIN role_permissions rp ON p.id = rp.permission_id
-		JOIN user_roles ur ON rp.role_id = ur.role_id
-		WHERE ur.user_id = $1
-	`, userID)
+func (r *UserRepo) GetUserWithRolesByTenant(ctx context.Context, userID, tenantID string) (*UserWithRoles, error) {
+	user, err := r.GetByIDAndTenant(ctx, userID, tenantID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var permissions []string
-	for rows.Next() {
-		var perm string
-		if err := rows.Scan(&perm); err != nil {
-			return nil, err
-		}
-		permissions = append(permissions, perm)
+	if user == nil {
+		return nil, nil
 	}
-	return permissions, nil
+
+	roleIDs, err := r.GetUserRoleIDs(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &UserWithRoles{
+		User:  *user,
+		Roles: roleIDs,
+	}, nil
 }
 
 func (r *UserRepo) SearchUsers(ctx context.Context, tenantID string, search, role string, isActive *bool, sortBy, sortDir string, page, pageSize int) ([]User, int64, error) {
@@ -309,7 +408,7 @@ func (r *UserRepo) SearchUsers(ctx context.Context, tenantID string, search, rol
 	}
 	defer rows.Close()
 
-	var users []User
+	users := make([]User, 0)
 	for rows.Next() {
 		var u User
 		err := rows.Scan(&u.ID, &u.TenantID, &u.Email, &u.PasswordHash, &u.FirstName, &u.LastName, &u.IsActive, &u.CreatedAt, &u.UpdatedAt)
@@ -323,13 +422,22 @@ func (r *UserRepo) SearchUsers(ctx context.Context, tenantID string, search, rol
 }
 
 func (r *UserRepo) GetUserStats(ctx context.Context, userID string) (map[string]int, error) {
+	// Get user's tenant ID first
+	user, err := r.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, errors.New("user not found")
+	}
+
 	stats := make(map[string]int)
 
 	// Count documents
 	var docCount int
-	err := r.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM documents WHERE created_by = $1
-	`, userID).Scan(&docCount)
+	err = r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM documents WHERE created_by = $1 AND tenant_id = $2
+	`, userID, user.TenantID).Scan(&docCount)
 	if err != nil {
 		// Если таблица не существует, возвращаем 0
 		stats["documents_count"] = 0
@@ -340,8 +448,8 @@ func (r *UserRepo) GetUserStats(ctx context.Context, userID string) (map[string]
 	// Count risks
 	var riskCount int
 	err = r.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM risks WHERE created_by = $1
-	`, userID).Scan(&riskCount)
+		SELECT COUNT(*) FROM risks WHERE created_by = $1 AND tenant_id = $2
+	`, userID, user.TenantID).Scan(&riskCount)
 	if err != nil {
 		stats["risks_count"] = 0
 	} else {
@@ -351,8 +459,8 @@ func (r *UserRepo) GetUserStats(ctx context.Context, userID string) (map[string]
 	// Count incidents
 	var incidentCount int
 	err = r.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM incidents WHERE created_by = $1
-	`, userID).Scan(&incidentCount)
+		SELECT COUNT(*) FROM incidents WHERE created_by = $1 AND tenant_id = $2
+	`, userID, user.TenantID).Scan(&incidentCount)
 	if err != nil {
 		stats["incidents_count"] = 0
 	} else {
@@ -362,8 +470,8 @@ func (r *UserRepo) GetUserStats(ctx context.Context, userID string) (map[string]
 	// Count assets
 	var assetCount int
 	err = r.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM assets WHERE created_by = $1
-	`, userID).Scan(&assetCount)
+		SELECT COUNT(*) FROM assets WHERE created_by = $1 AND tenant_id = $2
+	`, userID, user.TenantID).Scan(&assetCount)
 	if err != nil {
 		stats["assets_count"] = 0
 	} else {

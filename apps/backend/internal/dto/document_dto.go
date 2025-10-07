@@ -117,7 +117,7 @@ type DocumentSearchResultDTO struct {
 	Type           string  `json:"type"`
 	Category       *string `json:"category"`
 	Status         string  `json:"status"`
-	Version        int     `json:"version"`
+	Version        string  `json:"version"`
 	CreatedAt      string  `json:"created_at"`
 	RelevanceScore float64 `json:"relevance_score,omitempty"`
 }

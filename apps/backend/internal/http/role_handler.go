@@ -126,22 +126,29 @@ func (h *RoleHandler) getRole(c *fiber.Ctx) error {
 		return c.Status(404).JSON(fiber.Map{"error": "Role not found"})
 	}
 
-	return c.JSON(role)
+	return c.JSON(fiber.Map{"data": role})
 }
 
 func (h *RoleHandler) updateRole(c *fiber.Ctx) error {
 	roleID := c.Params("id")
+	log.Printf("DEBUG: updateRole called with roleID: %s", roleID)
 
 	var req dto.UpdateRoleRequest
 	if err := c.BodyParser(&req); err != nil {
+		log.Printf("ERROR: updateRole body parsing failed: %v", err)
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
+	log.Printf("DEBUG: updateRole parsed request: %+v", req)
+	log.Printf("DEBUG: updateRole permission_ids count: %d", len(req.PermissionIDs))
+
 	err := h.roleService.UpdateRole(c.Context(), roleID, req.Name, req.Description, req.PermissionIDs)
 	if err != nil {
+		log.Printf("ERROR: updateRole service call failed: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	log.Printf("DEBUG: updateRole completed successfully")
 	return c.JSON(fiber.Map{"message": "Role updated successfully"})
 }
 

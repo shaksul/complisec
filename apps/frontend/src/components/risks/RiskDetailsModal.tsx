@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -8,7 +8,6 @@ import {
   Box,
   Typography,
   IconButton,
-  CircularProgress,
 } from '@mui/material'
 import { Close } from '@mui/icons-material'
 import { Risk } from '../../shared/api/risks'
@@ -56,9 +55,8 @@ export const RiskDetailsModal: React.FC<RiskDetailsModalProps> = ({
   risk,
 }) => {
   const [tabValue, setTabValue] = useState(0)
-  const [loading, setLoading] = useState(false)
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue)
   }
 
@@ -130,4 +128,6 @@ export const RiskDetailsModal: React.FC<RiskDetailsModalProps> = ({
     </Dialog>
   )
 }
+
+
 

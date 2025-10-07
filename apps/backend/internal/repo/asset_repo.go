@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"risknexus/backend/internal/dto"
+
 	"github.com/google/uuid"
 )
 
@@ -39,6 +41,9 @@ type AssetDocument struct {
 	AssetID      string    `json:"asset_id"`
 	DocumentType string    `json:"document_type"`
 	FilePath     string    `json:"file_path"`
+	Title        string    `json:"title"`
+	Mime         string    `json:"mime"`
+	SizeBytes    int64     `json:"size_bytes"`
 	CreatedBy    string    `json:"created_by"`
 	CreatedAt    time.Time `json:"created_at"`
 }
@@ -462,15 +467,15 @@ func (r *AssetRepo) GetWithDetails(ctx context.Context, id string) (*AssetWithDe
 
 func (r *AssetRepo) AddDocument(ctx context.Context, assetID, documentType, filePath, createdBy string) error {
 	_, err := r.db.Exec(`
-		INSERT INTO asset_documents (id, asset_id, document_type, file_path, created_by)
-		VALUES ($1, $2, $3, $4, $5)
-	`, uuid.New().String(), assetID, documentType, filePath, createdBy)
+		INSERT INTO asset_documents (id, asset_id, document_type, file_path, title, mime, size_bytes, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`, uuid.New().String(), assetID, documentType, filePath, "", "", 0, createdBy)
 	return err
 }
 
 func (r *AssetRepo) GetAssetDocuments(ctx context.Context, assetID string) ([]AssetDocument, error) {
 	rows, err := r.db.Query(`
-		SELECT id, asset_id, document_type, file_path, created_by, created_at
+		SELECT id, asset_id, document_type, file_path, title, mime, size_bytes, created_by, created_at
 		FROM asset_documents WHERE asset_id = $1 ORDER BY created_at DESC
 	`, assetID)
 	if err != nil {
@@ -481,7 +486,7 @@ func (r *AssetRepo) GetAssetDocuments(ctx context.Context, assetID string) ([]As
 	var documents []AssetDocument
 	for rows.Next() {
 		var doc AssetDocument
-		err := rows.Scan(&doc.ID, &doc.AssetID, &doc.DocumentType, &doc.FilePath, &doc.CreatedBy, &doc.CreatedAt)
+		err := rows.Scan(&doc.ID, &doc.AssetID, &doc.DocumentType, &doc.FilePath, &doc.Title, &doc.Mime, &doc.SizeBytes, &doc.CreatedBy, &doc.CreatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -609,9 +614,9 @@ func (r *AssetRepo) DeleteDocument(ctx context.Context, documentID string) error
 func (r *AssetRepo) GetDocumentByID(ctx context.Context, documentID string) (*AssetDocument, error) {
 	var doc AssetDocument
 	err := r.db.QueryRow(`
-		SELECT id, asset_id, document_type, file_path, created_by, created_at
+		SELECT id, asset_id, document_type, file_path, title, mime, size_bytes, created_by, created_at
 		FROM asset_documents WHERE id = $1
-	`, documentID).Scan(&doc.ID, &doc.AssetID, &doc.DocumentType, &doc.FilePath, &doc.CreatedBy, &doc.CreatedAt)
+	`, documentID).Scan(&doc.ID, &doc.AssetID, &doc.DocumentType, &doc.FilePath, &doc.Title, &doc.Mime, &doc.SizeBytes, &doc.CreatedBy, &doc.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -725,7 +730,6 @@ func (r *AssetRepo) GetAssetsWithoutPassport(ctx context.Context, tenantID strin
 		       a.status, a.created_at, a.updated_at, a.deleted_at
 		FROM assets a
 		LEFT JOIN users u_owner ON a.owner_id = u_owner.id
-		LEFT JOIN users u_resp ON a.responsible_user_id = u_resp.id
 		LEFT JOIN asset_documents ad ON a.id = ad.asset_id AND ad.document_type = 'passport'
 		WHERE a.tenant_id = $1 AND a.deleted_at IS NULL AND ad.id IS NULL
 		ORDER BY a.created_at DESC
@@ -809,4 +813,45 @@ func (r *AssetRepo) generateInventoryNumber(ctx context.Context, tenantID string
 	timestamp := time.Now().Format("20060102")
 	random := strings.ToUpper(uuid.New().String()[:8])
 	return fmt.Sprintf("%s-%s-%s", prefix, timestamp, random)
+}
+
+// AddDocumentWithFile adds a document with file details to an asset
+func (r *AssetRepo) AddDocumentWithFile(ctx context.Context, assetID, documentID, documentType, filePath, fileName, mimeType string, fileSize int64, createdBy string) error {
+	_, err := r.db.Exec(`
+		INSERT INTO asset_documents (id, asset_id, document_type, file_path, title, mime, size_bytes, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`, documentID, assetID, documentType, filePath, fileName, mimeType, fileSize, createdBy)
+	return err
+}
+
+// GetDocumentFromStorage retrieves a document from storage
+func (r *AssetRepo) GetDocumentFromStorage(ctx context.Context, documentID string) (*AssetDocument, error) {
+	var doc AssetDocument
+	err := r.db.QueryRow(`
+		SELECT id, asset_id, document_type, file_path, title, mime, size_bytes, created_by, created_at
+		FROM asset_documents WHERE id = $1
+	`, documentID).Scan(&doc.ID, &doc.AssetID, &doc.DocumentType, &doc.FilePath, &doc.Title, &doc.Mime, &doc.SizeBytes, &doc.CreatedBy, &doc.CreatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &doc, nil
+}
+
+// LinkDocumentToAsset links an existing document to an asset
+func (r *AssetRepo) LinkDocumentToAsset(ctx context.Context, assetID, documentID, storageDocumentID, documentType, createdBy string) error {
+	_, err := r.db.Exec(`
+		INSERT INTO asset_documents (id, asset_id, document_type, file_path, title, mime, size_bytes, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`, documentID, assetID, documentType, storageDocumentID, "", "", 0, createdBy)
+	return err
+}
+
+// GetDocumentStorage returns documents from storage with pagination and filtering
+func (r *AssetRepo) GetDocumentStorage(ctx context.Context, tenantID string, req dto.DocumentStorageRequest) ([]dto.DocumentStorageResponse, int64, error) {
+	// This is a placeholder implementation
+	// In a real implementation, this would query a document storage system
+	return []dto.DocumentStorageResponse{}, 0, nil
 }

@@ -2,641 +2,630 @@ package repo
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
-	"strings"
+	"time"
+
+	"github.com/google/uuid"
 )
 
-// Document represents a document in the system
-type Document struct {
-	ID                 string   `json:"id"`
-	TenantID           string   `json:"tenant_id"`
-	Title              string   `json:"title"`
-	Code               *string  `json:"code"`
-	Description        *string  `json:"description"`
-	Type               string   `json:"type"`
-	Category           *string  `json:"category"`
-	Tags               []string `json:"tags"`
-	Status             string   `json:"status"`
-	CurrentVersion     int      `json:"current_version"`
-	OwnerID            *string  `json:"owner_id"`
-	Classification     string   `json:"classification"`
-	EffectiveFrom      *string  `json:"effective_from"`
-	ReviewPeriodMonths int      `json:"review_period_months"`
-	AssetIDs           []string `json:"asset_ids"`
-	RiskIDs            []string `json:"risk_ids"`
-	ControlIDs         []string `json:"control_ids"`
-	StorageKey         *string  `json:"storage_key"`
-	MimeType           *string  `json:"mime_type"`
-	SizeBytes          *int64   `json:"size_bytes"`
-	ChecksumSHA256     *string  `json:"checksum_sha256"`
-	OCRText            *string  `json:"ocr_text"`
-	AVScanStatus       string   `json:"av_scan_status"`
-	AVScanResult       *string  `json:"av_scan_result"`
-	CreatedBy          string   `json:"created_by"`
-	CreatedAt          string   `json:"created_at"`
-	UpdatedAt          string   `json:"updated_at"`
-	DeletedAt          *string  `json:"deleted_at,omitempty"`
-}
-
-// DocumentVersion represents a version of a document
-type DocumentVersion struct {
-	ID             string  `json:"id"`
-	DocumentID     string  `json:"document_id"`
-	VersionNumber  int     `json:"version_number"`
-	StorageKey     string  `json:"storage_key"`
-	MimeType       *string `json:"mime_type"`
-	SizeBytes      *int64  `json:"size_bytes"`
-	ChecksumSHA256 *string `json:"checksum_sha256"`
-	OCRText        *string `json:"ocr_text"`
-	AVScanStatus   string  `json:"av_scan_status"`
-	AVScanResult   *string `json:"av_scan_result"`
-	CreatedBy      string  `json:"created_by"`
-	CreatedAt      string  `json:"created_at"`
-	DeletedAt      *string `json:"deleted_at,omitempty"`
-}
-
-// ApprovalWorkflow represents a document approval workflow
-type ApprovalWorkflow struct {
-	ID           string  `json:"id"`
-	DocumentID   string  `json:"document_id"`
-	WorkflowType string  `json:"workflow_type"` // sequential or parallel
-	Status       string  `json:"status"`
-	CreatedBy    string  `json:"created_by"`
-	CreatedAt    string  `json:"created_at"`
-	CompletedAt  *string `json:"completed_at,omitempty"`
-}
-
-// ApprovalStep represents a step in an approval workflow
-type ApprovalStep struct {
-	ID          string  `json:"id"`
-	WorkflowID  string  `json:"workflow_id"`
-	StepOrder   int     `json:"step_order"`
-	ApproverID  string  `json:"approver_id"`
-	Status      string  `json:"status"`
-	Comments    *string `json:"comments"`
-	Deadline    *string `json:"deadline"`
-	CompletedAt *string `json:"completed_at,omitempty"`
-	CreatedAt   string  `json:"created_at"`
-}
-
-// ACKCampaign represents an acknowledgment campaign
-type ACKCampaign struct {
-	ID           string   `json:"id"`
-	DocumentID   string   `json:"document_id"`
-	Title        string   `json:"title"`
-	Description  *string  `json:"description"`
-	AudienceType string   `json:"audience_type"`
-	AudienceIDs  []string `json:"audience_ids"`
-	Deadline     *string  `json:"deadline"`
-	QuizID       *string  `json:"quiz_id"`
-	Status       string   `json:"status"`
-	CreatedBy    string   `json:"created_by"`
-	CreatedAt    string   `json:"created_at"`
-	CompletedAt  *string  `json:"completed_at,omitempty"`
-}
-
-// ACKAssignment represents a user assignment for acknowledgment
-type ACKAssignment struct {
-	ID          string  `json:"id"`
-	CampaignID  string  `json:"campaign_id"`
-	UserID      string  `json:"user_id"`
-	Status      string  `json:"status"`
-	QuizScore   *int    `json:"quiz_score"`
-	QuizPassed  bool    `json:"quiz_passed"`
-	CompletedAt *string `json:"completed_at,omitempty"`
-	CreatedAt   string  `json:"created_at"`
-}
-
-// TrainingMaterial represents a training material
-type TrainingMaterial struct {
-	ID             string  `json:"id"`
-	TenantID       string  `json:"tenant_id"`
-	Title          string  `json:"title"`
-	Description    *string `json:"description"`
-	Type           string  `json:"type"`
-	StorageKey     string  `json:"storage_key"`
-	MimeType       *string `json:"mime_type"`
-	SizeBytes      *int64  `json:"size_bytes"`
-	ChecksumSHA256 *string `json:"checksum_sha256"`
-	CreatedBy      string  `json:"created_by"`
-	CreatedAt      string  `json:"created_at"`
-	UpdatedAt      string  `json:"updated_at"`
-	DeletedAt      *string `json:"deleted_at,omitempty"`
-}
-
-// Quiz represents a quiz
-type Quiz struct {
-	ID               string  `json:"id"`
-	TenantID         string  `json:"tenant_id"`
-	Title            string  `json:"title"`
-	Description      *string `json:"description"`
-	Questions        string  `json:"questions"` // JSONB
-	PassingScore     int     `json:"passing_score"`
-	TimeLimitMinutes *int    `json:"time_limit_minutes"`
-	CreatedBy        string  `json:"created_by"`
-	CreatedAt        string  `json:"created_at"`
-	UpdatedAt        string  `json:"updated_at"`
-	DeletedAt        *string `json:"deleted_at,omitempty"`
-}
-
-// DocumentApprovalRoute represents an approval route for a document
-type DocumentApprovalRoute struct {
-	ID         string  `json:"id"`
-	DocumentID string  `json:"document_id"`
-	VersionID  *string `json:"version_id"`
-	RouteName  string  `json:"route_name"`
-	IsActive   bool    `json:"is_active"`
-	CreatedBy  string  `json:"created_by"`
-	CreatedAt  string  `json:"created_at"`
-}
-
-// DocumentApprovalStep represents a step in an approval route
-type DocumentApprovalStep struct {
-	ID             string  `json:"id"`
-	RouteID        string  `json:"route_id"`
-	StepOrder      int     `json:"step_order"`
-	ApproverRoleID *string `json:"approver_role_id"`
-	ApproverUserID *string `json:"approver_user_id"`
-	IsRequired     bool    `json:"is_required"`
-	CreatedAt      string  `json:"created_at"`
-}
-
-// DocumentApproval represents an approval action
-type DocumentApproval struct {
-	ID         string  `json:"id"`
-	VersionID  string  `json:"version_id"`
-	StepID     string  `json:"step_id"`
-	ApproverID string  `json:"approver_id"`
-	Status     string  `json:"status"`
-	Comment    *string `json:"comment"`
-	ApprovedAt *string `json:"approved_at"`
-	CreatedAt  string  `json:"created_at"`
-	UpdatedAt  string  `json:"updated_at"`
-}
-
-// DocumentAcknowledgment represents user acknowledgment of a document
-type DocumentAcknowledgment struct {
-	ID             string  `json:"id"`
-	DocumentID     string  `json:"document_id"`
-	VersionID      *string `json:"version_id"`
-	UserID         string  `json:"user_id"`
-	Status         string  `json:"status"`
-	QuizScore      *int    `json:"quiz_score"`
-	QuizPassed     bool    `json:"quiz_passed"`
-	AcknowledgedAt *string `json:"acknowledged_at"`
-	Deadline       *string `json:"deadline"`
-	CreatedAt      string  `json:"created_at"`
-	UpdatedAt      string  `json:"updated_at"`
-}
-
-// DocumentQuiz represents a quiz question for document acknowledgment
-type DocumentQuiz struct {
-	ID            string  `json:"id"`
-	DocumentID    string  `json:"document_id"`
-	VersionID     *string `json:"version_id"`
-	Question      string  `json:"question"`
-	QuestionOrder int     `json:"question_order"`
-	Options       *string `json:"options"` // JSON string
-	CorrectAnswer *string `json:"correct_answer"`
-	IsActive      bool    `json:"is_active"`
-	CreatedAt     string  `json:"created_at"`
-}
-
-// DocumentQuizAnswer represents an answer to a quiz question
-type DocumentQuizAnswer struct {
-	ID               string `json:"id"`
-	QuizID           string `json:"quiz_id"`
-	AcknowledgmentID string `json:"acknowledgment_id"`
-	UserID           string `json:"user_id"`
-	Answer           string `json:"answer"`
-	IsCorrect        *bool  `json:"is_correct"`
-	AnsweredAt       string `json:"answered_at"`
-}
-
-// DocumentRepo handles database operations for documents
+// DocumentRepo - репозиторий для работы с документами
 type DocumentRepo struct {
-	db *DB
+	db DBInterface
 }
 
-// NewDocumentRepo creates a new document repository
-func NewDocumentRepo(db *DB) *DocumentRepo {
+// NewDocumentRepo создает новый экземпляр DocumentRepo
+func NewDocumentRepo(db DBInterface) *DocumentRepo {
 	return &DocumentRepo{db: db}
 }
 
-// ListDocuments retrieves documents for a tenant with optional filtering
+// Folder структура папки
+type Folder struct {
+	ID          string    `json:"id"`
+	TenantID    string    `json:"tenant_id"`
+	Name        string    `json:"name"`
+	Description *string   `json:"description"`
+	ParentID    *string   `json:"parent_id"`
+	OwnerID     string    `json:"owner_id"`
+	CreatedBy   string    `json:"created_by"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	IsActive    bool      `json:"is_active"`
+	Metadata    *string   `json:"metadata"`
+}
+
+// Document структура документа
+type Document struct {
+	ID           string    `json:"id"`
+	TenantID     string    `json:"tenant_id"`
+	Name         string    `json:"name"`
+	OriginalName string    `json:"original_name"`
+	Description  *string   `json:"description"`
+	FilePath     string    `json:"file_path"`
+	FileSize     int64     `json:"file_size"`
+	MimeType     string    `json:"mime_type"`
+	FileHash     string    `json:"file_hash"`
+	FolderID     *string   `json:"folder_id"`
+	OwnerID      string    `json:"owner_id"`
+	CreatedBy    string    `json:"created_by"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	IsActive     bool      `json:"is_active"`
+	Version      string    `json:"version"`
+	Metadata     *string   `json:"metadata"`
+}
+
+// DocumentTag структура тега документа
+type DocumentTag struct {
+	ID         string    `json:"id"`
+	DocumentID string    `json:"document_id"`
+	Tag        string    `json:"tag"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// DocumentLink структура связи документа с другими модулями
+type DocumentLink struct {
+	ID         string    `json:"id"`
+	DocumentID string    `json:"document_id"`
+	Module     string    `json:"module"`
+	EntityID   string    `json:"entity_id"`
+	CreatedBy  string    `json:"created_by"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// OCRText структура OCR текста
+type OCRText struct {
+	ID         string    `json:"id"`
+	DocumentID string    `json:"document_id"`
+	Content    string    `json:"content"`
+	Language   string    `json:"language"`
+	Confidence *float64  `json:"confidence"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// DocumentPermission структура разрешения документа
+type DocumentPermission struct {
+	ID          string     `json:"id"`
+	TenantID    string     `json:"tenant_id"`
+	SubjectType string     `json:"subject_type"`
+	SubjectID   string     `json:"subject_id"`
+	ObjectType  string     `json:"object_type"`
+	ObjectID    string     `json:"object_id"`
+	Permission  string     `json:"permission"`
+	GrantedBy   string     `json:"granted_by"`
+	GrantedAt   time.Time  `json:"granted_at"`
+	ExpiresAt   *time.Time `json:"expires_at"`
+	IsActive    bool       `json:"is_active"`
+}
+
+// DocumentVersion структура версии документа
+type DocumentVersion struct {
+	ID                string    `json:"id"`
+	DocumentID        string    `json:"document_id"`
+	VersionNumber     int       `json:"version_number"`
+	FilePath          string    `json:"file_path"`
+	FileSize          int64     `json:"file_size"`
+	FileHash          string    `json:"file_hash"`
+	CreatedBy         string    `json:"created_by"`
+	CreatedAt         time.Time `json:"created_at"`
+	ChangeDescription *string   `json:"change_description"`
+}
+
+// DocumentAuditLog структура аудита документа
+type DocumentAuditLog struct {
+	ID         string    `json:"id"`
+	TenantID   string    `json:"tenant_id"`
+	DocumentID *string   `json:"document_id"`
+	FolderID   *string   `json:"folder_id"`
+	UserID     string    `json:"user_id"`
+	Action     string    `json:"action"`
+	Details    *string   `json:"details"`
+	IPAddress  *string   `json:"ip_address"`
+	UserAgent  *string   `json:"user_agent"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// CreateFolder создает новую папку
+func (r *DocumentRepo) CreateFolder(ctx context.Context, folder Folder) error {
+	query := `
+		INSERT INTO folders (id, tenant_id, name, description, parent_id, owner_id, created_by, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+
+	_, err := r.db.ExecContext(ctx, query, folder.ID, folder.TenantID, folder.Name, folder.Description,
+		folder.ParentID, folder.OwnerID, folder.CreatedBy, folder.Metadata)
+	return err
+}
+
+// GetFolderByID получает папку по ID
+func (r *DocumentRepo) GetFolderByID(ctx context.Context, id, tenantID string) (*Folder, error) {
+	query := `
+		SELECT id, tenant_id, name, description, parent_id, owner_id, created_by, 
+		       created_at, updated_at, is_active, metadata
+		FROM folders 
+		WHERE id = $1 AND tenant_id = $2 AND is_active = true`
+
+	var folder Folder
+	err := r.db.QueryRowContext(ctx, query, id, tenantID).Scan(
+		&folder.ID, &folder.TenantID, &folder.Name, &folder.Description, &folder.ParentID,
+		&folder.OwnerID, &folder.CreatedBy, &folder.CreatedAt, &folder.UpdatedAt,
+		&folder.IsActive, &folder.Metadata)
+
+	if err != nil {
+		return nil, err
+	}
+	return &folder, nil
+}
+
+// ListFolders получает список папок
+func (r *DocumentRepo) ListFolders(ctx context.Context, tenantID string, parentID *string) ([]Folder, error) {
+	query := `
+		SELECT id, tenant_id, name, description, parent_id, owner_id, created_by, 
+		       created_at, updated_at, is_active, metadata
+		FROM folders 
+		WHERE tenant_id = $1 AND is_active = true`
+
+	args := []interface{}{tenantID}
+	if parentID != nil {
+		query += " AND parent_id = $2"
+		args = append(args, *parentID)
+	} else {
+		query += " AND parent_id IS NULL"
+	}
+
+	query += " ORDER BY name"
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	folders := make([]Folder, 0)
+	for rows.Next() {
+		var folder Folder
+		err := rows.Scan(&folder.ID, &folder.TenantID, &folder.Name, &folder.Description,
+			&folder.ParentID, &folder.OwnerID, &folder.CreatedBy, &folder.CreatedAt,
+			&folder.UpdatedAt, &folder.IsActive, &folder.Metadata)
+		if err != nil {
+			return nil, err
+		}
+		folders = append(folders, folder)
+	}
+
+	return folders, nil
+}
+
+// UpdateFolder обновляет папку
+func (r *DocumentRepo) UpdateFolder(ctx context.Context, folder Folder) error {
+	query := `
+		UPDATE folders 
+		SET name = $1, description = $2, metadata = $3, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $4 AND tenant_id = $5`
+
+	_, err := r.db.ExecContext(ctx, query, folder.Name, folder.Description,
+		folder.Metadata, folder.ID, folder.TenantID)
+	return err
+}
+
+// DeleteFolder удаляет папку
+func (r *DocumentRepo) DeleteFolder(ctx context.Context, id, tenantID string) error {
+	query := `UPDATE folders SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND tenant_id = $2`
+	_, err := r.db.ExecContext(ctx, query, id, tenantID)
+	return err
+}
+
+// CreateDocument создает новый документ
+func (r *DocumentRepo) CreateDocument(ctx context.Context, document Document) error {
+	query := `
+		INSERT INTO documents (id, tenant_id, name, original_name, description, file_path, 
+		                      file_size, mime_type, file_hash, folder_id, owner_id, created_by, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`
+
+	_, err := r.db.ExecContext(ctx, query, document.ID, document.TenantID, document.Name,
+		document.OriginalName, document.Description, document.FilePath, document.FileSize,
+		document.MimeType, document.FileHash, document.FolderID, document.OwnerID,
+		document.CreatedBy, document.Metadata)
+	return err
+}
+
+// GetDocumentByID получает документ по ID
+func (r *DocumentRepo) GetDocumentByID(ctx context.Context, id, tenantID string) (*Document, error) {
+	query := `
+		SELECT id, tenant_id, title as name, title as original_name, description, storage_uri as file_path, size_bytes as file_size, 
+		       mime_type, checksum_sha256 as file_hash, NULL as folder_id, owner_id, created_by, created_at, 
+		       updated_at, CASE WHEN deleted_at IS NULL THEN true ELSE false END as is_active, version, NULL as metadata
+		FROM documents 
+		WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`
+
+	var document Document
+	err := r.db.QueryRowContext(ctx, query, id, tenantID).Scan(
+		&document.ID, &document.TenantID, &document.Name, &document.OriginalName,
+		&document.Description, &document.FilePath, &document.FileSize, &document.MimeType,
+		&document.FileHash, &document.FolderID, &document.OwnerID, &document.CreatedBy,
+		&document.CreatedAt, &document.UpdatedAt, &document.IsActive, &document.Version,
+		&document.Metadata)
+
+	if err != nil {
+		return nil, err
+	}
+	return &document, nil
+}
+
+// ListDocuments получает список документов
 func (r *DocumentRepo) ListDocuments(ctx context.Context, tenantID string, filters map[string]interface{}) ([]Document, error) {
 	query := `
-		SELECT id, tenant_id, title, code, description, type, category, 
-		       array_to_string(tags, ',') as tags_str, status, 1 as current_version, 
-		       owner_id, classification, effective_from, review_period_months,
-		       asset_ids, risk_ids, control_ids, av_scan_status,
-		       created_by, created_at, updated_at, deleted_at
+		SELECT id, tenant_id, title as name, title as original_name, description, storage_uri as file_path, size_bytes as file_size, 
+		       mime_type, checksum_sha256 as file_hash, NULL as folder_id, owner_id, created_by, created_at, 
+		       updated_at, CASE WHEN deleted_at IS NULL THEN true ELSE false END as is_active, version, NULL as metadata
 		FROM documents 
 		WHERE tenant_id = $1 AND deleted_at IS NULL`
 
 	args := []interface{}{tenantID}
 	argIndex := 2
 
-	// Apply filters
-	if status, ok := filters["status"]; ok && status != "" {
-		query += fmt.Sprintf(" AND status = $%d", argIndex)
-		args = append(args, status)
+	// Добавляем фильтры
+	// folder_id фильтр убран, так как в таблице documents нет колонки folder_id
+
+	if mimeType, ok := filters["mime_type"].(string); ok && mimeType != "" {
+		query += fmt.Sprintf(" AND mime_type = $%d", argIndex)
+		args = append(args, mimeType)
 		argIndex++
 	}
 
-	if docType, ok := filters["type"]; ok && docType != "" {
-		query += fmt.Sprintf(" AND type = $%d", argIndex)
-		args = append(args, docType)
+	if ownerID, ok := filters["owner_id"].(string); ok && ownerID != "" {
+		query += fmt.Sprintf(" AND owner_id = $%d", argIndex)
+		args = append(args, ownerID)
 		argIndex++
 	}
 
-	if category, ok := filters["category"]; ok && category != "" {
-		query += fmt.Sprintf(" AND category = $%d", argIndex)
-		args = append(args, category)
+	if search, ok := filters["search"].(string); ok && search != "" {
+		query += fmt.Sprintf(" AND (title ILIKE $%d OR description ILIKE $%d)", argIndex, argIndex)
+		searchTerm := "%" + search + "%"
+		args = append(args, searchTerm)
 		argIndex++
 	}
 
-	if search, ok := filters["search"]; ok && search != "" {
-		query += fmt.Sprintf(" AND to_tsvector('russian', title || ' ' || COALESCE(description, '')) @@ plainto_tsquery('russian', $%d)", argIndex)
-		args = append(args, search)
-		argIndex++
+	// Сортировка
+	sortBy := "created_at"
+	if sb, ok := filters["sort_by"].(string); ok && sb != "" {
+		sortBy = sb
+	}
+	sortOrder := "DESC"
+	if so, ok := filters["sort_order"].(string); ok && so != "" {
+		sortOrder = so
+	}
+	query += fmt.Sprintf(" ORDER BY %s %s", sortBy, sortOrder)
+
+	// Пагинация
+	if page, ok := filters["page"].(int); ok && page > 0 {
+		limit := 20
+		if l, ok := filters["limit"].(int); ok && l > 0 {
+			limit = l
+		}
+		offset := (page - 1) * limit
+		query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
 	}
 
-	query += " ORDER BY created_at DESC"
-
-	rows, err := r.db.DB.QueryContext(ctx, query, args...)
+	fmt.Printf("DEBUG: ListDocuments query: %s\n", query)
+	fmt.Printf("DEBUG: ListDocuments args: %v\n", args)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
+		fmt.Printf("ERROR: ListDocuments query failed: %v\n", err)
 		return nil, err
 	}
 	defer rows.Close()
 
-	var documents []Document
+	documents := make([]Document, 0)
 	for rows.Next() {
-		var doc Document
-		var tagsStr sql.NullString
-		var assetIDsStr, riskIDsStr, controlIDsStr sql.NullString
-
-		err := rows.Scan(
-			&doc.ID, &doc.TenantID, &doc.Title, &doc.Code, &doc.Description, &doc.Type,
-			&doc.Category, &tagsStr, &doc.Status, &doc.CurrentVersion,
-			&doc.OwnerID, &doc.Classification, &doc.EffectiveFrom, &doc.ReviewPeriodMonths,
-			&assetIDsStr, &riskIDsStr, &controlIDsStr, &doc.AVScanStatus,
-			&doc.CreatedBy, &doc.CreatedAt, &doc.UpdatedAt, &doc.DeletedAt,
-		)
+		var document Document
+		err := rows.Scan(&document.ID, &document.TenantID, &document.Name, &document.OriginalName,
+			&document.Description, &document.FilePath, &document.FileSize, &document.MimeType,
+			&document.FileHash, &document.FolderID, &document.OwnerID, &document.CreatedBy,
+			&document.CreatedAt, &document.UpdatedAt, &document.IsActive, &document.Version,
+			&document.Metadata)
 		if err != nil {
+			fmt.Printf("ERROR: ListDocuments scan failed: %v\n", err)
 			return nil, err
 		}
-
-		if tagsStr.Valid && tagsStr.String != "" {
-			doc.Tags = strings.Split(tagsStr.String, ",")
-		}
-
-		if assetIDsStr.Valid && assetIDsStr.String != "" {
-			doc.AssetIDs = strings.Split(assetIDsStr.String, ",")
-		}
-
-		if riskIDsStr.Valid && riskIDsStr.String != "" {
-			doc.RiskIDs = strings.Split(riskIDsStr.String, ",")
-		}
-
-		if controlIDsStr.Valid && controlIDsStr.String != "" {
-			doc.ControlIDs = strings.Split(controlIDsStr.String, ",")
-		}
-
-		documents = append(documents, doc)
+		documents = append(documents, document)
 	}
 
 	return documents, nil
 }
 
-// GetDocument retrieves a document by ID
-func (r *DocumentRepo) GetDocument(ctx context.Context, id, tenantID string) (*Document, error) {
-	query := `
-		SELECT id, tenant_id, title, code, description, type, category, 
-		       array_to_string(tags, ',') as tags_str, status, 1 as current_version, 
-		       owner_id, classification, effective_from, review_period_months,
-		       asset_ids, risk_ids, control_ids, av_scan_status,
-		       created_by, created_at, updated_at, deleted_at
-		FROM documents 
-		WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`
-
-	var doc Document
-	var tagsStr sql.NullString
-	var assetIDsStr, riskIDsStr, controlIDsStr sql.NullString
-
-	err := r.db.DB.QueryRowContext(ctx, query, id, tenantID).Scan(
-		&doc.ID, &doc.TenantID, &doc.Title, &doc.Code, &doc.Description, &doc.Type,
-		&doc.Category, &tagsStr, &doc.Status, &doc.CurrentVersion,
-		&doc.OwnerID, &doc.Classification, &doc.EffectiveFrom, &doc.ReviewPeriodMonths,
-		&assetIDsStr, &riskIDsStr, &controlIDsStr, &doc.AVScanStatus,
-		&doc.CreatedBy, &doc.CreatedAt, &doc.UpdatedAt, &doc.DeletedAt,
-	)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	if tagsStr.Valid && tagsStr.String != "" {
-		doc.Tags = strings.Split(tagsStr.String, ",")
-	}
-
-	if assetIDsStr.Valid && assetIDsStr.String != "" {
-		doc.AssetIDs = strings.Split(assetIDsStr.String, ",")
-	}
-
-	if riskIDsStr.Valid && riskIDsStr.String != "" {
-		doc.RiskIDs = strings.Split(riskIDsStr.String, ",")
-	}
-
-	if controlIDsStr.Valid && controlIDsStr.String != "" {
-		doc.ControlIDs = strings.Split(controlIDsStr.String, ",")
-	}
-
-	return &doc, nil
-}
-
-// CreateDocument creates a new document
-func (r *DocumentRepo) CreateDocument(ctx context.Context, doc Document) error {
-	fmt.Printf("DEBUG: CreateDocument repo called with: %+v\n", doc)
-	query := `
-		INSERT INTO documents (id, tenant_id, title, code, description, type, category, tags, 
-		                      status, version, owner_id, classification, effective_from, 
-		                      review_period_months, asset_ids, risk_ids, control_ids, 
-		                      av_scan_status, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`
-
-	fmt.Printf("DEBUG: Executing query: %s\n", query)
-
-	// Convert slices to PostgreSQL arrays
-	var tagsArray interface{}
-	if len(doc.Tags) > 0 {
-		tagsArray = "{" + strings.Join(doc.Tags, ",") + "}"
-	} else {
-		tagsArray = "{}"
-	}
-
-	var assetIDsArray interface{}
-	if len(doc.AssetIDs) > 0 {
-		assetIDsArray = "{" + strings.Join(doc.AssetIDs, ",") + "}"
-	} else {
-		assetIDsArray = "{}"
-	}
-
-	var riskIDsArray interface{}
-	if len(doc.RiskIDs) > 0 {
-		riskIDsArray = "{" + strings.Join(doc.RiskIDs, ",") + "}"
-	} else {
-		riskIDsArray = "{}"
-	}
-
-	var controlIDsArray interface{}
-	if len(doc.ControlIDs) > 0 {
-		controlIDsArray = "{" + strings.Join(doc.ControlIDs, ",") + "}"
-	} else {
-		controlIDsArray = "{}"
-	}
-
-	_, err := r.db.DB.ExecContext(ctx, query,
-		doc.ID, doc.TenantID, doc.Title, doc.Code, doc.Description, doc.Type, doc.Category,
-		tagsArray, doc.Status, "1.0", doc.OwnerID, doc.Classification, doc.EffectiveFrom,
-		doc.ReviewPeriodMonths, assetIDsArray, riskIDsArray, controlIDsArray,
-		doc.AVScanStatus, doc.CreatedBy,
-	)
-	if err != nil {
-		fmt.Printf("DEBUG: Database error: %v\n", err)
-		return err
-	}
-	fmt.Printf("DEBUG: Document created successfully in database\n")
-	return nil
-}
-
-// UpdateDocument updates an existing document
-func (r *DocumentRepo) UpdateDocument(ctx context.Context, doc Document) error {
+// UpdateDocument обновляет документ
+func (r *DocumentRepo) UpdateDocument(ctx context.Context, document Document) error {
 	query := `
 		UPDATE documents 
-		SET title = $1, description = $2, type = $3, category = $4, 
-		    status = $5, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $6 AND tenant_id = $7`
+		SET name = $1, description = $2, folder_id = $3, metadata = $4, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $5 AND tenant_id = $6`
 
-	_, err := r.db.DB.ExecContext(ctx, query,
-		doc.Title, doc.Description, doc.Type, doc.Category,
-		doc.Status, doc.ID, doc.TenantID,
-	)
+	_, err := r.db.ExecContext(ctx, query, document.Name, document.Description,
+		document.FolderID, document.Metadata, document.ID, document.TenantID)
 	return err
 }
 
-// DeleteDocument soft deletes a document
+// DeleteDocument удаляет документ
 func (r *DocumentRepo) DeleteDocument(ctx context.Context, id, tenantID string) error {
-	query := `UPDATE documents SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND tenant_id = $2`
-	_, err := r.db.DB.ExecContext(ctx, query, id, tenantID)
+	query := `UPDATE documents SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND tenant_id = $2`
+	_, err := r.db.ExecContext(ctx, query, id, tenantID)
 	return err
 }
 
-// ListDocumentVersions retrieves versions for a document
-func (r *DocumentRepo) ListDocumentVersions(ctx context.Context, documentID, tenantID string) ([]DocumentVersion, error) {
-	query := `
-		SELECT dv.id, dv.document_id, dv.version_number, dv.storage_key, dv.mime_type,
-		       dv.size_bytes, dv.checksum_sha256, dv.created_by, dv.created_at
-		FROM document_versions dv
-		JOIN documents d ON dv.document_id = d.id
-		WHERE dv.document_id = $1 AND d.tenant_id = $2
-		ORDER BY dv.version_number DESC`
+// AddDocumentTag добавляет тег к документу
+func (r *DocumentRepo) AddDocumentTag(ctx context.Context, documentID, tag string) error {
+	query := `INSERT INTO document_tags (id, document_id, tag) VALUES ($1, $2, $3) ON CONFLICT (document_id, tag) DO NOTHING`
+	_, err := r.db.ExecContext(ctx, query, uuid.New().String(), documentID, tag)
+	return err
+}
 
-	rows, err := r.db.DB.QueryContext(ctx, query, documentID, tenantID)
+// RemoveDocumentTag удаляет тег у документа
+func (r *DocumentRepo) RemoveDocumentTag(ctx context.Context, documentID, tag string) error {
+	query := `DELETE FROM document_tags WHERE document_id = $1 AND tag = $2`
+	_, err := r.db.ExecContext(ctx, query, documentID, tag)
+	return err
+}
+
+// GetDocumentTags получает теги документа
+func (r *DocumentRepo) GetDocumentTags(ctx context.Context, documentID string) ([]string, error) {
+	query := `SELECT tag FROM document_tags WHERE document_id = $1 ORDER BY tag`
+	rows, err := r.db.QueryContext(ctx, query, documentID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var versions []DocumentVersion
+	tags := make([]string, 0)
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			return nil, err
+		}
+		tags = append(tags, tag)
+	}
+	return tags, nil
+}
+
+// AddDocumentLink добавляет связь документа с другим модулем
+func (r *DocumentRepo) AddDocumentLink(ctx context.Context, link DocumentLink) error {
+	query := `
+		INSERT INTO document_links (id, document_id, module, entity_id, created_by)
+		VALUES ($1, $2, $3, $4, $5) ON CONFLICT (document_id, module, entity_id) DO NOTHING`
+	_, err := r.db.ExecContext(ctx, query, link.ID, link.DocumentID, link.Module, link.EntityID, link.CreatedBy)
+	return err
+}
+
+// GetDocumentLinks получает связи документа
+func (r *DocumentRepo) GetDocumentLinks(ctx context.Context, documentID string) ([]DocumentLink, error) {
+	query := `SELECT id, document_id, module, entity_id, created_by, created_at FROM document_links WHERE document_id = $1`
+	rows, err := r.db.QueryContext(ctx, query, documentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	links := make([]DocumentLink, 0)
+	for rows.Next() {
+		var link DocumentLink
+		err := rows.Scan(&link.ID, &link.DocumentID, &link.Module, &link.EntityID, &link.CreatedBy, &link.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		links = append(links, link)
+	}
+	return links, nil
+}
+
+// CreateOCRText создает OCR текст для документа
+func (r *DocumentRepo) CreateOCRText(ctx context.Context, ocrText OCRText) error {
+	query := `
+		INSERT INTO ocr_text (id, document_id, content, language, confidence)
+		VALUES ($1, $2, $3, $4, $5) ON CONFLICT (document_id) DO UPDATE SET
+		content = EXCLUDED.content, language = EXCLUDED.language, 
+		confidence = EXCLUDED.confidence, updated_at = CURRENT_TIMESTAMP`
+	_, err := r.db.ExecContext(ctx, query, ocrText.ID, ocrText.DocumentID, ocrText.Content, ocrText.Language, ocrText.Confidence)
+	return err
+}
+
+// GetOCRText получает OCR текст документа
+func (r *DocumentRepo) GetOCRText(ctx context.Context, documentID string) (*OCRText, error) {
+	query := `SELECT id, document_id, content, language, confidence, created_at, updated_at FROM ocr_text WHERE document_id = $1`
+	var ocrText OCRText
+	err := r.db.QueryRowContext(ctx, query, documentID).Scan(
+		&ocrText.ID, &ocrText.DocumentID, &ocrText.Content, &ocrText.Language,
+		&ocrText.Confidence, &ocrText.CreatedAt, &ocrText.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &ocrText, nil
+}
+
+// CreateDocumentPermission создает разрешение для документа
+func (r *DocumentRepo) CreateDocumentPermission(ctx context.Context, permission DocumentPermission) error {
+	query := `
+		INSERT INTO document_permissions (id, tenant_id, subject_type, subject_id, object_type, object_id, permission, granted_by, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	_, err := r.db.ExecContext(ctx, query, permission.ID, permission.TenantID, permission.SubjectType,
+		permission.SubjectID, permission.ObjectType, permission.ObjectID, permission.Permission,
+		permission.GrantedBy, permission.ExpiresAt)
+	return err
+}
+
+// GetDocumentPermissions получает разрешения документа
+func (r *DocumentRepo) GetDocumentPermissions(ctx context.Context, objectType, objectID, tenantID string) ([]DocumentPermission, error) {
+	query := `
+		SELECT id, tenant_id, subject_type, subject_id, object_type, object_id, permission, 
+		       granted_by, granted_at, expires_at, is_active
+		FROM document_permissions 
+		WHERE object_type = $1 AND object_id = $2 AND tenant_id = $3 AND is_active = true`
+
+	rows, err := r.db.QueryContext(ctx, query, objectType, objectID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	permissions := make([]DocumentPermission, 0)
+	for rows.Next() {
+		var permission DocumentPermission
+		err := rows.Scan(&permission.ID, &permission.TenantID, &permission.SubjectType,
+			&permission.SubjectID, &permission.ObjectType, &permission.ObjectID,
+			&permission.Permission, &permission.GrantedBy, &permission.GrantedAt,
+			&permission.ExpiresAt, &permission.IsActive)
+		if err != nil {
+			return nil, err
+		}
+		permissions = append(permissions, permission)
+	}
+	return permissions, nil
+}
+
+// CreateDocumentVersion создает версию документа
+func (r *DocumentRepo) CreateDocumentVersion(ctx context.Context, version DocumentVersion) error {
+	query := `
+		INSERT INTO document_versions (id, document_id, version_number, file_path, file_size, file_hash, created_by, change_description)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	_, err := r.db.ExecContext(ctx, query, version.ID, version.DocumentID, version.VersionNumber,
+		version.FilePath, version.FileSize, version.FileHash, version.CreatedBy, version.ChangeDescription)
+	return err
+}
+
+// GetDocumentVersions получает версии документа
+func (r *DocumentRepo) GetDocumentVersions(ctx context.Context, documentID string) ([]DocumentVersion, error) {
+	query := `
+		SELECT id, document_id, version_number, file_path, file_size, file_hash, created_by, created_at, change_description
+		FROM document_versions 
+		WHERE document_id = $1 
+		ORDER BY version_number DESC`
+
+	rows, err := r.db.QueryContext(ctx, query, documentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	versions := make([]DocumentVersion, 0)
 	for rows.Next() {
 		var version DocumentVersion
-		err := rows.Scan(
-			&version.ID, &version.DocumentID, &version.VersionNumber, &version.StorageKey,
-			&version.MimeType, &version.SizeBytes, &version.ChecksumSHA256, &version.CreatedBy, &version.CreatedAt,
-		)
+		err := rows.Scan(&version.ID, &version.DocumentID, &version.VersionNumber,
+			&version.FilePath, &version.FileSize, &version.FileHash, &version.CreatedBy,
+			&version.CreatedAt, &version.ChangeDescription)
 		if err != nil {
 			return nil, err
 		}
 		versions = append(versions, version)
 	}
-
 	return versions, nil
 }
 
-// GetDocumentVersion retrieves a specific version of a document
-func (r *DocumentRepo) GetDocumentVersion(ctx context.Context, versionID, tenantID string) (*DocumentVersion, error) {
+// CreateDocumentAuditLog создает запись аудита
+func (r *DocumentRepo) CreateDocumentAuditLog(ctx context.Context, log DocumentAuditLog) error {
 	query := `
-		SELECT dv.id, dv.document_id, dv.version_number, dv.storage_key, dv.mime_type,
-		       dv.size_bytes, dv.checksum_sha256, dv.created_by, dv.created_at
-		FROM document_versions dv
-		JOIN documents d ON dv.document_id = d.id
-		WHERE dv.id = $1 AND d.tenant_id = $2`
+		INSERT INTO document_audit_log (id, tenant_id, document_id, folder_id, user_id, action, details, ip_address, user_agent)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	_, err := r.db.ExecContext(ctx, query, log.ID, log.TenantID, log.DocumentID, log.FolderID,
+		log.UserID, log.Action, log.Details, log.IPAddress, log.UserAgent)
+	return err
+}
 
-	var version DocumentVersion
-	err := r.db.DB.QueryRowContext(ctx, query, versionID, tenantID).Scan(
-		&version.ID, &version.DocumentID, &version.VersionNumber, &version.StorageKey,
-		&version.MimeType, &version.SizeBytes, &version.ChecksumSHA256, &version.CreatedBy, &version.CreatedAt,
-	)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
+// GetDocumentAuditLog получает аудит документов
+func (r *DocumentRepo) GetDocumentAuditLog(ctx context.Context, tenantID string, filters map[string]interface{}) ([]DocumentAuditLog, error) {
+	query := `
+		SELECT id, tenant_id, document_id, folder_id, user_id, action, details, ip_address, user_agent, created_at
+		FROM document_audit_log 
+		WHERE tenant_id = $1`
+
+	args := []interface{}{tenantID}
+	argIndex := 2
+
+	if documentID, ok := filters["document_id"].(string); ok && documentID != "" {
+		query += fmt.Sprintf(" AND document_id = $%d", argIndex)
+		args = append(args, documentID)
+		argIndex++
+	}
+
+	if userID, ok := filters["user_id"].(string); ok && userID != "" {
+		query += fmt.Sprintf(" AND user_id = $%d", argIndex)
+		args = append(args, userID)
+		argIndex++
+	}
+
+	if action, ok := filters["action"].(string); ok && action != "" {
+		query += fmt.Sprintf(" AND action = $%d", argIndex)
+		args = append(args, action)
+		argIndex++
+	}
+
+	query += " ORDER BY created_at DESC"
+
+	// Пагинация
+	if page, ok := filters["page"].(int); ok && page > 0 {
+		limit := 50
+		if l, ok := filters["limit"].(int); ok && l > 0 {
+			limit = l
 		}
-		return nil, err
+		offset := (page - 1) * limit
+		query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
 	}
 
-	return &version, nil
-}
-
-// CreateDocumentVersion creates a new version of a document
-func (r *DocumentRepo) CreateDocumentVersion(ctx context.Context, version DocumentVersion) error {
-	query := `
-		INSERT INTO document_versions (id, document_id, version_number, storage_key, 
-		                             size_bytes, mime_type, checksum_sha256, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
-
-	_, err := r.db.DB.ExecContext(ctx, query,
-		version.ID, version.DocumentID, version.VersionNumber, version.StorageKey,
-		version.SizeBytes, version.MimeType, version.ChecksumSHA256, version.CreatedBy,
-	)
-	return err
-}
-
-// ListDocumentAcknowledgment retrieves acknowledgments for a document
-func (r *DocumentRepo) ListDocumentAcknowledgment(ctx context.Context, documentID, tenantID string) ([]DocumentAcknowledgment, error) {
-	query := `
-		SELECT da.id, da.document_id, da.version_id, da.user_id, da.status, da.quiz_score,
-		       da.quiz_passed, da.acknowledged_at, da.deadline, da.created_at, da.updated_at
-		FROM document_acknowledgments da
-		JOIN documents d ON da.document_id = d.id
-		WHERE da.document_id = $1 AND d.tenant_id = $2
-		ORDER BY da.created_at DESC`
-
-	rows, err := r.db.DB.QueryContext(ctx, query, documentID, tenantID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var acknowledgments []DocumentAcknowledgment
-	for rows.Next() {
-		var ack DocumentAcknowledgment
-		err := rows.Scan(
-			&ack.ID, &ack.DocumentID, &ack.VersionID, &ack.UserID, &ack.Status,
-			&ack.QuizScore, &ack.QuizPassed, &ack.AcknowledgedAt, &ack.Deadline,
-			&ack.CreatedAt, &ack.UpdatedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-		acknowledgments = append(acknowledgments, ack)
-	}
-
-	return acknowledgments, nil
-}
-
-// CreateDocumentAcknowledgment creates a new acknowledgment
-func (r *DocumentRepo) CreateDocumentAcknowledgment(ctx context.Context, ack DocumentAcknowledgment) error {
-	query := `
-		INSERT INTO document_acknowledgments (id, document_id, version_id, user_id, status, deadline)
-		VALUES ($1, $2, $3, $4, $5, $6)`
-
-	_, err := r.db.DB.ExecContext(ctx, query,
-		ack.ID, ack.DocumentID, ack.VersionID, ack.UserID, ack.Status, ack.Deadline,
-	)
-	return err
-}
-
-// UpdateDocumentAcknowledgment updates an acknowledgment
-func (r *DocumentRepo) UpdateDocumentAcknowledgment(ctx context.Context, ack DocumentAcknowledgment) error {
-	query := `
-		UPDATE document_acknowledgments 
-		SET status = $1, quiz_score = $2, quiz_passed = $3, acknowledged_at = $4, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $5`
-
-	_, err := r.db.DB.ExecContext(ctx, query,
-		ack.Status, ack.QuizScore, ack.QuizPassed, ack.AcknowledgedAt, ack.ID,
-	)
-	return err
-}
-
-// ListDocumentQuizzes retrieves quizzes for a document
-func (r *DocumentRepo) ListDocumentQuizzes(ctx context.Context, documentID, tenantID string) ([]DocumentQuiz, error) {
-	query := `
-		SELECT dq.id, dq.document_id, dq.version_id, dq.question, dq.question_order,
-		       dq.options, dq.correct_answer, dq.is_active, dq.created_at
-		FROM document_quizzes dq
-		JOIN documents d ON dq.document_id = d.id
-		WHERE dq.document_id = $1 AND d.tenant_id = $2 AND dq.is_active = true
-		ORDER BY dq.question_order`
-
-	rows, err := r.db.DB.QueryContext(ctx, query, documentID, tenantID)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var quizzes []DocumentQuiz
+	logs := make([]DocumentAuditLog, 0)
 	for rows.Next() {
-		var quiz DocumentQuiz
-		err := rows.Scan(
-			&quiz.ID, &quiz.DocumentID, &quiz.VersionID, &quiz.Question,
-			&quiz.QuestionOrder, &quiz.Options, &quiz.CorrectAnswer, &quiz.IsActive, &quiz.CreatedAt,
-		)
+		var log DocumentAuditLog
+		err := rows.Scan(&log.ID, &log.TenantID, &log.DocumentID, &log.FolderID,
+			&log.UserID, &log.Action, &log.Details, &log.IPAddress, &log.UserAgent, &log.CreatedAt)
 		if err != nil {
 			return nil, err
 		}
-		quizzes = append(quizzes, quiz)
+		logs = append(logs, log)
 	}
-
-	return quizzes, nil
+	return logs, nil
 }
 
-// CreateDocumentQuiz creates a new quiz question
-func (r *DocumentRepo) CreateDocumentQuiz(ctx context.Context, quiz DocumentQuiz) error {
+// SearchDocuments выполняет поиск документов
+func (r *DocumentRepo) SearchDocuments(ctx context.Context, tenantID, searchTerm string) ([]Document, error) {
 	query := `
-		INSERT INTO document_quizzes (id, document_id, version_id, question, question_order, options, correct_answer, is_active)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+		SELECT DISTINCT d.id, d.tenant_id, d.title as name, d.title as original_name, d.description, d.storage_uri as file_path, 
+		       d.size_bytes as file_size, d.mime_type, d.checksum_sha256 as file_hash, NULL as folder_id, d.owner_id, d.created_by, 
+		       d.created_at, d.updated_at, CASE WHEN d.deleted_at IS NULL THEN true ELSE false END as is_active, d.version, NULL as metadata
+		FROM documents d
+		LEFT JOIN document_tags dt ON d.id = dt.document_id
+		LEFT JOIN ocr_text ot ON d.id = ot.document_id
+		WHERE d.tenant_id = $1 AND d.deleted_at IS NULL
+		AND (d.title ILIKE $2 OR d.description ILIKE $2 OR dt.tag ILIKE $2 OR ot.content ILIKE $2)
+		ORDER BY d.created_at DESC`
 
-	_, err := r.db.DB.ExecContext(ctx, query,
-		quiz.ID, quiz.DocumentID, quiz.VersionID, quiz.Question, quiz.QuestionOrder,
-		quiz.Options, quiz.CorrectAnswer, quiz.IsActive,
-	)
-	return err
-}
-
-// GetUserPendingAcknowledgment retrieves pending acknowledgments for a user
-func (r *DocumentRepo) GetUserPendingAcknowledgment(ctx context.Context, userID, tenantID string) ([]DocumentAcknowledgment, error) {
-	query := `
-		SELECT da.id, da.document_id, da.version_id, da.user_id, da.status, da.quiz_score,
-		       da.quiz_passed, da.acknowledged_at, da.deadline, da.created_at, da.updated_at
-		FROM document_acknowledgments da
-		JOIN documents d ON da.document_id = d.id
-		WHERE da.user_id = $1 AND d.tenant_id = $2 AND da.status = 'pending'
-		ORDER BY da.deadline ASC NULLS LAST, da.created_at ASC`
-
-	rows, err := r.db.DB.QueryContext(ctx, query, userID, tenantID)
+	searchPattern := "%" + searchTerm + "%"
+	rows, err := r.db.QueryContext(ctx, query, tenantID, searchPattern)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var acknowledgments []DocumentAcknowledgment
+	documents := make([]Document, 0)
 	for rows.Next() {
-		var ack DocumentAcknowledgment
-		err := rows.Scan(
-			&ack.ID, &ack.DocumentID, &ack.VersionID, &ack.UserID, &ack.Status,
-			&ack.QuizScore, &ack.QuizPassed, &ack.AcknowledgedAt, &ack.Deadline,
-			&ack.CreatedAt, &ack.UpdatedAt,
-		)
+		var document Document
+		err := rows.Scan(&document.ID, &document.TenantID, &document.Name, &document.OriginalName,
+			&document.Description, &document.FilePath, &document.FileSize, &document.MimeType,
+			&document.FileHash, &document.FolderID, &document.OwnerID, &document.CreatedBy,
+			&document.CreatedAt, &document.UpdatedAt, &document.IsActive, &document.Version,
+			&document.Metadata)
 		if err != nil {
 			return nil, err
 		}
-		acknowledgments = append(acknowledgments, ack)
+		documents = append(documents, document)
 	}
+	return documents, nil
+}
 
-	return acknowledgments, nil
+// DeleteDocumentLink удаляет связь документа с другим модулем
+func (r *DocumentRepo) DeleteDocumentLink(ctx context.Context, documentID, module, entityID string) error {
+	query := `DELETE FROM document_links WHERE document_id = $1 AND module = $2 AND entity_id = $3`
+	_, err := r.db.ExecContext(ctx, query, documentID, module, entityID)
+	return err
 }

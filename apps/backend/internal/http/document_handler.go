@@ -1,547 +1,372 @@
 package http
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
-	"log"
+	"mime/multipart"
 	"strconv"
 	"strings"
 
 	"risknexus/backend/internal/domain"
 	"risknexus/backend/internal/dto"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 )
 
-// DocumentHandler handles HTTP requests for documents
+// DocumentHandler - обработчик для документов
 type DocumentHandler struct {
-	service   *domain.DocumentService
-	validator *validator.Validate
+	documentService domain.DocumentServiceInterface
 }
 
-// NewDocumentHandler creates a new document handler
-func NewDocumentHandler(service *domain.DocumentService) *DocumentHandler {
+// NewDocumentHandler создает новый экземпляр DocumentHandler
+func NewDocumentHandler(documentService domain.DocumentServiceInterface) *DocumentHandler {
 	return &DocumentHandler{
-		service:   service,
-		validator: validator.New(),
+		documentService: documentService,
 	}
 }
 
-// Register registers document routes
-func (h *DocumentHandler) Register(r fiber.Router) {
-	// Document CRUD
-	r.Get("/documents", RequirePermission("docs.view"), h.listDocuments)
-	r.Post("/documents", h.createDocument)
-	r.Get("/documents/:id", h.getDocument)
-	r.Put("/documents/:id", h.updateDocument)
-	r.Delete("/documents/:id", h.deleteDocument)
+// RegisterRoutes регистрирует маршруты для документов
+func (h *DocumentHandler) RegisterRoutes(router fiber.Router) {
+	// Тестовый маршрут
+	router.Get("/documents/test", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"message": "Documents test route works"})
+	})
 
-	// Document versions
-	r.Get("/documents/:id/versions", h.listDocumentVersions)
-	r.Post("/documents/:id/versions", h.createDocumentVersion)
-	r.Get("/documents/versions/:versionId", h.getDocumentVersion)
-	r.Get("/documents/versions/:versionId/download", h.downloadDocumentVersion)
-	r.Get("/documents/versions/:versionId/preview", h.previewDocumentVersion)
-	r.Get("/documents/versions/:versionId/html", h.getDocumentVersionHTML)
+	// Папки
+	router.Post("/folders", RequirePermission("document.create"), h.CreateFolder)
+	router.Get("/folders", RequirePermission("document.read"), h.ListFolders)
+	router.Get("/folders/:id", RequirePermission("document.read"), h.GetFolder)
+	router.Put("/folders/:id", RequirePermission("document.edit"), h.UpdateFolder)
+	router.Delete("/folders/:id", RequirePermission("document.delete"), h.DeleteFolder)
 
-	// Document acknowledgments
-	r.Get("/documents/:id/acknowledgments", h.listDocumentAcknowledgment)
-	r.Post("/documents/:id/acknowledgments", h.createDocumentAcknowledgment)
-	r.Put("/documents/acknowledgments/:ackId", h.updateDocumentAcknowledgment)
-
-	// Document quizzes
-	r.Get("/documents/:id/quizzes", h.listDocumentQuizzes)
-	r.Post("/documents/:id/quizzes", h.createDocumentQuiz)
-
-	// User-specific endpoints
-	r.Get("/users/me/pending-acknowledgments", h.getUserPendingAcknowledgment)
+	// Документы
+	router.Post("/documents/upload", RequirePermission("document.create"), h.UploadDocument)
+	router.Get("/documents", RequirePermission("document.read"), h.ListDocuments)
+	router.Get("/documents/search", RequirePermission("document.read"), h.SearchDocuments)
+	router.Get("/stats", RequirePermission("document.read"), h.GetDocumentStats)
+	router.Get("/documents/:id", RequirePermission("document.read"), h.GetDocument)
+	router.Put("/documents/:id", RequirePermission("document.edit"), h.UpdateDocument)
+	router.Delete("/documents/:id", RequirePermission("document.delete"), h.DeleteDocument)
+	router.Get("/documents/:id/download", RequirePermission("document.read"), h.DownloadDocument)
 }
 
-// listDocuments retrieves documents with filtering
-func (h *DocumentHandler) listDocuments(c *fiber.Ctx) error {
+// CreateFolder создает новую папку
+func (h *DocumentHandler) CreateFolder(c *fiber.Ctx) error {
+	ctx := c.Context()
+	tenantID := c.Locals("tenant_id").(string)
+	userID := c.Locals("user_id").(string)
+
+	var req dto.CreateFolderDTO
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	folder, err := h.documentService.CreateFolder(ctx, tenantID, req, userID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to create folder: %v", err)})
+	}
+
+	return c.JSON(folder)
+}
+
+// GetFolder получает папку по ID
+func (h *DocumentHandler) GetFolder(c *fiber.Ctx) error {
+	ctx := c.Context()
+	tenantID := c.Locals("tenant_id").(string)
+	folderID := c.Params("id")
+
+	folder, err := h.documentService.GetFolder(ctx, folderID, tenantID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to get folder: %v", err)})
+	}
+
+	return c.JSON(folder)
+}
+
+// ListFolders получает список папок
+func (h *DocumentHandler) ListFolders(c *fiber.Ctx) error {
+	ctx := c.Context()
 	tenantID := c.Locals("tenant_id").(string)
 
-	// Parse query parameters
-	filters := dto.DocumentFiltersDTO{
+	parentID := c.Query("parent_id")
+	var parentIDPtr *string
+	if parentID != "" {
+		parentIDPtr = &parentID
+	}
+
+	folders, err := h.documentService.ListFolders(ctx, tenantID, parentIDPtr)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to list folders: %v", err)})
+	}
+
+	return c.JSON(folders)
+}
+
+// UpdateFolder обновляет папку
+func (h *DocumentHandler) UpdateFolder(c *fiber.Ctx) error {
+	ctx := c.Context()
+	tenantID := c.Locals("tenant_id").(string)
+	userID := c.Locals("user_id").(string)
+	folderID := c.Params("id")
+
+	var req dto.UpdateFolderDTO
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	err := h.documentService.UpdateFolder(ctx, folderID, tenantID, req, userID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to update folder: %v", err)})
+	}
+
+	return c.SendStatus(200)
+}
+
+// DeleteFolder удаляет папку
+func (h *DocumentHandler) DeleteFolder(c *fiber.Ctx) error {
+	ctx := c.Context()
+	tenantID := c.Locals("tenant_id").(string)
+	userID := c.Locals("user_id").(string)
+	folderID := c.Params("id")
+
+	err := h.documentService.DeleteFolder(ctx, folderID, tenantID, userID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to delete folder: %v", err)})
+	}
+
+	return c.SendStatus(200)
+}
+
+// UploadDocument загружает документ
+func (h *DocumentHandler) UploadDocument(c *fiber.Ctx) error {
+	ctx := c.Context()
+	tenantID := c.Locals("tenant_id").(string)
+	userID := c.Locals("user_id").(string)
+
+	// Получаем файл из формы
+	file, err := c.FormFile("file")
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "No file provided"})
+	}
+
+	// Открываем файл
+	src, err := file.Open()
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Failed to open file"})
+	}
+	defer src.Close()
+
+	// Создаем заголовок файла
+	header := &multipart.FileHeader{
+		Filename: file.Filename,
+		Size:     file.Size,
+		Header:   make(map[string][]string),
+	}
+	header.Header["Content-Type"] = []string{file.Header.Get("Content-Type")}
+
+	// Получаем метаданные
+	req := dto.UploadDocumentDTO{
+		Name:        c.FormValue("name"),
+		Description: getStringPtr(c.FormValue("description")),
+		FolderID:    getStringPtr(c.FormValue("folder_id")),
+		EnableOCR:   c.FormValue("enable_ocr") == "true",
+		Metadata:    getStringPtr(c.FormValue("metadata")),
+	}
+
+	// Парсим теги
+	if tagsStr := c.FormValue("tags"); tagsStr != "" {
+		req.Tags = strings.Split(tagsStr, ",")
+		for i, tag := range req.Tags {
+			req.Tags[i] = strings.TrimSpace(tag)
+		}
+	}
+
+	// Парсим связи с другими модулями
+	if linkedToStr := c.FormValue("linked_to"); linkedToStr != "" {
+		var linkedTo dto.DocumentLinkDTO
+		if err := json.Unmarshal([]byte(linkedToStr), &linkedTo); err == nil {
+			req.LinkedTo = &linkedTo
+		}
+	}
+
+	document, err := h.documentService.UploadDocument(ctx, tenantID, src, header, req, userID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to upload document: %v", err)})
+	}
+
+	return c.JSON(document)
+}
+
+// GetDocument получает документ по ID
+func (h *DocumentHandler) GetDocument(c *fiber.Ctx) error {
+	ctx := c.Context()
+	tenantID := c.Locals("tenant_id").(string)
+	documentID := c.Params("id")
+
+	document, err := h.documentService.GetDocument(ctx, documentID, tenantID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to get document: %v", err)})
+	}
+
+	return c.JSON(document)
+}
+
+// ListDocuments получает список документов
+func (h *DocumentHandler) ListDocuments(c *fiber.Ctx) error {
+	ctx := c.Context()
+	fmt.Printf("DEBUG: ListDocuments called, path=%s\n", c.Path())
+	tenantIDRaw := c.Locals("tenant_id")
+	fmt.Printf("DEBUG: ListDocuments tenantIDRaw=%v\n", tenantIDRaw)
+	if tenantIDRaw == nil {
+		fmt.Printf("DEBUG: ListDocuments tenant_id is nil\n")
+		return c.Status(400).JSON(fiber.Map{"error": "Missing tenant ID"})
+	}
+	tenantID := tenantIDRaw.(string)
+	fmt.Printf("DEBUG: ListDocuments tenantID=%s\n", tenantID)
+
+	// Парсим параметры запроса
+	filters := dto.FileDocumentFiltersDTO{
 		Page:  1,
 		Limit: 20,
 	}
 
-	if status := c.Query("status"); status != "" {
-		filters.Status = &status
+	if pageStr := c.Query("page"); pageStr != "" {
+		if page, err := strconv.Atoi(pageStr); err == nil && page > 0 {
+			filters.Page = page
+		}
 	}
-	if docType := c.Query("type"); docType != "" {
-		filters.Type = &docType
+
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 && limit <= 100 {
+			filters.Limit = limit
+		}
 	}
-	if category := c.Query("category"); category != "" {
-		filters.Category = &category
+
+	if folderID := c.Query("folder_id"); folderID != "" {
+		filters.FolderID = &folderID
 	}
+
+	if mimeType := c.Query("mime_type"); mimeType != "" {
+		filters.MimeType = &mimeType
+	}
+
+	if ownerID := c.Query("owner_id"); ownerID != "" {
+		filters.OwnerID = &ownerID
+	}
+
 	if search := c.Query("search"); search != "" {
 		filters.Search = &search
 	}
-	if page := c.Query("page"); page != "" {
-		if p, err := strconv.Atoi(page); err == nil && p > 0 {
-			filters.Page = p
-		}
-	}
-	if limit := c.Query("limit"); limit != "" {
-		if l, err := strconv.Atoi(limit); err == nil && l > 0 && l <= 100 {
-			filters.Limit = l
-		}
+
+	if sortBy := c.Query("sort_by"); sortBy != "" {
+		filters.SortBy = &sortBy
 	}
 
-	documents, err := h.service.ListDocuments(context.Background(), tenantID, filters)
+	if sortOrder := c.Query("sort_order"); sortOrder != "" {
+		filters.SortOrder = &sortOrder
+	}
+
+	fmt.Printf("DEBUG: DocumentHandler.ListDocuments calling service with tenantID=%s, filters=%+v\n", tenantID, filters)
+	documents, err := h.documentService.ListDocuments(ctx, tenantID, filters)
 	if err != nil {
-		log.Printf("ERROR: listDocuments failed for tenant %s: %v", tenantID, err)
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		fmt.Printf("ERROR: DocumentHandler.ListDocuments service error: %v\n", err)
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to list documents: %v", err)})
 	}
+	fmt.Printf("DEBUG: DocumentHandler.ListDocuments got %d documents\n", len(documents))
 
-	return c.JSON(fiber.Map{"data": documents})
+	return c.JSON(documents)
 }
 
-// createDocument creates a new document
-func (h *DocumentHandler) createDocument(c *fiber.Ctx) error {
-	fmt.Printf("DEBUG: createDocument handler called\n")
-	tenantID := c.Locals("tenant_id").(string)
-	userID := c.Locals("user_id").(string)
-	fmt.Printf("DEBUG: tenantID=%s, userID=%s\n", tenantID, userID)
-
-	var req dto.CreateDocumentDTO
-	if err := c.BodyParser(&req); err != nil {
-		fmt.Printf("DEBUG: BodyParser error: %v\n", err)
-		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
-	}
-	fmt.Printf("DEBUG: Parsed request: %+v\n", req)
-
-	if err := h.validator.Struct(req); err != nil {
-		fmt.Printf("DEBUG: Validation failed: %v\n", err)
-		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
-	}
-	fmt.Printf("DEBUG: Validation passed\n")
-
-	fmt.Printf("DEBUG: Calling service.CreateDocument\n")
-	document, err := h.service.CreateDocument(context.Background(), tenantID, userID, req)
-	if err != nil {
-		fmt.Printf("DEBUG: Service.CreateDocument error: %v\n", err)
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-	}
-	fmt.Printf("DEBUG: Service.CreateDocument success: %+v\n", document)
-
-	return c.Status(201).JSON(fiber.Map{"data": document})
-}
-
-// getDocument retrieves a document by ID
-func (h *DocumentHandler) getDocument(c *fiber.Ctx) error {
-	tenantID := c.Locals("tenant_id").(string)
-	documentID := c.Params("id")
-
-	document, err := h.service.GetDocument(context.Background(), documentID, tenantID)
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-	}
-	if document == nil {
-		return c.Status(404).JSON(fiber.Map{"error": "Document not found"})
-	}
-
-	return c.JSON(fiber.Map{"data": document})
-}
-
-// updateDocument updates an existing document
-func (h *DocumentHandler) updateDocument(c *fiber.Ctx) error {
+// UpdateDocument обновляет документ
+func (h *DocumentHandler) UpdateDocument(c *fiber.Ctx) error {
+	ctx := c.Context()
 	tenantID := c.Locals("tenant_id").(string)
 	userID := c.Locals("user_id").(string)
 	documentID := c.Params("id")
 
-	var req dto.UpdateDocumentDTO
+	var req dto.UpdateFileDocumentDTO
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	if err := h.validator.Struct(req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
-	}
-
-	document, err := h.service.UpdateDocument(context.Background(), documentID, tenantID, userID, req)
+	err := h.documentService.UpdateDocument(ctx, documentID, tenantID, req, userID)
 	if err != nil {
-		if err.Error() == "document not found" {
-			return c.Status(404).JSON(fiber.Map{"error": "Document not found"})
-		}
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to update document: %v", err)})
 	}
 
-	return c.JSON(fiber.Map{"data": document})
+	return c.SendStatus(200)
 }
 
-// deleteDocument deletes a document
-func (h *DocumentHandler) deleteDocument(c *fiber.Ctx) error {
+// DeleteDocument удаляет документ
+func (h *DocumentHandler) DeleteDocument(c *fiber.Ctx) error {
+	ctx := c.Context()
 	tenantID := c.Locals("tenant_id").(string)
 	userID := c.Locals("user_id").(string)
 	documentID := c.Params("id")
 
-	err := h.service.DeleteDocument(context.Background(), documentID, tenantID, userID)
+	err := h.documentService.DeleteDocument(ctx, documentID, tenantID, userID)
 	if err != nil {
-		if err.Error() == "document not found" {
-			return c.Status(404).JSON(fiber.Map{"error": "Document not found"})
-		}
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to delete document: %v", err)})
 	}
 
-	return c.Status(204).Send(nil)
+	return c.SendStatus(200)
 }
 
-// listDocumentVersions retrieves versions for a document
-func (h *DocumentHandler) listDocumentVersions(c *fiber.Ctx) error {
+// DownloadDocument скачивает документ
+func (h *DocumentHandler) DownloadDocument(c *fiber.Ctx) error {
+	ctx := c.Context()
 	tenantID := c.Locals("tenant_id").(string)
 	documentID := c.Params("id")
 
-	versions, err := h.service.ListDocumentVersions(context.Background(), documentID, tenantID)
+	downloadData, err := h.documentService.DownloadDocument(ctx, documentID, tenantID)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to download document: %v", err)})
 	}
 
-	return c.JSON(fiber.Map{"data": versions})
+	// Устанавливаем заголовки для скачивания
+	c.Set("Content-Type", downloadData.MimeType)
+	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", downloadData.FileName))
+	c.Set("Content-Length", strconv.FormatInt(downloadData.FileSize, 10))
+	c.Set("Last-Modified", downloadData.LastModified.Format("Mon, 02 Jan 2006 15:04:05 GMT"))
+
+	return c.Send(downloadData.Content)
 }
 
-// createDocumentVersion creates a new version of a document
-func (h *DocumentHandler) createDocumentVersion(c *fiber.Ctx) error {
+// SearchDocuments выполняет поиск документов
+func (h *DocumentHandler) SearchDocuments(c *fiber.Ctx) error {
+	ctx := c.Context()
 	tenantID := c.Locals("tenant_id").(string)
-	userID := c.Locals("user_id").(string)
-	documentID := c.Params("id")
+	searchTerm := c.Query("q")
 
-	fmt.Printf("DEBUG: createDocumentVersion handler called\n")
-	fmt.Printf("DEBUG: tenantID=%s, userID=%s, documentID=%s\n", tenantID, userID, documentID)
+	if searchTerm == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Missing search term"})
+	}
 
-	// Handle multipart form data
-	file, err := c.FormFile("file")
+	results, err := h.documentService.SearchDocuments(ctx, tenantID, searchTerm)
 	if err != nil {
-		fmt.Printf("DEBUG: FormFile error: %v\n", err)
-		return c.Status(400).JSON(fiber.Map{"error": "File is required"})
-	}
-	fmt.Printf("DEBUG: File received: %s, size: %d\n", file.Filename, file.Size)
-
-	// Get form values
-	title := c.FormValue("title")
-	fmt.Printf("DEBUG: Title from form: '%s'\n", title)
-	if title == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "Title is required"})
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to search documents: %v", err)})
 	}
 
-	enableOCRStr := c.FormValue("enableOCR")
-	fmt.Printf("DEBUG: EnableOCR from form: '%s'\n", enableOCRStr)
-	enableOCR := enableOCRStr == "true"
-
-	// Create DTO
-	req := dto.CreateDocumentVersionDTO{
-		Title:     title,
-		EnableOCR: enableOCR,
-	}
-	fmt.Printf("DEBUG: Created DTO: %+v\n", req)
-
-	if err := h.validator.Struct(req); err != nil {
-		fmt.Printf("DEBUG: Validation failed: %v\n", err)
-		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
-	}
-
-	fmt.Printf("DEBUG: Calling service.CreateDocumentVersionWithFile\n")
-	version, err := h.service.CreateDocumentVersionWithFile(context.Background(), documentID, tenantID, userID, req, file, file.Filename)
-	if err != nil {
-		fmt.Printf("DEBUG: Service error: %v\n", err)
-		if err.Error() == "document not found" {
-			return c.Status(404).JSON(fiber.Map{"error": "Document not found"})
-		}
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-	}
-
-	fmt.Printf("DEBUG: Success, returning version: %+v\n", version)
-	return c.Status(201).JSON(fiber.Map{"data": version})
+	return c.JSON(results)
 }
 
-// getDocumentVersion retrieves a specific version of a document
-func (h *DocumentHandler) getDocumentVersion(c *fiber.Ctx) error {
+// GetDocumentStats получает статистику документов
+func (h *DocumentHandler) GetDocumentStats(c *fiber.Ctx) error {
+	ctx := c.Context()
 	tenantID := c.Locals("tenant_id").(string)
-	versionID := c.Params("versionId")
 
-	version, err := h.service.GetDocumentVersion(context.Background(), versionID, tenantID)
+	stats, err := h.documentService.GetDocumentStats(ctx, tenantID)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-	}
-	if version == nil {
-		return c.Status(404).JSON(fiber.Map{"error": "Document version not found"})
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to get document stats: %v", err)})
 	}
 
-	return c.JSON(fiber.Map{"data": version})
+	return c.JSON(stats)
 }
 
-// listDocumentAcknowledgment retrieves acknowledgments for a document
-func (h *DocumentHandler) listDocumentAcknowledgment(c *fiber.Ctx) error {
-	tenantID := c.Locals("tenant_id").(string)
-	documentID := c.Params("id")
-
-	acknowledgments, err := h.service.ListDocumentAcknowledgment(context.Background(), documentID, tenantID)
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+// Helper function to get string pointer
+func getStringPtr(s string) *string {
+	if s == "" {
+		return nil
 	}
-
-	return c.JSON(fiber.Map{"data": acknowledgments})
-}
-
-// createDocumentAcknowledgment creates an acknowledgment for a document
-func (h *DocumentHandler) createDocumentAcknowledgment(c *fiber.Ctx) error {
-	tenantID := c.Locals("tenant_id").(string)
-	userID := c.Locals("user_id").(string)
-	documentID := c.Params("id")
-
-	var req dto.CreateDocumentAcknowledgmentDTO
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
-	}
-
-	if err := h.validator.Struct(req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
-	}
-
-	acknowledgment, err := h.service.CreateDocumentAcknowledgment(context.Background(), documentID, tenantID, userID, req)
-	if err != nil {
-		if err.Error() == "document not found" {
-			return c.Status(404).JSON(fiber.Map{"error": "Document not found"})
-		}
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-	}
-
-	return c.Status(201).JSON(fiber.Map{"data": acknowledgment})
-}
-
-// updateDocumentAcknowledgment updates an acknowledgment
-func (h *DocumentHandler) updateDocumentAcknowledgment(c *fiber.Ctx) error {
-	tenantID := c.Locals("tenant_id").(string)
-	userID := c.Locals("user_id").(string)
-	ackID := c.Params("ackId")
-
-	var req dto.UpdateDocumentAcknowledgmentDTO
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
-	}
-
-	if err := h.validator.Struct(req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
-	}
-
-	acknowledgment, err := h.service.UpdateDocumentAcknowledgment(context.Background(), ackID, tenantID, userID, req)
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-	}
-
-	return c.JSON(fiber.Map{"data": acknowledgment})
-}
-
-// listDocumentQuizzes retrieves quizzes for a document
-func (h *DocumentHandler) listDocumentQuizzes(c *fiber.Ctx) error {
-	tenantID := c.Locals("tenant_id").(string)
-	documentID := c.Params("id")
-
-	quizzes, err := h.service.ListDocumentQuizzes(context.Background(), documentID, tenantID)
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-	}
-
-	return c.JSON(fiber.Map{"data": quizzes})
-}
-
-// createDocumentQuiz creates a quiz question for a document
-func (h *DocumentHandler) createDocumentQuiz(c *fiber.Ctx) error {
-	tenantID := c.Locals("tenant_id").(string)
-	userID := c.Locals("user_id").(string)
-	documentID := c.Params("id")
-
-	var req dto.CreateDocumentQuizDTO
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
-	}
-
-	if err := h.validator.Struct(req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
-	}
-
-	quiz, err := h.service.CreateDocumentQuiz(context.Background(), documentID, tenantID, userID, req)
-	if err != nil {
-		if err.Error() == "document not found" {
-			return c.Status(404).JSON(fiber.Map{"error": "Document not found"})
-		}
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-	}
-
-	return c.Status(201).JSON(fiber.Map{"data": quiz})
-}
-
-// getUserPendingAcknowledgment retrieves pending acknowledgments for the current user
-func (h *DocumentHandler) getUserPendingAcknowledgment(c *fiber.Ctx) error {
-	tenantID := c.Locals("tenant_id").(string)
-	userID := c.Locals("user_id").(string)
-
-	acknowledgments, err := h.service.GetUserPendingAcknowledgment(context.Background(), userID, tenantID)
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-	}
-
-	return c.JSON(fiber.Map{"data": acknowledgments})
-}
-
-// downloadDocumentVersion downloads a document version file
-func (h *DocumentHandler) downloadDocumentVersion(c *fiber.Ctx) error {
-	tenantID := c.Locals("tenant_id").(string)
-	versionID := c.Params("versionId")
-
-	fmt.Printf("DEBUG: downloadDocumentVersion called for versionID=%s, tenantID=%s\n", versionID, tenantID)
-
-	// Get version info first
-	version, err := h.service.GetDocumentVersion(context.Background(), versionID, tenantID)
-	if err != nil {
-		fmt.Printf("DEBUG: GetDocumentVersion error: %v\n", err)
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-	}
-	if version == nil {
-		fmt.Printf("DEBUG: Version not found\n")
-		return c.Status(404).JSON(fiber.Map{"error": "Document version not found"})
-	}
-
-	fmt.Printf("DEBUG: Version found: %+v\n", version)
-
-	// Get file content from service
-	fileContent, err := h.service.DownloadDocumentVersion(context.Background(), versionID, tenantID)
-	if err != nil {
-		fmt.Printf("DEBUG: DownloadDocumentVersion error: %v\n", err)
-		if strings.Contains(strings.ToLower(err.Error()), "not found") {
-			return c.Status(404).JSON(fiber.Map{"error": "Document file not found"})
-		}
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to download document", "details": err.Error()})
-	}
-
-	// Determine filename
-	filename := fmt.Sprintf("document_v%d", version.VersionNumber)
-	if version.MimeType != nil && *version.MimeType != "" {
-		switch *version.MimeType {
-		case "application/pdf":
-			filename += ".pdf"
-		case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-			filename += ".docx"
-		case "application/msword":
-			filename += ".doc"
-		case "text/plain":
-			filename += ".txt"
-		case "image/jpeg":
-			filename += ".jpg"
-		case "image/png":
-			filename += ".png"
-		default:
-			filename += ".bin"
-		}
-	} else {
-		filename += ".bin"
-	}
-
-	fmt.Printf("DEBUG: Setting headers and sending file: %s, size: %d\n", filename, len(fileContent))
-
-	// Set appropriate headers
-	mimeType := "application/octet-stream"
-	if version.MimeType != nil {
-		mimeType = *version.MimeType
-	}
-	c.Set("Content-Type", mimeType)
-
-	// Check if this is a preview request (from referer or user agent)
-	referer := c.Get("Referer")
-	isPreview := strings.Contains(referer, "localhost:3000") || c.Query("preview") == "true"
-
-	if isPreview {
-		// For preview, use inline disposition to display in browser
-		c.Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", filename))
-	} else {
-		// For download, use attachment disposition
-		c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
-	}
-	c.Set("Content-Length", fmt.Sprintf("%d", len(fileContent)))
-
-	return c.Send(fileContent)
-}
-
-// previewDocumentVersion generates a preview URL for a document version
-func (h *DocumentHandler) previewDocumentVersion(c *fiber.Ctx) error {
-	tenantID := c.Locals("tenant_id").(string)
-	versionID := c.Params("versionId")
-
-	fmt.Printf("DEBUG: previewDocumentVersion called for versionID=%s, tenantID=%s\n", versionID, tenantID)
-
-	// Get version info first
-	version, err := h.service.GetDocumentVersion(context.Background(), versionID, tenantID)
-	if err != nil {
-		fmt.Printf("DEBUG: GetDocumentVersion error: %v\n", err)
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-	}
-	if version == nil {
-		fmt.Printf("DEBUG: Version not found\n")
-		return c.Status(404).JSON(fiber.Map{"error": "Document version not found"})
-	}
-
-	fmt.Printf("DEBUG: Version found for preview: %+v\n", version)
-
-	// For now, we'll return the download URL as preview
-	// In a real implementation, you might generate a different URL for preview
-	previewURL := fmt.Sprintf("/api/documents/versions/%s/download", versionID)
-
-	return c.JSON(fiber.Map{"url": previewURL})
-}
-
-// getDocumentVersionHTML converts a document version to HTML for local viewing
-func (h *DocumentHandler) getDocumentVersionHTML(c *fiber.Ctx) error {
-	fmt.Printf("DEBUG: getDocumentVersionHTML called for versionID=%s\n", c.Params("versionId"))
-
-	tenantID, ok := c.Locals("tenant_id").(string)
-	if !ok {
-		fmt.Printf("DEBUG: getDocumentVersionHTML - tenant_id not found in locals\n")
-		return c.Status(401).JSON(fiber.Map{"error": "Unauthorized"})
-	}
-	versionID := c.Params("versionId")
-
-	fmt.Printf("DEBUG: getDocumentVersionHTML called for versionID=%s, tenantID=%s\n", versionID, tenantID)
-
-	// Get version info first
-	version, err := h.service.GetDocumentVersion(context.Background(), versionID, tenantID)
-	if err != nil {
-		fmt.Printf("DEBUG: GetDocumentVersion error: %v\n", err)
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-	}
-	if version == nil {
-		fmt.Printf("DEBUG: Version not found\n")
-		return c.Status(404).JSON(fiber.Map{"error": "Document version not found"})
-	}
-
-	fmt.Printf("DEBUG: Version found for HTML conversion: %+v\n", version)
-
-	// Get file content from service
-	fileContent, err := h.service.DownloadDocumentVersion(context.Background(), versionID, tenantID)
-	if err != nil {
-		fmt.Printf("DEBUG: DownloadDocumentVersion error: %v\n", err)
-		if strings.Contains(strings.ToLower(err.Error()), "not found") {
-			return c.Status(404).JSON(fiber.Map{"error": "Document file not found"})
-		}
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to download document", "details": err.Error()})
-	}
-
-	// Convert to HTML based on file type
-	mimeType := ""
-	if version.MimeType != nil {
-		mimeType = *version.MimeType
-	}
-	htmlContent, err := h.service.ConvertDocumentToHTML(context.Background(), fileContent, mimeType)
-	if err != nil {
-		fmt.Printf("DEBUG: ConvertDocumentToHTML error: %v\n", err)
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to convert document to HTML", "details": err.Error()})
-	}
-
-	// Set appropriate headers
-	c.Set("Content-Type", "text/html; charset=utf-8")
-	c.Set("Content-Length", fmt.Sprintf("%d", len(htmlContent)))
-
-	return c.Send(htmlContent)
+	return &s
 }

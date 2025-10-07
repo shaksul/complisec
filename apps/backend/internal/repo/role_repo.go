@@ -2,9 +2,10 @@ package repo
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/lib/pq"
 )
 
 type Role struct {
@@ -63,7 +64,7 @@ func (r *RoleRepo) GetByID(ctx context.Context, id string) (*Role, error) {
 	var role Role
 	err := row.Scan(&role.ID, &role.TenantID, &role.Name, &role.Description, &role.CreatedAt, &role.UpdatedAt)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
@@ -80,7 +81,7 @@ func (r *RoleRepo) GetByName(ctx context.Context, tenantID, name string) (*Role,
 	var role Role
 	err := row.Scan(&role.ID, &role.TenantID, &role.Name, &role.Description, &role.CreatedAt, &role.UpdatedAt)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
@@ -205,11 +206,11 @@ func (r *RoleRepo) GetRoleWithPermissions(ctx context.Context, roleID string) (*
 	`, roleID)
 
 	var role Role
-	var permissions []string
+	var permissions pq.StringArray
 	err := row.Scan(&role.ID, &role.TenantID, &role.Name, &role.Description,
 		&role.CreatedAt, &role.UpdatedAt, &permissions)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
@@ -217,7 +218,7 @@ func (r *RoleRepo) GetRoleWithPermissions(ctx context.Context, roleID string) (*
 
 	return &RoleWithPermissions{
 		Role:        role,
-		Permissions: permissions,
+		Permissions: []string(permissions),
 	}, nil
 }
 
@@ -271,7 +272,7 @@ func (r *RoleRepo) ListWithPermissions(ctx context.Context, tenantID string) ([]
 	var roles []RoleWithPermissions
 	for rows.Next() {
 		var role Role
-		var permissions []string
+		var permissions pq.StringArray
 		err := rows.Scan(&role.ID, &role.TenantID, &role.Name, &role.Description,
 			&role.CreatedAt, &role.UpdatedAt, &permissions)
 		if err != nil {
@@ -279,7 +280,7 @@ func (r *RoleRepo) ListWithPermissions(ctx context.Context, tenantID string) ([]
 		}
 		roles = append(roles, RoleWithPermissions{
 			Role:        role,
-			Permissions: permissions,
+			Permissions: []string(permissions),
 		})
 	}
 	return roles, nil

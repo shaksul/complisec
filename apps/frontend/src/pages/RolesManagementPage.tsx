@@ -1,5 +1,41 @@
 import React, { useState, useEffect } from 'react';
+import {
+  Container,
+  Typography,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Button,
+  Box,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  IconButton,
+  Tooltip,
+  CircularProgress,
+  Chip,
+  Checkbox,
+  FormControlLabel,
+  FormGroup,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+} from '@mui/material';
+import {
+  Add,
+  Edit,
+  Delete,
+  Security,
+  ExpandMore,
+} from '@mui/icons-material';
 import { rolesApi, Role, RoleWithPermissions, Permission } from '../shared/api/roles';
+import { useAuth } from '../contexts/AuthContext';
 
 // Функция для получения иконки модуля
 const getModuleIcon = (module: string) => {
@@ -29,9 +65,15 @@ const RolesManagementPage: React.FC = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
 
+  const { user } = useAuth();
+
   useEffect(() => {
-    loadData();
-  }, []);
+    if (user) {
+      loadData();
+    } else {
+      setLoading(false);
+    }
+  }, [user]);
 
   const loadData = async () => {
     try {
@@ -81,7 +123,12 @@ const RolesManagementPage: React.FC = () => {
 
   const handleUpdateRole = async (id: string, roleData: any) => {
     try {
+      console.log('handleUpdateRole called with:', { id, roleData });
+      console.log('roleData.permission_ids:', roleData.permission_ids);
+      console.log('roleData.permission_ids length:', roleData.permission_ids?.length);
+      
       await rolesApi.updateRole(id, roleData);
+      console.log('Role updated successfully');
       await loadData();
       setShowEditModal(false);
       setSelectedRole(null);
@@ -112,91 +159,115 @@ const RolesManagementPage: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="p-6">Загрузка...</div>;
+    return (
+      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+        <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+          <CircularProgress />
+        </Box>
+      </Container>
+    );
   }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Управление ролями</h1>
-        <button
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h4" component="h1" gutterBottom>
+          Управление ролями
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={<Add />}
           onClick={() => setShowCreateModal(true)}
-          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+          sx={{ ml: 2 }}
         >
           Создать роль
-        </button>
-      </div>
+        </Button>
+      </Box>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Название
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Описание
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Пользователи
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Дата создания
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Действия
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {roles.map((role, index) => (
-              <tr key={role.id || `role-${index}`}>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm font-medium text-gray-900">
-                    {role.name || '-'}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {role.description || '-'}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                    0
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {role.created_at ? new Date(role.created_at).toLocaleDateString() : '-'}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => {
-                        setSelectedRole(role as RoleWithPermissions);
-                        setShowEditModal(true);
-                      }}
-                      className="text-indigo-600 hover:text-indigo-900"
-                    >
-                      Редактировать
-                    </button>
-                    <button
-                      onClick={() => handleViewPermissions(role)}
-                      className="text-green-600 hover:text-green-900"
-                    >
-                      Права
-                    </button>
-                    <button
-                      onClick={() => handleDeleteRole(role.id)}
-                      className="text-red-600 hover:text-red-900"
-                    >
-                      Удалить
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <Paper sx={{ width: '100%', overflow: 'hidden' }}>
+        <TableContainer>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Название</TableCell>
+                <TableCell>Описание</TableCell>
+                <TableCell>Пользователи</TableCell>
+                <TableCell>Дата создания</TableCell>
+                <TableCell align="center">Действия</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {roles.map((role, index) => (
+                <TableRow key={role.id || `role-${index}`} hover>
+                  <TableCell>
+                    <Box display="flex" alignItems="center">
+                      <Security sx={{ mr: 1, color: 'primary.main' }} />
+                      <Typography variant="body2" fontWeight="medium">
+                        {role.name || '-'}
+                      </Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" color="text.secondary">
+                      {role.description || '-'}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label="0"
+                      size="small"
+                      color="primary"
+                      variant="outlined"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">
+                      {role.created_at ? new Date(role.created_at).toLocaleDateString('ru-RU') : '-'}
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="center">
+                    <Tooltip title="Редактировать">
+                      <IconButton
+                        size="small"
+                        onClick={async () => {
+                          try {
+                            const roleWithPermissions = await rolesApi.getRole(role.id);
+                            setSelectedRole(roleWithPermissions);
+                            setShowEditModal(true);
+                          } catch (error) {
+                            console.error('Ошибка загрузки роли:', error);
+                          }
+                        }}
+                        color="primary"
+                      >
+                        <Edit />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Права">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleViewPermissions(role)}
+                        color="secondary"
+                      >
+                        <Security />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Удалить">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleDeleteRole(role.id)}
+                        color="error"
+                      >
+                        <Delete />
+                      </IconButton>
+                    </Tooltip>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
 
       {showCreateModal && (
         <CreateRoleModal
@@ -228,7 +299,7 @@ const RolesManagementPage: React.FC = () => {
           permissions={permissions}
         />
       )}
-    </div>
+    </Container>
   );
 };
 
@@ -244,20 +315,45 @@ const CreateRoleModal: React.FC<{
     permission_ids: [] as string[],
     permissionSearch: ''
   });
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+  const [submitting, setSubmitting] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {}
+
+    if (!formData.name.trim()) {
+      errors.name = 'Название роли обязательно'
+    }
+
+    const filteredPermissionIds = formData.permission_ids.filter(id => id !== null && id !== undefined && id !== '');
+    if (filteredPermissionIds.length === 0) {
+      errors.permissions = 'Выберите хотя бы одно право'
+    }
+
+    setFormErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Фильтруем null/undefined значения из permission_ids
-    const filteredPermissionIds = formData.permission_ids.filter(id => id !== null && id !== undefined && id !== '');
-    
-    const submitData = {
-      ...formData,
-      permission_ids: filteredPermissionIds
-    };
-    
-    console.log('Отправляемые данные роли:', submitData);
-    onSubmit(submitData);
+    if (!validateForm()) return
+
+    try {
+      setSubmitting(true)
+      // Фильтруем null/undefined значения из permission_ids
+      const filteredPermissionIds = formData.permission_ids.filter(id => id !== null && id !== undefined && id !== '');
+      
+      const submitData = {
+        ...formData,
+        permission_ids: filteredPermissionIds
+      };
+      
+      console.log('Отправляемые данные роли:', submitData);
+      await onSubmit(submitData);
+    } finally {
+      setSubmitting(false)
+    }
   };
 
   const groupedPermissions = permissions.reduce((acc, perm) => {
@@ -270,136 +366,150 @@ const CreateRoleModal: React.FC<{
   }, {} as Record<string, Permission[]>);
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-96 max-h-96 overflow-y-auto">
-        <h2 className="text-xl font-bold mb-4">Создать роль</h2>
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Название
-            </label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full border border-gray-300 rounded px-3 py-2"
-              required
-            />
-          </div>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Описание
-            </label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full border border-gray-300 rounded px-3 py-2"
-              rows={3}
-            />
-          </div>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+    <Dialog open onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>Создать роль</DialogTitle>
+      <form onSubmit={handleSubmit}>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Название роли"
+            fullWidth
+            variant="outlined"
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            error={!!formErrors.name}
+            helperText={formErrors.name}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            margin="dense"
+            label="Описание"
+            fullWidth
+            variant="outlined"
+            multiline
+            rows={3}
+            value={formData.description}
+            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            sx={{ mb: 2 }}
+          />
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
               Права
-            </label>
-            <input
-              type="text"
-              placeholder="Поиск по правам..."
-              className="w-full border border-gray-300 rounded px-3 py-2 mb-3 text-sm"
-              onChange={() => {}}
-            />
-            <div className="space-y-4 max-h-48 overflow-y-auto">
+            </Typography>
+            {formErrors.permissions && (
+              <Typography variant="caption" color="error">
+                {formErrors.permissions}
+              </Typography>
+            )}
+            <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
               {Object.entries(groupedPermissions).map(([module, perms]) => (
-                <div key={module}>
-                  <h4 className="font-medium text-gray-900 mb-2 flex items-center">
-                    <span className="mr-2">{getModuleIcon(module)}</span>
-                    {module}
-                    <label className="ml-auto flex items-center text-sm text-blue-600">
-                      <input
-                        type="checkbox"
-                        checked={perms.every(perm => formData.permission_ids.includes(perm.id))}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            // Выбрать все права в модуле
-                            const modulePermissionIds = perms.filter(perm => perm.id).map(perm => perm.id);
-                            const newPermissionIds = [...new Set([...formData.permission_ids, ...modulePermissionIds])];
-                            setFormData({
-                              ...formData,
-                              permission_ids: newPermissionIds
-                            });
-                          } else {
-                            // Снять все права в модуле
-                            const modulePermissionIds = perms.filter(perm => perm.id).map(perm => perm.id);
-                            const newPermissionIds = formData.permission_ids.filter(id => !modulePermissionIds.includes(id));
-                            setFormData({
-                              ...formData,
-                              permission_ids: newPermissionIds
-                            });
-                          }
-                        }}
-                        className="mr-1"
-                      />
-                      Выбрать всё
-                    </label>
-                  </h4>
-                  <div className="space-y-1 ml-4">
-                    {perms.map((perm, index) => {
-                      const pid = perm.id;
-                      const pcode = perm.code;
-                      const pdesc = perm.description;
-                      return (
-                        <label key={pid || `perm-${index}`} className="flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={pid ? formData.permission_ids.includes(pid) : false}
+                <Accordion key={module} defaultExpanded>
+                  <AccordionSummary expandIcon={<ExpandMore />}>
+                    <Box display="flex" alignItems="center" width="100%">
+                      <Typography variant="subtitle1" sx={{ mr: 1 }}>
+                        {getModuleIcon(module)}
+                      </Typography>
+                      <Typography variant="subtitle1" sx={{ flexGrow: 1 }}>
+                        {module}
+                      </Typography>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={perms.every(perm => formData.permission_ids.includes(perm.id))}
                             onChange={(e) => {
-                              if (pid) {
-                                if (e.target.checked) {
-                                  setFormData({
-                                    ...formData,
-                                    permission_ids: [...new Set([...formData.permission_ids, pid])]
-                                  });
-                                } else {
-                                  setFormData({
-                                    ...formData,
-                                    permission_ids: formData.permission_ids.filter(id => id !== pid)
-                                  });
-                                }
+                              if (e.target.checked) {
+                                // Выбрать все права в модуле
+                                const modulePermissionIds = perms.filter(perm => perm.id).map(perm => perm.id);
+                                const newPermissionIds = [...new Set([...formData.permission_ids, ...modulePermissionIds])];
+                                setFormData({
+                                  ...formData,
+                                  permission_ids: newPermissionIds
+                                });
+                              } else {
+                                // Снять все права в модуле
+                                const modulePermissionIds = perms.filter(perm => perm.id).map(perm => perm.id);
+                                const newPermissionIds = formData.permission_ids.filter(id => !modulePermissionIds.includes(id));
+                                setFormData({
+                                  ...formData,
+                                  permission_ids: newPermissionIds
+                                });
                               }
                             }}
-                            className="mr-2"
+                            size="small"
                           />
-                          <span className="text-sm">{pcode}</span>
-                          {pdesc && (
-                            <span className="text-xs text-gray-500 ml-2">
-                              - {pdesc}
-                            </span>
-                          )}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
+                        }
+                        label="Выбрать всё"
+                        sx={{ m: 0 }}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </Box>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <FormGroup>
+                      {perms.map((perm, index) => {
+                        const pid = perm.id;
+                        const pcode = perm.code;
+                        const pdesc = perm.description;
+                        return (
+                          <FormControlLabel
+                            key={pid || `perm-${index}`}
+                            control={
+                              <Checkbox
+                                checked={pid ? formData.permission_ids.includes(pid) : false}
+                                onChange={(e) => {
+                                  if (pid) {
+                                    if (e.target.checked) {
+                                      setFormData({
+                                        ...formData,
+                                        permission_ids: [...new Set([...formData.permission_ids, pid])]
+                                      });
+                                    } else {
+                                      setFormData({
+                                        ...formData,
+                                        permission_ids: formData.permission_ids.filter(id => id !== pid)
+                                      });
+                                    }
+                                  }
+                                }}
+                                size="small"
+                              />
+                            }
+                            label={
+                              <Box>
+                                <Typography variant="body2">
+                                  {pcode}
+                                </Typography>
+                                {pdesc && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    {pdesc}
+                                  </Typography>
+                                )}
+                              </Box>
+                            }
+                            sx={{ mb: 0.5 }}
+                          />
+                        );
+                      })}
+                    </FormGroup>
+                  </AccordionDetails>
+                </Accordion>
               ))}
-            </div>
-          </div>
-          <div className="flex justify-end space-x-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
-            >
-              Отмена
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-            >
-              Создать
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose}>Отмена</Button>
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={submitting}
+          >
+            {submitting ? <CircularProgress size={20} /> : 'Создать'}
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
   );
 };
 
@@ -410,15 +520,74 @@ const EditRoleModal: React.FC<{
   onSubmit: (id: string, data: any) => void;
   permissions: Permission[];
 }> = ({ role, onClose, onSubmit, permissions }) => {
-  const [formData, setFormData] = useState({
-    name: role.name,
-    description: role.description || '',
-    permission_ids: role.permissions || []
-  });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const buildFormStateFromRole = () => {
+    const rawName = role.name || (role as any).Name || '';
+    const rawDescription = role.description || (role as any).Description || '';
+    const permissionCodesRaw = role.permissions || (role as any).Permissions || [];
+    const permissionCodes = Array.isArray(permissionCodesRaw) ? permissionCodesRaw : [];
+
+    // Преобразуем коды прав в ID прав
+    const permissionIds = permissionCodes
+      .map(code => permissions.find(p => p.code === code)?.id)
+      .filter((id): id is string => Boolean(id));
+
+    console.log('buildFormStateFromRole - permissionCodes:', permissionCodes);
+    console.log('buildFormStateFromRole - permissionIds:', permissionIds);
+    console.log('buildFormStateFromRole - available permissions count:', permissions.length);
+
+    return {
+      name: rawName,
+      description: rawDescription,
+      permission_ids: permissionIds
+    };
+  };
+
+  const [formData, setFormData] = useState(buildFormStateFromRole);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    console.log('EditRoleModal useEffect triggered');
+    console.log('role:', role);
+    console.log('permissions count:', permissions.length);
+    
+    const nextFormData = buildFormStateFromRole();
+    console.log('nextFormData:', nextFormData);
+
+    // Всегда обновляем данные формы при изменении роли
+    console.log('Updating form data with new data');
+    setFormData(nextFormData);
+  }, [role, permissions]);
+
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {}
+
+    if (!formData.name.trim()) {
+      errors.name = 'Название роли обязательно'
+    }
+
+    const filteredPermissionIds = formData.permission_ids.filter(id => id !== null && id !== undefined && id !== '');
+    if (filteredPermissionIds.length === 0) {
+      errors.permissions = 'Выберите хотя бы одно право'
+    }
+
+    setFormErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(role.id, formData);
+    
+    if (!validateForm()) return
+
+    try {
+      setSubmitting(true)
+      const roleId = role.id || (role as any).ID;
+      await onSubmit(roleId, formData);
+    } finally {
+      setSubmitting(false)
+    }
   };
 
   const groupedPermissions = permissions.reduce((acc, perm) => {
@@ -431,136 +600,150 @@ const EditRoleModal: React.FC<{
   }, {} as Record<string, Permission[]>);
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-96 max-h-96 overflow-y-auto">
-        <h2 className="text-xl font-bold mb-4">Редактировать роль</h2>
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Название
-            </label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full border border-gray-300 rounded px-3 py-2"
-              required
-            />
-          </div>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Описание
-            </label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full border border-gray-300 rounded px-3 py-2"
-              rows={3}
-            />
-          </div>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+    <Dialog open onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>Редактировать роль</DialogTitle>
+      <form onSubmit={handleSubmit}>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Название роли"
+            fullWidth
+            variant="outlined"
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            error={!!formErrors.name}
+            helperText={formErrors.name}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            margin="dense"
+            label="Описание"
+            fullWidth
+            variant="outlined"
+            multiline
+            rows={3}
+            value={formData.description}
+            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            sx={{ mb: 2 }}
+          />
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
               Права
-            </label>
-            <input
-              type="text"
-              placeholder="Поиск по правам..."
-              className="w-full border border-gray-300 rounded px-3 py-2 mb-3 text-sm"
-              onChange={() => {}}
-            />
-            <div className="space-y-4 max-h-48 overflow-y-auto">
+            </Typography>
+            {formErrors.permissions && (
+              <Typography variant="caption" color="error">
+                {formErrors.permissions}
+              </Typography>
+            )}
+            <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
               {Object.entries(groupedPermissions).map(([module, perms]) => (
-                <div key={module}>
-                  <h4 className="font-medium text-gray-900 mb-2 flex items-center">
-                    <span className="mr-2">{getModuleIcon(module)}</span>
-                    {module}
-                    <label className="ml-auto flex items-center text-sm text-blue-600">
-                      <input
-                        type="checkbox"
-                        checked={perms.every(perm => formData.permission_ids.includes(perm.id))}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            // Выбрать все права в модуле
-                            const modulePermissionIds = perms.filter(perm => perm.id).map(perm => perm.id);
-                            const newPermissionIds = [...new Set([...formData.permission_ids, ...modulePermissionIds])];
-                            setFormData({
-                              ...formData,
-                              permission_ids: newPermissionIds
-                            });
-                          } else {
-                            // Снять все права в модуле
-                            const modulePermissionIds = perms.filter(perm => perm.id).map(perm => perm.id);
-                            const newPermissionIds = formData.permission_ids.filter(id => !modulePermissionIds.includes(id));
-                            setFormData({
-                              ...formData,
-                              permission_ids: newPermissionIds
-                            });
-                          }
-                        }}
-                        className="mr-1"
-                      />
-                      Выбрать всё
-                    </label>
-                  </h4>
-                  <div className="space-y-1 ml-4">
-                    {perms.map((perm, index) => {
-                      const pid = perm.id;
-                      const pcode = perm.code;
-                      const pdesc = perm.description;
-                      return (
-                        <label key={pid || `perm-${index}`} className="flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={pid ? formData.permission_ids.includes(pid) : false}
+                <Accordion key={module} defaultExpanded>
+                  <AccordionSummary expandIcon={<ExpandMore />}>
+                    <Box display="flex" alignItems="center" width="100%">
+                      <Typography variant="subtitle1" sx={{ mr: 1 }}>
+                        {getModuleIcon(module)}
+                      </Typography>
+                      <Typography variant="subtitle1" sx={{ flexGrow: 1 }}>
+                        {module}
+                      </Typography>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={perms.every(perm => formData.permission_ids.includes(perm.id))}
                             onChange={(e) => {
-                              if (pid) {
-                                if (e.target.checked) {
-                                  setFormData({
-                                    ...formData,
-                                    permission_ids: [...new Set([...formData.permission_ids, pid])]
-                                  });
-                                } else {
-                                  setFormData({
-                                    ...formData,
-                                    permission_ids: formData.permission_ids.filter(id => id !== pid)
-                                  });
-                                }
+                              if (e.target.checked) {
+                                // Выбрать все права в модуле
+                                const modulePermissionIds = perms.filter(perm => perm.id).map(perm => perm.id);
+                                const newPermissionIds = [...new Set([...formData.permission_ids, ...modulePermissionIds])];
+                                setFormData({
+                                  ...formData,
+                                  permission_ids: newPermissionIds
+                                });
+                              } else {
+                                // Снять все права в модуле
+                                const modulePermissionIds = perms.filter(perm => perm.id).map(perm => perm.id);
+                                const newPermissionIds = formData.permission_ids.filter(id => !modulePermissionIds.includes(id));
+                                setFormData({
+                                  ...formData,
+                                  permission_ids: newPermissionIds
+                                });
                               }
                             }}
-                            className="mr-2"
+                            size="small"
                           />
-                          <span className="text-sm">{pcode}</span>
-                          {pdesc && (
-                            <span className="text-xs text-gray-500 ml-2">
-                              - {pdesc}
-                            </span>
-                          )}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
+                        }
+                        label="Выбрать всё"
+                        sx={{ m: 0 }}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </Box>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <FormGroup>
+                      {perms.map((perm, index) => {
+                        const pid = perm.id;
+                        const pcode = perm.code;
+                        const pdesc = perm.description;
+                        return (
+                          <FormControlLabel
+                            key={pid || `perm-${index}`}
+                            control={
+                              <Checkbox
+                                checked={pid ? formData.permission_ids.includes(pid) : false}
+                                onChange={(e) => {
+                                  if (pid) {
+                                    if (e.target.checked) {
+                                      setFormData({
+                                        ...formData,
+                                        permission_ids: [...new Set([...formData.permission_ids, pid])]
+                                      });
+                                    } else {
+                                      setFormData({
+                                        ...formData,
+                                        permission_ids: formData.permission_ids.filter(id => id !== pid)
+                                      });
+                                    }
+                                  }
+                                }}
+                                size="small"
+                              />
+                            }
+                            label={
+                              <Box>
+                                <Typography variant="body2">
+                                  {pcode}
+                                </Typography>
+                                {pdesc && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    {pdesc}
+                                  </Typography>
+                                )}
+                              </Box>
+                            }
+                            sx={{ mb: 0.5 }}
+                          />
+                        );
+                      })}
+                    </FormGroup>
+                  </AccordionDetails>
+                </Accordion>
               ))}
-            </div>
-          </div>
-          <div className="flex justify-end space-x-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
-            >
-              Отмена
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-            >
-              Сохранить
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose}>Отмена</Button>
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={submitting}
+          >
+            {submitting ? <CircularProgress size={20} /> : 'Сохранить'}
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
   );
 };
 
@@ -580,49 +763,67 @@ const RolePermissionsModal: React.FC<{
   }, {} as Record<string, Permission[]>);
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-96 max-h-96 overflow-y-auto">
-        <h2 className="text-xl font-bold mb-4">Права роли: {role.name}</h2>
-        <div className="space-y-4">
+    <Dialog open onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>Права роли: {role.name}</DialogTitle>
+      <DialogContent>
+        <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
           {Object.entries(groupedPermissions).map(([module, perms]) => (
-            <div key={module}>
-              <h4 className="font-medium text-gray-900 mb-2">{module}</h4>
-              <div className="space-y-1 ml-4">
-                {perms.map((perm, index) => {
-                  const hasPermission = role.permissions.includes(perm.code);
-                  return (
-                    <div
-                      key={perm.id || `perm-${index}`}
-                      className={`flex items-center p-2 rounded ${
-                        hasPermission ? 'bg-green-50 text-green-800' : 'bg-gray-50 text-gray-500'
-                      }`}
-                    >
-                      <span className="text-sm font-medium">{perm.code}</span>
-                      {perm.description && (
-                        <span className="text-xs ml-2">
-                          - {perm.description}
-                        </span>
-                      )}
-                      {hasPermission && (
-                        <span className="ml-auto text-green-600">✓</span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <Accordion key={module} defaultExpanded>
+              <AccordionSummary expandIcon={<ExpandMore />}>
+                <Box display="flex" alignItems="center">
+                  <Typography variant="subtitle1" sx={{ mr: 1 }}>
+                    {getModuleIcon(module)}
+                  </Typography>
+                  <Typography variant="subtitle1">
+                    {module}
+                  </Typography>
+                </Box>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Box>
+                  {perms.map((perm, index) => {
+                    const hasPermission = role.permissions && Array.isArray(role.permissions) && role.permissions.includes(perm.code);
+                    return (
+                      <Box
+                        key={perm.id || `perm-${index}`}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          p: 1,
+                          mb: 0.5,
+                          borderRadius: 1,
+                          backgroundColor: hasPermission ? 'success.light' : 'grey.100',
+                          color: hasPermission ? 'success.dark' : 'text.secondary'
+                        }}
+                      >
+                        <Typography variant="body2" fontWeight="medium" sx={{ flexGrow: 1 }}>
+                          {perm.code}
+                        </Typography>
+                        {perm.description && (
+                          <Typography variant="caption" sx={{ ml: 1 }}>
+                            - {perm.description}
+                          </Typography>
+                        )}
+                        {hasPermission && (
+                          <Typography variant="body2" color="success.main" sx={{ ml: 'auto' }}>
+                            ✓
+                          </Typography>
+                        )}
+                      </Box>
+                    );
+                  })}
+                </Box>
+              </AccordionDetails>
+            </Accordion>
           ))}
-        </div>
-        <div className="flex justify-end mt-6">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
-          >
-            Закрыть
-          </button>
-        </div>
-      </div>
-    </div>
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} variant="contained">
+          Закрыть
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 };
 

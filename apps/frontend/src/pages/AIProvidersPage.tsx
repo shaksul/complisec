@@ -20,6 +20,7 @@ import {
 } from "@mui/material"
 import { Add, Psychology } from "@mui/icons-material"
 import { getProviders, addProvider } from "@/shared/api/ai"
+import { useAuth } from "../contexts/AuthContext"
 
 export default function AIProvidersPage() {
   const [items, setItems] = useState<any[]>([])
@@ -31,23 +32,29 @@ export default function AIProvidersPage() {
   const [apiKey, setApiKey] = useState("")
   const [roles, setRoles] = useState("")
 
+  const { user } = useAuth()
+
   useEffect(() => {
-    const loadProviders = async () => {
-      try {
-        setLoading(true)
-        setError(null)
-        const data = await getProviders()
-        setItems(Array.isArray(data) ? data : [])
-      } catch (err) {
-        console.error('Error loading AI providers:', err)
-        setError('Ошибка загрузки провайдеров')
-        setItems([])
-      } finally {
-        setLoading(false)
+    if (user) {
+      const loadProviders = async () => {
+        try {
+          setLoading(true)
+          setError(null)
+          const data = await getProviders()
+          setItems(Array.isArray(data) ? data : [])
+        } catch (err) {
+          console.error('Error loading AI providers:', err)
+          setError('Ошибка загрузки провайдеров')
+          setItems([])
+        } finally {
+          setLoading(false)
+        }
       }
+      loadProviders()
+    } else {
+      setLoading(false)
     }
-    loadProviders()
-  }, [])
+  }, [user])
 
   async function handleAdd() {
     try {

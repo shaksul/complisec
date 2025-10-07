@@ -102,12 +102,48 @@ type AssetDocumentRequest struct {
 	FilePath     string `json:"file_path" validate:"required"`
 }
 
+// AssetDocumentUploadRequest represents the request to upload a new document file
+type AssetDocumentUploadRequest struct {
+	DocumentType string `form:"document_type" validate:"required,oneof=passport transfer_act writeoff_act repair_log other"`
+	Title        string `form:"title" validate:"omitempty,max=255"`
+	File         []byte `form:"file" validate:"required"`
+}
+
+// AssetDocumentLinkRequest represents the request to link an existing document to an asset
+type AssetDocumentLinkRequest struct {
+	DocumentID   string `json:"document_id" validate:"required,uuid"`
+	DocumentType string `json:"document_type" validate:"required,oneof=passport transfer_act writeoff_act repair_log other"`
+}
+
 // AssetDocumentResponse represents the response for asset document data
 type AssetDocumentResponse struct {
 	ID           string    `json:"id"`
 	AssetID      string    `json:"asset_id"`
+	Title        string    `json:"title"`
 	DocumentType string    `json:"document_type"`
-	FilePath     string    `json:"file_path"`
+	Mime         string    `json:"mime"`
+	SizeBytes    int64     `json:"size_bytes"`
+	DownloadURL  string    `json:"download_url"`
+	CreatedBy    string    `json:"created_by"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// DocumentStorageRequest represents the request to list documents from storage
+type DocumentStorageRequest struct {
+	Query    string `json:"query" validate:"omitempty,max=255"`
+	Type     string `json:"type" validate:"omitempty,oneof=passport transfer_act writeoff_act repair_log other"`
+	Page     int    `json:"page" validate:"min=1"`
+	PageSize int    `json:"page_size" validate:"min=1,max=100"`
+}
+
+// DocumentStorageResponse represents the response for document storage data
+type DocumentStorageResponse struct {
+	ID           string    `json:"id"`
+	Title        string    `json:"title"`
+	DocumentType string    `json:"document_type"`
+	Version      string    `json:"version"`
+	SizeBytes    int64     `json:"size_bytes"`
+	Mime         string    `json:"mime"`
 	CreatedBy    string    `json:"created_by"`
 	CreatedAt    time.Time `json:"created_at"`
 }
@@ -167,13 +203,6 @@ type AssetHistoryFiltersRequest struct {
 	ToDate    *string `json:"to_date,omitempty" validate:"omitempty,datetime=2006-01-02"`
 }
 
-// AssetDocumentUploadRequest represents the request to upload a document
-type AssetDocumentUploadRequest struct {
-	DocumentType string `json:"document_type" validate:"required,oneof=passport transfer_act writeoff_act repair_log other"`
-	FileName     string `json:"file_name" validate:"required,min=1,max=255"`
-	FileSize     int64  `json:"file_size" validate:"required,min=1"`
-	ContentType  string `json:"content_type" validate:"required"`
-}
 
 // BulkUpdateStatusRequest represents the request to update status for multiple assets
 type BulkUpdateStatusRequest struct {

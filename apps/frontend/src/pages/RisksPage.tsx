@@ -1,57 +1,60 @@
-import React, { useState, useEffect } from 'react'
+﻿import React, { useEffect, useMemo, useState } from 'react'
 import {
-  Container,
-  Typography,
+  Box,
+  Button,
+  Chip,
+  FormControl,
+  Grid,
+  IconButton,
+  InputAdornment,
+  InputLabel,
+  LinearProgress,
+  MenuItem,
   Paper,
+  Select,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Button,
-  Box,
-  Chip,
-  LinearProgress,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Grid,
-  IconButton,
-  Tooltip,
   TableSortLabel,
+  TextField,
+  Tooltip,
+  Typography,
 } from '@mui/material'
+import { alpha, useTheme } from '@mui/material/styles'
+import type { SxProps, Theme } from '@mui/material'
 import {
   Add,
-  Warning,
-  Edit,
-  Search,
-  FilterList,
-  Download,
   Clear,
   Delete,
-  Visibility
+  Download,
+  Edit,
+  FilterList,
+  Search,
+  Visibility,
 } from '@mui/icons-material'
+import Pagination from '../components/Pagination'
 import { RiskModal } from '../components/risks/RiskModal'
 import { RiskDetailsModal } from '../components/risks/RiskDetailsModal'
-import { 
-  risksApi, 
-  Risk, 
-  CreateRiskRequest, 
+import {
+  risksApi,
+  Risk,
+  CreateRiskRequest,
   UpdateRiskRequest,
   RISK_STATUSES,
   RISK_CATEGORIES,
   RISK_LEVELS,
-  User
 } from '../shared/api/risks'
-import { getUsers } from '../shared/api/users'
+import { getUsers, type User } from '../shared/api/users'
+import type { CorporateTheme } from '../shared/theme'
+import { PageContainer, PageHeader, SectionCard } from '../components/common/Page'
 
-type SortField = 'level' | 'created_at' | 'category' | 'title'
+type SortField = 'level' | 'created_at' | 'category' | 'title' | 'status'
 type SortDirection = 'asc' | 'desc'
 
-interface Filters {
+type Filters = {
   status: string
   category: string
   owner_user_id: string
@@ -59,37 +62,109 @@ interface Filters {
   search: string
 }
 
+type RiskBadgeConfig = {
+  label: string
+  sx: SxProps<Theme>
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  new: 'Новый',
+  in_analysis: 'На анализе',
+  in_treatment: 'В обработке',
+  accepted: 'Принят',
+  transferred: 'Передан',
+  mitigated: 'Снижен',
+  closed: 'Закрыт',
+}
+
+const LEVEL_LABELS: Record<'low' | 'medium' | 'high' | 'critical', string> = {
+  low: 'Низкий',
+  medium: 'Средний',
+  high: 'Высокий',
+  critical: 'Критический',
+}
+
+const formatUserName = (user: User) => {
+  const names = [user.first_name, user.last_name].filter(Boolean).join(' ').trim()
+  return names ? (user.email ? `${names} (${user.email})` : names) : user.email
+}
+
 export const RisksPage: React.FC = () => {
-  console.log('RisksPage component rendered')
   const [risks, setRisks] = useState<Risk[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [editingRisk, setEditingRisk] = useState<Risk | null>(null)
-  const [detailsModalOpen, setDetailsModalOpen] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const [selectedRisk, setSelectedRisk] = useState<Risk | null>(null)
   const [users, setUsers] = useState<User[]>([])
-  const [filters, setFilters] = useState<Filters>({
-    status: '',
-    category: '',
-    owner_user_id: '',
-    level: '',
-    search: ''
-  })
+  const [filters, setFilters] = useState<Filters>({ status: '', category: '', owner_user_id: '', level: '', search: '' })
   const [sortField, setSortField] = useState<SortField>('level')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [showFilters, setShowFilters] = useState(false)
+  const [pagination, setPagination] = useState({
+    page: 1,
+    page_size: 20,
+    total: 0,
+    total_pages: 0,
+    has_next: false,
+    has_prev: false,
+  })
+
+  const theme = useTheme<CorporateTheme>()
+
+  const riskLevelTokens = useMemo<Record<'low' | 'medium' | 'high' | 'critical' | 'unknown', RiskBadgeConfig>>(() => ({
+    low: {
+      label: LEVEL_LABELS.low,
+      sx: {
+        bgcolor: alpha(theme.palette.success.main, 0.16),
+        color: theme.palette.success.dark,
+      },
+    },
+    medium: {
+      label: LEVEL_LABELS.medium,
+      sx: {
+        bgcolor: alpha(theme.palette.warning.light ?? theme.palette.warning.main, 0.18),
+        color: theme.palette.warning.dark ?? theme.palette.warning.main,
+      },
+    },
+    high: {
+      label: LEVEL_LABELS.high,
+      sx: {
+        bgcolor: alpha(theme.palette.warning.main, 0.22),
+        color: theme.palette.common.white,
+      },
+    },
+    critical: {
+      label: LEVEL_LABELS.critical,
+      sx: {
+        bgcolor: alpha(theme.palette.error.main, 0.28),
+        color: theme.palette.common.white,
+      },
+    },
+    unknown: {
+      label: 'Не определён',
+      sx: {
+        bgcolor: theme.palette.background.default,
+        color: theme.palette.text.secondary,
+        borderWidth: 1,
+        borderStyle: 'dashed',
+        borderColor: theme.palette.divider,
+      },
+    },
+  }), [theme])
 
   useEffect(() => {
-    console.log('RisksPage useEffect triggered')
-    loadRisks()
-    loadUsers()
-  }, [filters, sortField, sortDirection])
+    void loadRisks()
+  }, [filters, sortField, sortDirection, pagination.page])
+
+  useEffect(() => {
+    void loadUsers()
+  }, [])
 
   const loadUsers = async () => {
     try {
       const userData = await getUsers()
-      console.log('RisksPage loadUsers - userData:', userData, 'isArray:', Array.isArray(userData))
       setUsers(Array.isArray(userData) ? userData : [])
     } catch (err) {
       console.error('Error loading users:', err)
@@ -104,220 +179,147 @@ export const RisksPage: React.FC = () => {
       const params = {
         ...filters,
         sort_field: sortField,
-        sort_direction: sortDirection
+        sort_direction: sortDirection,
+        page: pagination.page,
+        page_size: pagination.page_size,
       }
       const response = await risksApi.list(params)
       setRisks(response.data || [])
+      if (response.pagination) {
+        setPagination(response.pagination)
+      }
     } catch (err) {
       console.error('Error loading risks:', err)
-      setError('Ошибка загрузки рисков')
+      setError('Не удалось загрузить риски')
       setRisks([])
     } finally {
       setLoading(false)
     }
   }
 
-  const getRiskLevel = (level?: number) => {
-    if (!level) return { color: 'default', label: 'Не определен' }
-    if (level <= 2) return { color: 'success', label: 'Low', bgColor: '#4caf50' } // Зеленый
-    if (level <= 4) return { color: 'warning', label: 'Medium', bgColor: '#ffeb3b' } // Желтый
-    if (level <= 6) return { color: 'warning', label: 'High', bgColor: '#ff9800' } // Оранжевый
-    return { color: 'error', label: 'Critical', bgColor: '#f44336' } // Красный
+  const getRiskLevelBadge = (risk: Risk) => {
+    const raw = risk.level_label ?? (() => {
+      if (!risk.level) return 'unknown'
+      if (risk.level <= 2) return 'low'
+      if (risk.level <= 4) return 'medium'
+      if (risk.level <= 6) return 'high'
+      return 'critical'
+    })()
+    const key = raw.toLowerCase() as keyof typeof riskLevelTokens
+    return riskLevelTokens[key] || riskLevelTokens.unknown
   }
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'new': return 'info'
-      case 'in_analysis': return 'warning'
-      case 'in_treatment': return 'primary'
-      case 'accepted': return 'success'
-      case 'transferred': return 'secondary'
-      case 'mitigated': return 'success'
-      case 'closed': return 'default'
-      default: return 'default'
+      case 'new':
+        return 'info'
+      case 'in_analysis':
+        return 'warning'
+      case 'in_treatment':
+        return 'primary'
+      case 'accepted':
+        return 'success'
+      case 'transferred':
+        return 'secondary'
+      case 'mitigated':
+        return 'success'
+      case 'closed':
+        return 'default'
+      default:
+        return 'default'
     }
   }
 
-  const handleCreateRisk = async (data: CreateRiskRequest) => {
+  const handleCreateRisk = async (payload: CreateRiskRequest) => {
     try {
-      await risksApi.create(data)
+      await risksApi.create(payload)
       await loadRisks()
     } catch (err) {
       console.error('Error creating risk:', err)
-      setError('Ошибка создания риска')
+      setError('Не удалось создать риск')
     }
   }
 
-  const handleUpdateRisk = async (data: UpdateRiskRequest) => {
+  const handleUpdateRisk = async (payload: UpdateRiskRequest) => {
     if (!editingRisk) return
     try {
-      await risksApi.update(editingRisk.id, data)
+      await risksApi.update(editingRisk.id, payload)
       await loadRisks()
     } catch (err) {
       console.error('Error updating risk:', err)
-      setError('Ошибка обновления риска')
+      setError('Не удалось обновить риск')
     }
   }
 
   const handleDeleteRisk = async (risk: Risk) => {
-    if (window.confirm(`Вы уверены, что хотите удалить риск "${risk.title}"?`)) {
-      try {
-        await risksApi.delete(risk.id)
-        await loadRisks()
-      } catch (err) {
-        console.error('Error deleting risk:', err)
-        setError('Ошибка удаления риска')
-      }
+    if (!window.confirm(`Удалить риск "${risk.title}"?`)) return
+    try {
+      await risksApi.delete(risk.id)
+      await loadRisks()
+    } catch (err) {
+      console.error('Error deleting risk:', err)
+      setError('Не удалось удалить риск')
     }
   }
 
-  const handleEditRisk = (risk: Risk) => {
-    setEditingRisk(risk)
-    setModalOpen(true)
-  }
-
-  const handleViewRiskDetails = (risk: Risk) => {
-    setSelectedRisk(risk)
-    setDetailsModalOpen(true)
-  }
-
-  const handleModalClose = () => {
-    setModalOpen(false)
-    setEditingRisk(null)
-  }
-
-  const handleDetailsModalClose = () => {
-    setDetailsModalOpen(false)
-    setSelectedRisk(null)
-  }
-
-  const handleOpenCreateModal = () => {
-    setEditingRisk(null)
-    setModalOpen(true)
-  }
-
-  const handleFilterChange = (field: keyof Filters, value: string) => {
-    setFilters(prev => ({ ...prev, [field]: value }))
-  }
-
-  const clearFilters = () => {
-    setFilters({
-      status: '',
-      category: '',
-      owner_user_id: '',
-      level: '',
-      search: ''
-    })
+  const handleFilterChange = <T extends keyof Filters>(key: T, value: Filters[T]) => {
+    setFilters((prev) => ({ ...prev, [key]: value }))
+    setPagination((prev) => ({ ...prev, page: 1 }))
   }
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
-      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
     } else {
       setSortField(field)
-      setSortDirection('desc')
+      setSortDirection('asc')
     }
   }
 
-  const exportRisks = async (format: 'csv' | 'xlsx' | 'pdf') => {
-    try {
-      // TODO: Implement export functionality
-      console.log(`Exporting risks in ${format} format`)
-    } catch (err) {
-      console.error('Error exporting risks:', err)
-      setError('Ошибка экспорта рисков')
-    }
-  }
+  const hasActiveFilters = Object.values(filters).some(Boolean)
 
-  const getUserName = (userId?: string) => {
-    if (!userId) return 'Не назначен'
-    const user = users.find(u => u.id === userId)
-    return user ? `${user.first_name} ${user.last_name}` : 'Неизвестный пользователь'
+  const getUserName = (id?: string | null) => {
+    if (!id) return 'Не назначен'
+    const user = users.find((u) => u.id === id)
+    return user ? formatUserName(user) : 'Не назначен'
   }
-
-  const getCategoryLabel = (category?: string) => {
-    if (!category) return 'Не указана'
-    const cat = RISK_CATEGORIES.find(c => c.value === category)
-    return cat ? cat.label : category
-  }
-
-  const getStatusLabel = (status: string) => {
-    const stat = RISK_STATUSES.find(s => s.value === status)
-    return stat ? stat.label : status
-  }
-
 
   return (
-    <Container maxWidth="lg">
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4">Риски</Typography>
-        <Box display="flex" gap={1}>
-          <Button 
-            variant="outlined" 
-            startIcon={<FilterList />}
-            onClick={() => setShowFilters(!showFilters)}
-          >
-            Фильтры
-          </Button>
-          <Button 
-            variant="outlined" 
-            startIcon={<Download />}
-            onClick={() => exportRisks('csv')}
-          >
-            Экспорт
-          </Button>
-          <Button variant="contained" startIcon={<Add />} onClick={handleOpenCreateModal}>
+    <PageContainer maxWidth="xl">
+      <PageHeader
+        title="Реестр рисков"
+        subtitle="Контроль владельцев, уровней и статусов обработки в режиме реального времени"
+        actions={
+          <Button variant="contained" startIcon={<Add />} onClick={() => setModalOpen(true)}>
             Добавить риск
           </Button>
-        </Box>
-      </Box>
+        }
+      />
 
-      {error && (
-        <Box mb={2} p={2} bgcolor="error.light" borderRadius={1}>
-          <Typography color="error">{error}</Typography>
-        </Box>
-      )}
-
-      {/* Search and Filters */}
-      <Paper sx={{ mb: 2, p: 2 }}>
-        <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              placeholder="Поиск по названию или описанию..."
-              value={filters.search}
-              onChange={(e) => handleFilterChange('search', e.target.value)}
-              InputProps={{
-                startAdornment: <Search sx={{ mr: 1, color: 'text.secondary' }} />
-              }}
-            />
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <Button
-              variant="outlined"
-              startIcon={<Clear />}
-              onClick={clearFilters}
-              fullWidth
-            >
-              Очистить
-            </Button>
-          </Grid>
-        </Grid>
-
+      <SectionCard
+        title="Фильтры"
+        description="Ограничьте список по статусу, категории, ответственному или ключевым словам"
+        action={
+          <Button startIcon={<FilterList />} onClick={() => setShowFilters((prev) => !prev)}>
+            {showFilters ? 'Скрыть фильтры' : 'Показать фильтры'}
+          </Button>
+        }
+      >
         {showFilters && (
-          <Grid container spacing={2} sx={{ mt: 2 }}>
+          <Grid container spacing={2}>
             <Grid item xs={12} sm={6} md={3}>
               <FormControl fullWidth size="small">
-                <InputLabel>Статус</InputLabel>
+                <InputLabel id="filter-status">Статус</InputLabel>
                 <Select
+                  labelId="filter-status"
                   value={filters.status}
-                  onChange={(e) => handleFilterChange('status', e.target.value)}
                   label="Статус"
+                  onChange={(event) => handleFilterChange('status', event.target.value)}
                 >
-                  <MenuItem value="">Все</MenuItem>
-                  {RISK_STATUSES.map((status) => (
-                    <MenuItem key={status.value} value={status.value}>
-                      {status.label}
+                  <MenuItem value="">Все статусы</MenuItem>
+                  {RISK_STATUSES.map((item) => (
+                    <MenuItem key={item.value} value={item.value}>
+                      {STATUS_LABELS[item.value] ?? item.label ?? item.value}
                     </MenuItem>
                   ))}
                 </Select>
@@ -325,16 +327,17 @@ export const RisksPage: React.FC = () => {
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
               <FormControl fullWidth size="small">
-                <InputLabel>Категория</InputLabel>
+                <InputLabel id="filter-category">Категория</InputLabel>
                 <Select
+                  labelId="filter-category"
                   value={filters.category}
-                  onChange={(e) => handleFilterChange('category', e.target.value)}
                   label="Категория"
+                  onChange={(event) => handleFilterChange('category', event.target.value)}
                 >
-                  <MenuItem value="">Все</MenuItem>
-                  {RISK_CATEGORIES.map((category) => (
-                    <MenuItem key={category.value} value={category.value}>
-                      {category.label}
+                  <MenuItem value="">Все категории</MenuItem>
+                  {RISK_CATEGORIES.map((item) => (
+                    <MenuItem key={item.value} value={item.value}>
+                      {item.label}
                     </MenuItem>
                   ))}
                 </Select>
@@ -342,16 +345,17 @@ export const RisksPage: React.FC = () => {
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
               <FormControl fullWidth size="small">
-                <InputLabel>Владелец</InputLabel>
+                <InputLabel id="filter-owner">Ответственный</InputLabel>
                 <Select
+                  labelId="filter-owner"
                   value={filters.owner_user_id}
-                  onChange={(e) => handleFilterChange('owner_user_id', e.target.value)}
-                  label="Владелец"
+                  label="Ответственный"
+                  onChange={(event) => handleFilterChange('owner_user_id', event.target.value)}
                 >
-                  <MenuItem value="">Все</MenuItem>
-                  {users.map((user) => (
-                    <MenuItem key={user.id} value={user.id}>
-                      {user.first_name} {user.last_name}
+                  <MenuItem value="">Все ответственные</MenuItem>
+                  {users.map((user, index) => (
+                    <MenuItem key={user.id || index} value={user.id}>
+                      {formatUserName(user)}
                     </MenuItem>
                   ))}
                 </Select>
@@ -359,151 +363,168 @@ export const RisksPage: React.FC = () => {
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
               <FormControl fullWidth size="small">
-                <InputLabel>Уровень риска</InputLabel>
+                <InputLabel id="filter-level">Уровень</InputLabel>
                 <Select
+                  labelId="filter-level"
                   value={filters.level}
-                  onChange={(e) => handleFilterChange('level', e.target.value)}
-                  label="Уровень риска"
+                  label="Уровень"
+                  onChange={(event) => handleFilterChange('level', event.target.value)}
                 >
-                  <MenuItem value="">Все</MenuItem>
-                  {RISK_LEVELS.map((level) => (
-                    <MenuItem key={level.value} value={level.value.toString()}>
-                      {level.label}
+                  <MenuItem value="">Все уровни</MenuItem>
+                  {RISK_LEVELS.map((item) => (
+                    <MenuItem key={item.value} value={item.value}>
+                      {item.label}
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Поиск по названию или описанию"
+                value={filters.search}
+                onChange={(event) => handleFilterChange('search', event.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search fontSize="small" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <Button
+                variant="text"
+                startIcon={<Clear />}
+                onClick={() => setFilters({ status: '', category: '', owner_user_id: '', level: '', search: '' })}
+                disabled={!hasActiveFilters}
+              >
+                Сбросить фильтры
+              </Button>
             </Grid>
           </Grid>
         )}
-      </Paper>
+      </SectionCard>
 
-      <Paper>
-        <TableContainer>
-          <Table>
+      <SectionCard title="Список рисков" description="Экспозиция, ответственные и статусы обработки">
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <Typography variant="body2" color="text.secondary">
+            Всего: {pagination.total} рисков
+          </Typography>
+          <Button variant="outlined" startIcon={<Download />}>
+            Экспорт CSV
+          </Button>
+        </Box>
+
+        <TableContainer component={Paper}>
+          <Table size="medium">
             <TableHead>
               <TableRow>
                 <TableCell>
                   <TableSortLabel
                     active={sortField === 'title'}
-                    direction={sortField === 'title' ? sortDirection : 'asc'}
+                    direction={sortDirection}
                     onClick={() => handleSort('title')}
                   >
-                    Название
+                    Риск
                   </TableSortLabel>
                 </TableCell>
                 <TableCell>Категория</TableCell>
-                <TableCell>Владелец</TableCell>
+                <TableCell>Ответственный</TableCell>
                 <TableCell>Вероятность</TableCell>
-                <TableCell>Воздействие</TableCell>
-                <TableCell>
-                  <TableSortLabel
-                    active={sortField === 'level'}
-                    direction={sortField === 'level' ? sortDirection : 'asc'}
-                    onClick={() => handleSort('level')}
-                  >
-                    Уровень риска
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell>
-                  <TableSortLabel
-                    active={sortField === 'status'}
-                    direction={sortField === 'status' ? sortDirection : 'asc'}
-                    onClick={() => handleSort('status')}
-                  >
-                    Статус
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell>
-                  <TableSortLabel
-                    active={sortField === 'created_at'}
-                    direction={sortField === 'created_at' ? sortDirection : 'asc'}
-                    onClick={() => handleSort('created_at')}
-                  >
-                    Дата создания
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell>Действия</TableCell>
+                <TableCell>Влияние</TableCell>
+                <TableCell>Уровень</TableCell>
+                <TableCell>Статус</TableCell>
+                <TableCell>Создан</TableCell>
+                <TableCell align="right">Действия</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={8} align="center">
-                    <LinearProgress />
-                    <Typography sx={{ mt: 1 }}>Загрузка рисков...</Typography>
+                  <TableCell colSpan={9}>
+                    <Box display="flex" justifyContent="center" py={6}>
+                      <LinearProgress sx={{ width: 320 }} />
+                    </Box>
                   </TableCell>
                 </TableRow>
               ) : risks.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} align="center">
-                    <Typography>Нет рисков для отображения.</Typography>
+                  <TableCell colSpan={9}>
+                    <Box textAlign="center" py={6}>
+                      <Typography variant="body1" fontWeight={600}>
+                        Риски не найдены
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Измените фильтры или добавьте новую запись.
+                      </Typography>
+                    </Box>
                   </TableCell>
                 </TableRow>
               ) : (
                 risks.map((risk) => {
-                  const riskLevel = getRiskLevel(risk.level)
+                  const levelBadge = getRiskLevelBadge(risk)
+
                   return (
                     <TableRow key={risk.id} hover>
                       <TableCell>
-                        <Box display="flex" alignItems="center">
-                          <Warning sx={{ mr: 1 }} />
-                          <Box>
-                            <Typography variant="body2" fontWeight="medium">
-                              {risk.title}
+                        <Box display="flex" flexDirection="column">
+                          <Typography variant="body1" fontWeight={600}>
+                            {risk.title}
+                          </Typography>
+                          {risk.description && (
+                            <Typography variant="body2" color="text.secondary">
+                              {risk.description.slice(0, 96)}{risk.description.length > 96 ? '…' : ''}
                             </Typography>
-                            {risk.description && (
-                              <Typography variant="caption" color="text.secondary">
-                                {risk.description.substring(0, 50)}...
-                              </Typography>
-                            )}
-                          </Box>
+                          )}
                         </Box>
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2">
-                          {getCategoryLabel(risk.category)}
+                          {RISK_CATEGORIES.find((item) => item.value === risk.category)?.label ?? '—'}
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2">
-                          {getUserName(risk.owner_user_id)}
-                        </Typography>
+                        <Typography variant="body2">{getUserName(risk.owner_user_id)}</Typography>
                       </TableCell>
                       <TableCell>
                         <Box display="flex" alignItems="center">
                           <LinearProgress
                             variant="determinate"
-                            value={(risk.likelihood || 1) / 4 * 100}
+                            value={Math.min(((risk.likelihood ?? 0) / 4) * 100, 100)}
                             sx={{ width: 60, mr: 1 }}
                           />
-                          {risk.likelihood || 1}/4
+                          {(risk.likelihood ?? 0)}/4
                         </Box>
                       </TableCell>
                       <TableCell>
                         <Box display="flex" alignItems="center">
                           <LinearProgress
                             variant="determinate"
-                            value={(risk.impact || 1) / 4 * 100}
+                            value={Math.min(((risk.impact ?? 0) / 4) * 100, 100)}
                             sx={{ width: 60, mr: 1 }}
                           />
-                          {risk.impact || 1}/4
+                          {(risk.impact ?? 0)}/4
                         </Box>
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={`${riskLevel.label} (${risk.level})`}
-                          sx={{
-                            backgroundColor: riskLevel.bgColor,
-                            color: 'white',
-                            fontWeight: 'bold'
-                          }}
+                          label={`${levelBadge.label}${risk.level ? ` (${risk.level})` : ''}`}
                           size="small"
+                          sx={{
+                            fontWeight: 600,
+                            letterSpacing: '0.01em',
+                            borderRadius: 2,
+                            ...levelBadge.sx,
+                          }}
                         />
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={getStatusLabel(risk.status)}
+                          label={STATUS_LABELS[risk.status] ?? risk.status}
                           color={getStatusColor(risk.status) as any}
                           size="small"
                         />
@@ -513,33 +534,27 @@ export const RisksPage: React.FC = () => {
                           {new Date(risk.created_at).toLocaleDateString('ru-RU')}
                         </Typography>
                       </TableCell>
-                      <TableCell>
-                        <Box display="flex" gap={0.5}>
-                          <Tooltip title="Просмотр деталей">
-                            <IconButton 
-                              size="small"
-                              color="primary"
-                              onClick={() => handleViewRiskDetails(risk)}
-                            >
-                              <Visibility />
+                      <TableCell align="right">
+                        <Box display="flex" justifyContent="flex-end" gap={0.5}>
+                          <Tooltip title="Просмотреть">
+                            <IconButton size="small" color="primary" onClick={() => {
+                              setSelectedRisk(risk)
+                              setDetailsOpen(true)
+                            }}>
+                              <Visibility fontSize="small" />
                             </IconButton>
                           </Tooltip>
-                          <Tooltip title="Редактировать риск">
-                            <IconButton 
-                              size="small"
-                              color="primary"
-                              onClick={() => handleEditRisk(risk)}
-                            >
-                              <Edit />
+                          <Tooltip title="Редактировать">
+                            <IconButton size="small" color="primary" onClick={() => {
+                              setEditingRisk(risk)
+                              setModalOpen(true)
+                            }}>
+                              <Edit fontSize="small" />
                             </IconButton>
                           </Tooltip>
-                          <Tooltip title="Удалить риск">
-                            <IconButton 
-                              size="small"
-                              color="error"
-                              onClick={() => handleDeleteRisk(risk)}
-                            >
-                              <Delete />
+                          <Tooltip title="Удалить">
+                            <IconButton size="small" color="error" onClick={() => handleDeleteRisk(risk)}>
+                              <Delete fontSize="small" />
                             </IconButton>
                           </Tooltip>
                         </Box>
@@ -551,16 +566,29 @@ export const RisksPage: React.FC = () => {
             </TableBody>
           </Table>
         </TableContainer>
-      </Paper>
+
+        <Box display="flex" justifyContent="center" mt={3}>
+          <Pagination
+            currentPage={pagination.page}
+            totalPages={pagination.total_pages}
+            hasNext={pagination.has_next}
+            hasPrev={pagination.has_prev}
+            onPageChange={(page) => setPagination((prev) => ({ ...prev, page }))}
+          />
+        </Box>
+      </SectionCard>
 
       <RiskModal
         open={modalOpen}
-        onClose={handleModalClose}
-        onSubmit={editingRisk ? handleUpdateRisk : handleCreateRisk}
-        title={editingRisk ? 'Редактирование риска' : 'Создание нового риска'}
+        onClose={() => {
+          setModalOpen(false)
+          setEditingRisk(null)
+        }}
+        onSubmit={editingRisk ? (payload) => handleUpdateRisk(payload) : handleCreateRisk}
+        title={editingRisk ? 'Редактирование риска' : 'Создание риска'}
         initialData={editingRisk ? {
           title: editingRisk.title,
-          description: editingRisk.description || '',
+          description: editingRisk.description ?? undefined,
           category: editingRisk.category || '',
           likelihood: editingRisk.likelihood || 1,
           impact: editingRisk.impact || 1,
@@ -574,10 +602,19 @@ export const RisksPage: React.FC = () => {
       />
 
       <RiskDetailsModal
-        open={detailsModalOpen}
-        onClose={handleDetailsModalClose}
+        open={detailsOpen}
+        onClose={() => {
+          setDetailsOpen(false)
+          setSelectedRisk(null)
+        }}
         risk={selectedRisk}
       />
-    </Container>
+
+      {error && (
+        <Box mt={2}>
+          <Typography color="error">{error}</Typography>
+        </Box>
+      )}
+    </PageContainer>
   )
 }

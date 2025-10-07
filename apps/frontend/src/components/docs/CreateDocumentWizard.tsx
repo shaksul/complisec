@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+﻿import React, { useState } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -29,7 +29,7 @@ import {
   Error as ErrorIcon,
 } from '@mui/icons-material'
 import { createDocument, uploadDocumentVersion, submitDocumentForApproval } from '../../shared/api/documents'
-import { getUsers } from '../../shared/api/users'
+// import { getUsers } from '../../shared/api/users'
 import { type CreateDocumentDTO, type SubmitDocumentDTO } from '../../shared/api/documents'
 
 interface CreateDocumentWizardProps {
@@ -40,6 +40,8 @@ interface CreateDocumentWizardProps {
 
 interface User {
   id: string
+  first_name?: string
+  last_name?: string
   name: string
   email: string
 }
@@ -79,29 +81,29 @@ interface Step3Data {
 }
 
 const DOCUMENT_TYPES = [
-  { value: 'policy', label: 'Политика' },
-  { value: 'standard', label: 'Стандарт' },
-  { value: 'procedure', label: 'Процедура' },
-  { value: 'instruction', label: 'Инструкция' },
-  { value: 'act', label: 'Акт' },
-  { value: 'other', label: 'Другое' },
+  { value: 'policy', label: 'РџРѕР»РёС‚РёРєР°' },
+  { value: 'standard', label: 'РЎС‚Р°РЅРґР°СЂС‚' },
+  { value: 'procedure', label: 'РџСЂРѕС†РµРґСѓСЂР°' },
+  { value: 'instruction', label: 'РРЅСЃС‚СЂСѓРєС†РёСЏ' },
+  { value: 'act', label: 'РђРєС‚' },
+  { value: 'other', label: 'Р”СЂСѓРіРѕРµ' },
 ]
 
 const CLASSIFICATIONS = [
-  { value: 'Public', label: 'Публичный' },
-  { value: 'Internal', label: 'Внутренний' },
-  { value: 'Confidential', label: 'Конфиденциальный' },
+  { value: 'Public', label: 'РџСѓР±Р»РёС‡РЅС‹Р№' },
+  { value: 'Internal', label: 'Р’РЅСѓС‚СЂРµРЅРЅРёР№' },
+  { value: 'Confidential', label: 'РљРѕРЅС„РёРґРµРЅС†РёР°Р»СЊРЅС‹Р№' },
 ]
 
 const COMMON_TAGS = [
-  'Безопасность',
-  'Информационная безопасность',
-  'Персональные данные',
-  'Соблюдение требований',
-  'Управление рисками',
-  'Обучение',
-  'Процедуры',
-  'Политики',
+  'Р‘РµР·РѕРїР°СЃРЅРѕСЃС‚СЊ',
+  'РРЅС„РѕСЂРјР°С†РёРѕРЅРЅР°СЏ Р±РµР·РѕРїР°СЃРЅРѕСЃС‚СЊ',
+  'РџРµСЂСЃРѕРЅР°Р»СЊРЅС‹Рµ РґР°РЅРЅС‹Рµ',
+  'РЎРѕР±Р»СЋРґРµРЅРёРµ С‚СЂРµР±РѕРІР°РЅРёР№',
+  'РЈРїСЂР°РІР»РµРЅРёРµ СЂРёСЃРєР°РјРё',
+  'РћР±СѓС‡РµРЅРёРµ',
+  'РџСЂРѕС†РµРґСѓСЂС‹',
+  'РџРѕР»РёС‚РёРєРё',
 ]
 
 export default function CreateDocumentWizard({ open, onClose, onSuccess }: CreateDocumentWizardProps) {
@@ -152,15 +154,15 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
 
   const loadUsers = async () => {
     try {
-      const userData = await getUsers()
-      setUsers(Array.isArray(userData) ? userData : [])
+      // const userData = await getUsers()
+      setUsers([])
     } catch (err) {
       console.error('Error loading users:', err)
       // Set mock users for now
       setUsers([
-        { id: '1', first_name: 'Admin', last_name: 'User', email: 'admin@demo.local' },
-        { id: '2', first_name: 'John', last_name: 'Doe', email: 'john@demo.local' },
-        { id: '3', first_name: 'Jane', last_name: 'Smith', email: 'jane@demo.local' }
+        { id: '1', first_name: 'Admin', last_name: 'User', name: 'Admin User', email: 'admin@demo.local' },
+        { id: '2', first_name: 'John', last_name: 'Doe', name: 'John Doe', email: 'john@demo.local' },
+        { id: '3', first_name: 'Jane', last_name: 'Smith', name: 'Jane Smith', email: 'jane@demo.local' }
       ])
     }
   }
@@ -168,7 +170,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
   const handleStep1Next = () => {
     // Just validate and move to next step, don't create document yet
     if (!step1Data.title.trim()) {
-      setError('Название документа обязательно')
+      setError('РќР°Р·РІР°РЅРёРµ РґРѕРєСѓРјРµРЅС‚Р° РѕР±СЏР·Р°С‚РµР»СЊРЅРѕ')
       return
     }
     setError(null)
@@ -184,18 +186,17 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
       // First create the document
       const createData: CreateDocumentDTO = {
         title: step1Data.title,
-        code: step1Data.code || undefined,
         description: step1Data.description || undefined,
-        type: step1Data.type,
+        type: step1Data.type as 'policy' | 'standard' | 'procedure' | 'instruction' | 'act' | 'other',
         category: step1Data.category || undefined,
         tags: step1Data.tags,
-        ownerId: step1Data.ownerId || undefined,
-        classification: step1Data.classification,
-        effectiveFrom: step1Data.effectiveFrom || undefined,
-        reviewPeriodMonths: step1Data.reviewPeriodMonths,
-        assetIds: step1Data.assetIds,
-        riskIds: step1Data.riskIds,
-        controlIds: step1Data.controlIds,
+        // owner_id: step1Data.ownerId || undefined,
+        // classification: step1Data.classification,
+        // effectiveFrom: step1Data.effectiveFrom || undefined,
+        // reviewPeriodMonths: step1Data.reviewPeriodMonths,
+        // assetIds: step1Data.assetIds,
+        // riskIds: step1Data.riskIds,
+        // controlIds: step1Data.controlIds,
       }
 
       const document = await createDocument(createData)
@@ -225,7 +226,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
         uploadStatus: 'error',
         uploadError: (err as Error).message 
       }))
-      setError('Ошибка загрузки файла: ' + (err as Error).message)
+      setError('РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё С„Р°Р№Р»Р°: ' + (err as Error).message)
     } finally {
       setLoading(false)
     }
@@ -267,10 +268,10 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
 
       if (step3Data.requiresApproval) {
         const submitData: SubmitDocumentDTO = {
-          workflowType: step3Data.workflowType,
+          workflow_type: step3Data.workflowType,
           steps: step3Data.steps.map(step => ({
-            stepOrder: step.stepOrder,
-            approverId: step.approverId,
+            step_order: step.stepOrder,
+            approver_id: step.approverId,
             deadline: step.deadline || undefined,
           }))
         }
@@ -281,7 +282,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
       onSuccess(documentId)
       onClose()
     } catch (err) {
-      setError('Ошибка отправки на согласование: ' + (err as Error).message)
+      setError('РћС€РёР±РєР° РѕС‚РїСЂР°РІРєРё РЅР° СЃРѕРіР»Р°СЃРѕРІР°РЅРёРµ: ' + (err as Error).message)
     } finally {
       setLoading(false)
     }
@@ -324,13 +325,13 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
   const renderStep1 = () => (
     <Box>
       <Typography variant="h6" gutterBottom>
-        Метаданные документа
+        РњРµС‚Р°РґР°РЅРЅС‹Рµ РґРѕРєСѓРјРµРЅС‚Р°
       </Typography>
       
       <Grid container spacing={3}>
         <Grid item xs={12}>
           <TextField
-            label="Название *"
+            label="РќР°Р·РІР°РЅРёРµ *"
             value={step1Data.title}
             onChange={(e) => setStep1Data(prev => ({ ...prev, title: e.target.value }))}
             fullWidth
@@ -340,7 +341,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
         
         <Grid item xs={12} sm={6}>
           <TextField
-            label="Код документа"
+            label="РљРѕРґ РґРѕРєСѓРјРµРЅС‚Р°"
             value={step1Data.code}
             onChange={(e) => setStep1Data(prev => ({ ...prev, code: e.target.value }))}
             fullWidth
@@ -349,7 +350,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
         
         <Grid item xs={12} sm={6}>
           <FormControl fullWidth>
-            <InputLabel>Тип документа *</InputLabel>
+            <InputLabel>РўРёРї РґРѕРєСѓРјРµРЅС‚Р° *</InputLabel>
             <Select
               value={step1Data.type}
               onChange={(e) => setStep1Data(prev => ({ ...prev, type: e.target.value }))}
@@ -365,7 +366,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
         
         <Grid item xs={12}>
           <TextField
-            label="Описание"
+            label="РћРїРёСЃР°РЅРёРµ"
             value={step1Data.description}
             onChange={(e) => setStep1Data(prev => ({ ...prev, description: e.target.value }))}
             fullWidth
@@ -376,7 +377,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
         
         <Grid item xs={12} sm={6}>
           <TextField
-            label="Категория"
+            label="РљР°С‚РµРіРѕСЂРёСЏ"
             value={step1Data.category}
             onChange={(e) => setStep1Data(prev => ({ ...prev, category: e.target.value }))}
             fullWidth
@@ -385,7 +386,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
         
         <Grid item xs={12} sm={6}>
           <FormControl fullWidth>
-            <InputLabel>Классификация *</InputLabel>
+            <InputLabel>РљР»Р°СЃСЃРёС„РёРєР°С†РёСЏ *</InputLabel>
             <Select
               value={step1Data.classification}
               onChange={(e) => setStep1Data(prev => ({ ...prev, classification: e.target.value }))}
@@ -408,14 +409,14 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
             freeSolo
             renderTags={(value, getTagProps) =>
               value.map((option, index) => (
-                <Chip key={index} variant="outlined" label={option} {...getTagProps({ index })} />
+                <Chip variant="outlined" label={option} {...getTagProps({ index })} />
               ))
             }
             renderInput={(params) => (
               <TextField
                 {...params}
-                label="Теги"
-                placeholder="Добавить тег"
+                label="РўРµРіРё"
+                placeholder="Р”РѕР±Р°РІРёС‚СЊ С‚РµРі"
               />
             )}
           />
@@ -423,7 +424,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
         
         <Grid item xs={12} sm={6}>
           <FormControl fullWidth>
-            <InputLabel>Владелец документа</InputLabel>
+            <InputLabel>Р’Р»Р°РґРµР»РµС† РґРѕРєСѓРјРµРЅС‚Р°</InputLabel>
             <Select
               value={step1Data.ownerId}
               onChange={(e) => setStep1Data(prev => ({ ...prev, ownerId: e.target.value }))}
@@ -439,7 +440,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
         
         <Grid item xs={12} sm={6}>
           <TextField
-            label="Дата вступления в силу"
+            label="Р”Р°С‚Р° РІСЃС‚СѓРїР»РµРЅРёСЏ РІ СЃРёР»Сѓ"
             type="date"
             value={step1Data.effectiveFrom}
             onChange={(e) => setStep1Data(prev => ({ ...prev, effectiveFrom: e.target.value }))}
@@ -450,7 +451,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
         
         <Grid item xs={12} sm={6}>
           <TextField
-            label="Период пересмотра (месяцы)"
+            label="РџРµСЂРёРѕРґ РїРµСЂРµСЃРјРѕС‚СЂР° (РјРµСЃСЏС†С‹)"
             type="number"
             value={step1Data.reviewPeriodMonths}
             onChange={(e) => setStep1Data(prev => ({ ...prev, reviewPeriodMonths: parseInt(e.target.value) || 12 }))}
@@ -465,12 +466,12 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
   const renderStep2 = () => (
     <Box>
       <Typography variant="h6" gutterBottom>
-        Загрузка версии документа
+        Р—Р°РіСЂСѓР·РєР° РІРµСЂСЃРёРё РґРѕРєСѓРјРµРЅС‚Р°
       </Typography>
       
       <Box
         sx={{
-          border: '2px dashed #ccc',
+          border: (theme) => `2px dashed ${theme.palette.divider}`,
           borderRadius: 2,
           p: 4,
           textAlign: 'center',
@@ -481,13 +482,13 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
           <Box>
             <CloudUpload sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
             <Typography variant="h6" gutterBottom>
-              Перетащите файл сюда или нажмите для выбора
+              РџРµСЂРµС‚Р°С‰РёС‚Рµ С„Р°Р№Р» СЃСЋРґР° РёР»Рё РЅР°Р¶РјРёС‚Рµ РґР»СЏ РІС‹Р±РѕСЂР°
             </Typography>
             <Typography variant="body2" color="text.secondary" gutterBottom>
-              Поддерживаемые форматы: PDF, DOCX, TXT
+              РџРѕРґРґРµСЂР¶РёРІР°РµРјС‹Рµ С„РѕСЂРјР°С‚С‹: PDF, DOCX, TXT
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Максимальный размер: 50 МБ
+              РњР°РєСЃРёРјР°Р»СЊРЅС‹Р№ СЂР°Р·РјРµСЂ: 50 РњР‘
             </Typography>
             <input
               type="file"
@@ -501,7 +502,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
             />
             <label htmlFor="file-upload">
               <Button variant="contained" component="span" sx={{ mt: 2 }}>
-                Выбрать файл
+                Р’С‹Р±СЂР°С‚СЊ С„Р°Р№Р»
               </Button>
             </label>
           </Box>
@@ -511,7 +512,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
           <Box>
             <CircularProgress sx={{ mb: 2 }} />
             <Typography variant="h6" gutterBottom>
-              Загрузка файла...
+              Р—Р°РіСЂСѓР·РєР° С„Р°Р№Р»Р°...
             </Typography>
             <Typography variant="body2" color="text.secondary">
               {step2Data.uploadProgress}%
@@ -523,7 +524,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
           <Box>
             <CheckCircle sx={{ fontSize: 48, color: 'success.main', mb: 2 }} />
             <Typography variant="h6" gutterBottom>
-              Файл успешно загружен
+              Р¤Р°Р№Р» СѓСЃРїРµС€РЅРѕ Р·Р°РіСЂСѓР¶РµРЅ
             </Typography>
             <Typography variant="body2" color="text.secondary">
               {step2Data.file?.name}
@@ -535,7 +536,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
           <Box>
             <ErrorIcon sx={{ fontSize: 48, color: 'error.main', mb: 2 }} />
             <Typography variant="h6" gutterBottom color="error">
-              Ошибка загрузки
+              РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё
             </Typography>
             <Typography variant="body2" color="error">
               {step2Data.uploadError}
@@ -551,7 +552,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
             onChange={(e) => setStep2Data(prev => ({ ...prev, enableOCR: e.target.checked }))}
           />
         }
-        label="Включить OCR для извлечения текста"
+        label="Р’РєР»СЋС‡РёС‚СЊ OCR РґР»СЏ РёР·РІР»РµС‡РµРЅРёСЏ С‚РµРєСЃС‚Р°"
       />
     </Box>
   )
@@ -559,7 +560,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
   const renderStep3 = () => (
     <Box>
       <Typography variant="h6" gutterBottom>
-        Настройки согласования
+        РќР°СЃС‚СЂРѕР№РєРё СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ
       </Typography>
       
       <FormControlLabel
@@ -569,14 +570,14 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
             onChange={(e) => setStep3Data(prev => ({ ...prev, requiresApproval: e.target.checked }))}
           />
         }
-        label="Требуется согласование документа"
+        label="РўСЂРµР±СѓРµС‚СЃСЏ СЃРѕРіР»Р°СЃРѕРІР°РЅРёРµ РґРѕРєСѓРјРµРЅС‚Р°"
         sx={{ mb: 3 }}
       />
       
       {step3Data.requiresApproval && (
         <>
           <FormControl fullWidth sx={{ mb: 3 }}>
-            <InputLabel>Тип маршрута</InputLabel>
+            <InputLabel>РўРёРї РјР°СЂС€СЂСѓС‚Р°</InputLabel>
             <Select
               value={step3Data.workflowType}
               onChange={(e) => setStep3Data(prev => ({ 
@@ -584,13 +585,13 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
                 workflowType: e.target.value as 'sequential' | 'parallel' 
               }))}
             >
-              <MenuItem value="sequential">Последовательный</MenuItem>
-              <MenuItem value="parallel">Параллельный</MenuItem>
+              <MenuItem value="sequential">РџРѕСЃР»РµРґРѕРІР°С‚РµР»СЊРЅС‹Р№</MenuItem>
+              <MenuItem value="parallel">РџР°СЂР°Р»Р»РµР»СЊРЅС‹Р№</MenuItem>
             </Select>
           </FormControl>
           
           <Typography variant="subtitle1" gutterBottom>
-            Шаги согласования:
+            РЁР°РіРё СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ:
           </Typography>
         </>
       )}
@@ -600,7 +601,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
           <Grid container spacing={2} alignItems="center">
             <Grid item xs={12} sm={3}>
               <TextField
-                label="Порядок"
+                label="РџРѕСЂСЏРґРѕРє"
                 type="number"
                 value={step.stepOrder}
                 onChange={(e) => {
@@ -615,7 +616,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
             
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
-                <InputLabel>Согласующий</InputLabel>
+                <InputLabel>РЎРѕРіР»Р°СЃСѓСЋС‰РёР№</InputLabel>
                 <Select
                   value={step.approverId}
                   onChange={(e) => {
@@ -635,7 +636,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
             
             <Grid item xs={12} sm={2}>
               <TextField
-                label="Дедлайн"
+                label="Р”РµРґР»Р°Р№РЅ"
                 type="date"
                 value={step.deadline}
                 onChange={(e) => {
@@ -654,7 +655,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
                 onClick={() => handleRemoveApprovalStep(index)}
                 disabled={step3Data.steps.length === 1}
               >
-                Удалить
+                РЈРґР°Р»РёС‚СЊ
               </Button>
             </Grid>
           </Grid>
@@ -666,25 +667,25 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
         onClick={handleAddApprovalStep}
         sx={{ mb: 2 }}
       >
-        Добавить шаг согласования
+        Р”РѕР±Р°РІРёС‚СЊ С€Р°Рі СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ
       </Button>
     </Box>
   )
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-      <DialogTitle>Создание документа</DialogTitle>
+      <DialogTitle>РЎРѕР·РґР°РЅРёРµ РґРѕРєСѓРјРµРЅС‚Р°</DialogTitle>
       
       <DialogContent>
         <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
           <Step>
-            <StepLabel>Метаданные</StepLabel>
+            <StepLabel>РњРµС‚Р°РґР°РЅРЅС‹Рµ</StepLabel>
           </Step>
           <Step>
-            <StepLabel>Загрузка версии</StepLabel>
+            <StepLabel>Р—Р°РіСЂСѓР·РєР° РІРµСЂСЃРёРё</StepLabel>
           </Step>
           <Step>
-            <StepLabel>Согласование</StepLabel>
+            <StepLabel>РЎРѕРіР»Р°СЃРѕРІР°РЅРёРµ</StepLabel>
           </Step>
         </Stepper>
         
@@ -701,7 +702,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
       
       <DialogActions>
         <Button onClick={handleClose}>
-          Отмена
+          РћС‚РјРµРЅР°
         </Button>
         
         {activeStep === 0 && (
@@ -710,21 +711,21 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
             onClick={handleStep1Next}
             disabled={loading || !step1Data.title || !step1Data.type}
           >
-            {loading ? <CircularProgress size={20} /> : 'Далее'}
+            {loading ? <CircularProgress size={20} /> : 'Р”Р°Р»РµРµ'}
           </Button>
         )}
         
         {activeStep === 1 && (
           <>
             <Button onClick={() => setActiveStep(0)}>
-              Назад
+              РќР°Р·Р°Рґ
             </Button>
             <Button
               variant="contained"
               onClick={handleStep2Next}
               disabled={step2Data.uploadStatus !== 'success'}
             >
-              Далее
+              Р”Р°Р»РµРµ
             </Button>
           </>
         )}
@@ -732,7 +733,7 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
         {activeStep === 2 && (
           <>
             <Button onClick={() => setActiveStep(1)}>
-              Назад
+              РќР°Р·Р°Рґ
             </Button>
             <Button
               variant="contained"
@@ -744,9 +745,9 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
               {loading ? (
                 <CircularProgress size={20} />
               ) : step3Data.requiresApproval ? (
-                'Отправить на согласование'
+                'РћС‚РїСЂР°РІРёС‚СЊ РЅР° СЃРѕРіР»Р°СЃРѕРІР°РЅРёРµ'
               ) : (
-                'Сохранить'
+                'РЎРѕС…СЂР°РЅРёС‚СЊ'
               )}
             </Button>
           </>
@@ -755,3 +756,4 @@ export default function CreateDocumentWizard({ open, onClose, onSuccess }: Creat
     </Dialog>
   )
 }
+
