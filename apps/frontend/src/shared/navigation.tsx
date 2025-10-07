@@ -19,7 +19,7 @@ export const PRIMARY_NAVIGATION: NavigationItem[] = [
   { label: 'Риски', to: '/risks', icon: <RisksIcon />, permission: 'risk.view' },
   { label: 'Документы', to: '/documents', icon: <DocumentsIcon />, permission: 'document.read' },
   { label: 'Файловое хранилище', to: '/file-documents', icon: <Folder />, permission: 'document.read' },
-  { label: 'Инциденты', to: '/incidents', icon: <IncidentsIcon />, permission: 'incident.view' },
+  { label: 'Инциденты', to: '/incidents', icon: <IncidentsIcon />, permission: 'incidents.view' },
   { label: 'Обучение', to: '/training', icon: <TrainingIcon />, permission: 'training.view' },
   { label: 'Комплаенс', to: '/compliance', icon: <ComplianceIcon />, permission: 'compliance.view' },
   { label: 'AI-провайдеры', to: '/ai/providers', icon: <AIProvidersIcon />, permission: 'ai.providers.view' },

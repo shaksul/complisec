@@ -45,6 +45,7 @@ import {
   Slideshow,
   TextSnippet,
   FolderZip,
+  ArrowBack,
 } from "@mui/icons-material"
 import {
   FileDocument,
@@ -54,7 +55,9 @@ import {
   listFolders,
   uploadDocument,
   listDocuments,
+  listStructuredDocuments,
   deleteDocument,
+  deleteFolder,
   downloadDocument,
   searchDocuments,
   getDocumentStats,
@@ -90,7 +93,12 @@ function FileDocumentsPage() {
   const [currentTab, setCurrentTab] = useState(0)
   const [folders, setFolders] = useState<FolderType[]>([])
   const [documents, setDocuments] = useState<FileDocument[]>([])
+  const [structuredData, setStructuredData] = useState<any>(null)
   const [currentFolder, setCurrentFolder] = useState<FolderType | null>(null)
+  const [currentModule, setCurrentModule] = useState<string | null>(null)
+  const [currentCategory, setCurrentCategory] = useState<string | null>(null)
+  const [currentModuleData, setCurrentModuleData] = useState<any>(null)
+  const [currentCategoryData, setCurrentCategoryData] = useState<any[]>([])
   const [breadcrumbs, setBreadcrumbs] = useState<FolderType[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -127,17 +135,37 @@ function FileDocumentsPage() {
       setLoading(true)
       setError(null)
       
-      const [foldersData, documentsData] = await Promise.all([
-        listFolders(currentFolder?.id),
-        listDocuments({
-          folder_id: currentFolder?.id,
-          page: 1,
-          limit: 100,
-        })
-      ])
-      
-      setFolders(foldersData)
-      setDocuments(documentsData)
+      if (currentTab === 0) {
+        // Загружаем структурированные данные для файлового хранилища
+        const structuredData = await listStructuredDocuments()
+        setStructuredData(structuredData)
+        
+        // Также загружаем обычные папки и документы для совместимости
+        const [foldersData, documentsData] = await Promise.all([
+          listFolders(currentFolder?.id),
+          listDocuments({
+            folder_id: currentFolder?.id,
+            page: 1,
+            limit: 100,
+          })
+        ])
+        
+        setFolders(foldersData)
+        setDocuments(documentsData)
+      } else {
+        // Для других вкладок используем обычную загрузку
+        const [foldersData, documentsData] = await Promise.all([
+          listFolders(currentFolder?.id),
+          listDocuments({
+            folder_id: currentFolder?.id,
+            page: 1,
+            limit: 100,
+          })
+        ])
+        
+        setFolders(foldersData)
+        setDocuments(documentsData)
+      }
     } catch (err) {
       console.error('Error loading data:', err)
       setError('Ошибка загрузки данных')
@@ -204,8 +232,8 @@ function FileDocumentsPage() {
         // It's a document
         await deleteDocument(selectedItem.id)
       } else {
-        // It's a folder - implement delete folder API
-        console.log('Delete folder not implemented yet')
+        // It's a folder
+        await deleteFolder(selectedItem.id)
       }
       setOpenDelete(false)
       setSelectedItem(null)
@@ -242,6 +270,18 @@ function FileDocumentsPage() {
     const newBreadcrumbs = breadcrumbs.slice(0, index + 1)
     setBreadcrumbs(newBreadcrumbs)
     setCurrentFolder(newBreadcrumbs[newBreadcrumbs.length - 1] || null)
+  }
+
+  const handleModuleClick = (moduleName: string, moduleData: any) => {
+    setCurrentModule(moduleName)
+    setCurrentModuleData(moduleData)
+    setCurrentCategory(null)
+    setCurrentCategoryData([])
+  }
+
+  const handleCategoryClick = (_moduleName: string, categoryName: string, documents: any[]) => {
+    setCurrentCategory(categoryName)
+    setCurrentCategoryData(Array.isArray(documents) ? documents : [])
   }
 
   const handleSearch = async () => {
@@ -308,6 +348,200 @@ function FileDocumentsPage() {
     return iconMap[iconName] || <InsertDriveFile />
   }
 
+  const renderStructuredDocuments = () => {
+    if (!structuredData?.modules) return null
+
+    return (
+      <Grid container spacing={2}>
+        {Object.entries(structuredData.modules).map(([moduleName, moduleData]: [string, any]) => (
+          <Grid item xs={12} sm={6} md={4} lg={3} key={moduleName}>
+            <Card
+              sx={{
+                '&:hover': { boxShadow: 3 },
+                cursor: 'pointer',
+              }}
+              onClick={() => handleModuleClick(moduleName, moduleData)}
+            >
+              <CardContent>
+                <Box display="flex" alignItems="center" mb={1}>
+                  <FolderOpen color="primary" sx={{ mr: 1 }} />
+                  <Typography variant="h6" noWrap sx={{ flex: 1 }}>
+                    {moduleName === 'documents' ? 'Документы' : 
+                     moduleName === 'risks' ? 'Риски' :
+                     moduleName === 'assets' ? 'Активы' :
+                     moduleName === 'general' ? 'Общие' : moduleName}
+                  </Typography>
+                </Box>
+                <Typography variant="body2" color="text.secondary">
+                  {moduleData.categories ? Object.keys(moduleData.categories).length : 0} категорий
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {moduleData.categories ? 
+                    Object.values(moduleData.categories).reduce((total: number, docs: any) => 
+                      total + (Array.isArray(docs) ? docs.length : 0), 0) : 0} документов
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+    )
+  }
+
+  const renderModuleDocuments = (moduleName: string, moduleData: any) => {
+    return (
+      <Box>
+        <Box display="flex" alignItems="center" mb={2}>
+          <IconButton onClick={() => setCurrentModule(null)} sx={{ mr: 1 }}>
+            <ArrowBack />
+          </IconButton>
+          <Typography variant="h6">
+            {moduleName === 'documents' ? 'Документы' : 
+             moduleName === 'risks' ? 'Риски' :
+             moduleName === 'assets' ? 'Активы' :
+             moduleName === 'general' ? 'Общие' : moduleName}
+          </Typography>
+        </Box>
+
+        <Grid container spacing={2}>
+          {moduleData.categories && Object.entries(moduleData.categories).map(([categoryName, documents]: [string, any]) => (
+            <Grid item xs={12} sm={6} md={4} lg={3} key={categoryName}>
+              <Card
+                sx={{
+                  '&:hover': { boxShadow: 3 },
+                  cursor: 'pointer',
+                }}
+                onClick={() => handleCategoryClick(moduleName, categoryName, documents)}
+              >
+                <CardContent>
+                  <Box display="flex" alignItems="center" mb={1}>
+                    <FolderOpen color="primary" sx={{ mr: 1 }} />
+                    <Typography variant="h6" noWrap sx={{ flex: 1 }}>
+                      {categoryName === 'uncategorized' ? 'Без категории' : categoryName}
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary">
+                    {Array.isArray(documents) ? documents.length : 0} документов
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      </Box>
+    )
+  }
+
+  const renderCategoryDocuments = (moduleName: string, categoryName: string, documents: any[]) => {
+    return (
+      <Box>
+        <Box display="flex" alignItems="center" mb={2}>
+          <IconButton onClick={() => setCurrentCategory(null)} sx={{ mr: 1 }}>
+            <ArrowBack />
+          </IconButton>
+          <Typography variant="h6">
+            {moduleName === 'documents' ? 'Документы' : 
+             moduleName === 'risks' ? 'Риски' :
+             moduleName === 'assets' ? 'Активы' :
+             moduleName === 'general' ? 'Общие' : moduleName} → {categoryName === 'uncategorized' ? 'Без категории' : categoryName}
+          </Typography>
+        </Box>
+
+        <Grid container spacing={2}>
+          {Array.isArray(documents) && documents.map((document: any) => (
+            <Grid item xs={12} sm={6} md={4} lg={3} key={document.id}>
+              <Card
+                sx={{
+                  '&:hover': { boxShadow: 3 },
+                }}
+              >
+                <CardContent>
+                  <Box display="flex" alignItems="center" mb={1}>
+                    {getFileIconComponent(document.mime_type)}
+                    <Typography variant="h6" noWrap sx={{ ml: 1, flex: 1 }}>
+                      {document.title}
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" mb={1}>
+                    {getMimeTypeLabel(document.mime_type)} • {formatFileSize(document.file_size)}
+                  </Typography>
+                  {document.description && (
+                    <Typography variant="body2" color="text.secondary" noWrap>
+                      {document.description}
+                    </Typography>
+                  )}
+                  {document.tags && document.tags.length > 0 && (
+                    <Box mt={1}>
+                      {document.tags.slice(0, 2).map((tag: string) => (
+                        <Chip
+                          key={tag}
+                          label={tag}
+                          size="small"
+                          sx={{ mr: 0.5, mb: 0.5 }}
+                        />
+                      ))}
+                      {document.tags.length > 2 && (
+                        <Chip
+                          label={`+${document.tags.length - 2}`}
+                          size="small"
+                          variant="outlined"
+                        />
+                      )}
+                    </Box>
+                  )}
+                </CardContent>
+                <CardActions>
+                  <Tooltip title="Скачать">
+                    <IconButton
+                      size="small"
+                      onClick={() => handleDownloadDocument(document)}
+                    >
+                      <Download />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Просмотр">
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        // TODO: Implement view functionality
+                        console.log('View document:', document)
+                      }}
+                    >
+                      <Visibility />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Редактировать">
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        // TODO: Implement edit functionality
+                        console.log('Edit document:', document)
+                      }}
+                    >
+                      <Edit />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Удалить">
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        setSelectedItem(document)
+                        setOpenDelete(true)
+                      }}
+                      color="error"
+                    >
+                      <Delete />
+                    </IconButton>
+                  </Tooltip>
+                </CardActions>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      </Box>
+    )
+  }
+
   const renderBreadcrumbs = () => (
     <Breadcrumbs sx={{ mb: 2 }}>
       <Link
@@ -368,36 +602,64 @@ function FileDocumentsPage() {
           <CircularProgress />
         </Box>
       ) : (
-        <Grid container spacing={2}>
-          {/* Folders */}
-          {folders.map((folder) => (
-            <Grid item xs={12} sm={6} md={4} lg={3} key={folder.id}>
-              <Card
-                sx={{
-                  cursor: 'pointer',
-                  '&:hover': { boxShadow: 3 },
-                }}
-                onClick={() => handleFolderClick(folder)}
-              >
-                <CardContent>
-                  <Box display="flex" alignItems="center" mb={1}>
-                    <FolderOpen color="primary" sx={{ mr: 1 }} />
-                    <Typography variant="h6" noWrap>
-                      {folder.name}
-                    </Typography>
-                  </Box>
-                  {folder.description && (
-                    <Typography variant="body2" color="text.secondary" noWrap>
-                      {folder.description}
-                    </Typography>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
+        <>
+          {/* Структурированные документы для корневой папки */}
+          {!currentFolder && !currentModule && !currentCategory && structuredData && renderStructuredDocuments()}
+          
+          {/* Отображение модуля */}
+          {currentModule && currentModuleData && !currentCategory && renderModuleDocuments(currentModule, currentModuleData)}
+          
+          {/* Отображение категории */}
+          {currentModule && currentCategory && currentCategoryData && renderCategoryDocuments(currentModule, currentCategory, currentCategoryData)}
+          
+          {/* Обычные папки и документы только если нет структурированных данных */}
+          {!structuredData && !currentModule && !currentCategory && (
+            <Grid container spacing={2}>
+            {/* Folders */}
+            {folders.map((folder) => (
+              <Grid item xs={12} sm={6} md={4} lg={3} key={folder.id}>
+                <Card
+                  sx={{
+                    '&:hover': { boxShadow: 3 },
+                  }}
+                >
+                  <CardContent
+                    sx={{ cursor: 'pointer' }}
+                    onClick={() => handleFolderClick(folder)}
+                  >
+                    <Box display="flex" alignItems="center" mb={1}>
+                      <FolderOpen color="primary" sx={{ mr: 1 }} />
+                      <Typography variant="h6" noWrap sx={{ flex: 1 }}>
+                        {folder.name}
+                      </Typography>
+                    </Box>
+                    {folder.description && (
+                      <Typography variant="body2" color="text.secondary" noWrap>
+                        {folder.description}
+                      </Typography>
+                    )}
+                  </CardContent>
+                  <CardActions>
+                    <Tooltip title="Удалить папку">
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedItem(folder)
+                          setOpenDelete(true)
+                        }}
+                      >
+                        <Delete />
+                      </IconButton>
+                    </Tooltip>
+                  </CardActions>
+                </Card>
+              </Grid>
+            ))}
 
-          {/* Documents */}
-          {documents.map((document) => (
+            {/* Documents */}
+            {documents.map((document) => (
             <Grid item xs={12} sm={6} md={4} lg={3} key={document.id}>
               <Card
                 sx={{
@@ -475,19 +737,21 @@ function FileDocumentsPage() {
             </Grid>
           ))}
 
-          {folders.length === 0 && documents.length === 0 && !loading && (
-            <Grid item xs={12}>
-              <Box textAlign="center" p={4}>
-                <Typography variant="h6" color="text.secondary">
-                  Папка пуста
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Создайте папку или загрузите файл
-                </Typography>
-              </Box>
-            </Grid>
+            {folders.length === 0 && documents.length === 0 && !loading && (
+              <Grid item xs={12}>
+                <Box textAlign="center" p={4}>
+                  <Typography variant="h6" color="text.secondary">
+                    Папка пуста
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Создайте папку или загрузите файл
+                  </Typography>
+                </Box>
+              </Grid>
+            )}
+          </Grid>
           )}
-        </Grid>
+        </>
       )}
     </Box>
   )
@@ -778,7 +1042,7 @@ function FileDocumentsPage() {
         <DialogTitle>Удалить</DialogTitle>
         <DialogContent>
           <Typography>
-            Вы уверены, что хотите удалить "{selectedItem?.name}"?
+            Вы уверены, что хотите удалить {selectedItem && 'file_path' in selectedItem ? 'документ' : 'папку'} "{selectedItem?.name}"?
             Это действие нельзя отменить.
           </Typography>
         </DialogContent>

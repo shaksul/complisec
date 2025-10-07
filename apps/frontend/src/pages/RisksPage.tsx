@@ -234,6 +234,9 @@ export const RisksPage: React.FC = () => {
     try {
       await risksApi.create(payload)
       await loadRisks()
+      setModalOpen(false)
+      setEditingRisk(null)
+      setError(null)
     } catch (err) {
       console.error('Error creating risk:', err)
       setError('Не удалось создать риск')
@@ -245,6 +248,9 @@ export const RisksPage: React.FC = () => {
     try {
       await risksApi.update(editingRisk.id, payload)
       await loadRisks()
+      setModalOpen(false)
+      setEditingRisk(null)
+      setError(null)
     } catch (err) {
       console.error('Error updating risk:', err)
       setError('Не удалось обновить риск')

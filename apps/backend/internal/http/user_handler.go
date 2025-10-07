@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"risknexus/backend/internal/domain"
 	"risknexus/backend/internal/dto"
@@ -33,6 +34,8 @@ func (h *UserHandler) Register(r fiber.Router) {
 	users.Post("/", RequirePermission("users.create"), h.createUser)
 	users.Get("/:id", RequirePermission("users.view"), h.getUser)
 	users.Get("/:id/detail", RequirePermission("users.view"), h.getUserDetail)
+	users.Get("/:id/activity", RequirePermission("users.view"), h.getUserActivity)
+	users.Get("/:id/activity/stats", RequirePermission("users.view"), h.getUserActivityStats)
 	users.Put("/:id", RequirePermission("users.edit"), h.updateUser)
 	users.Delete("/:id", RequirePermission("users.delete"), h.deleteUser)
 	users.Get("/:id/roles", RequirePermission("users.view"), h.getUserRoles)
@@ -363,8 +366,186 @@ func (h *UserHandler) getUserDetail(c *fiber.Ctx) error {
 			RisksCount:     stats["risks_count"],
 			IncidentsCount: stats["incidents_count"],
 			AssetsCount:    stats["assets_count"],
+			SessionsCount:  stats["sessions_count"],
+			LoginCount:     stats["login_count"],
+			ActivityScore:  stats["activity_score"],
 		},
 	}
 
 	return c.JSON(fiber.Map{"data": response})
+}
+
+func (h *UserHandler) getUserActivity(c *fiber.Ctx) error {
+	userID := c.Params("id")
+	tenantID := c.Locals("tenant_id").(string)
+
+	// Проверяем, что пользователь существует в текущем тенанте
+	user, err := h.userService.GetUserByTenant(context.Background(), userID, tenantID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	if user == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "User not found"})
+	}
+
+	// Параметры пагинации
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 50)
+
+	// Валидация параметров
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		pageSize = 50
+	}
+
+	activities, total, err := h.userService.GetUserActivity(context.Background(), userID, page, pageSize)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Преобразуем в DTO
+	var activityResponses []dto.UserActivity
+	for _, activity := range activities {
+		activityResponses = append(activityResponses, dto.UserActivity{
+			ID:          activity.ID,
+			UserID:      activity.UserID,
+			Action:      activity.Action,
+			Description: activity.Description,
+			IPAddress:   activity.IPAddress,
+			UserAgent:   activity.UserAgent,
+			CreatedAt:   activity.CreatedAt,
+			Metadata:    activity.Metadata,
+		})
+	}
+
+	pagination := dto.NewPaginationResponse(page, pageSize, total)
+
+	return c.JSON(dto.PaginatedResponse{
+		Data:       activityResponses,
+		Pagination: pagination,
+	})
+}
+
+func (h *UserHandler) getUserActivityStats(c *fiber.Ctx) error {
+	userID := c.Params("id")
+	tenantID := c.Locals("tenant_id").(string)
+
+	// Проверяем, что пользователь существует в текущем тенанте
+	user, err := h.userService.GetUserByTenant(context.Background(), userID, tenantID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	if user == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "User not found"})
+	}
+
+	stats, err := h.userService.GetUserActivityStats(context.Background(), userID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Преобразуем в DTO
+	response := dto.UserActivityStats{
+		DailyActivity: convertToDailyActivity(stats["daily_activity"]),
+		TopActions:    convertToTopActions(stats["top_actions"]),
+		LoginHistory:  convertToLoginHistory(stats["login_history"]),
+	}
+
+	return c.JSON(fiber.Map{"data": response})
+}
+
+// Helper functions to convert interface{} to specific types
+func convertToDailyActivity(data interface{}) []dto.DailyActivity {
+	if data == nil {
+		return []dto.DailyActivity{}
+	}
+
+	items, ok := data.([]map[string]interface{})
+	if !ok {
+		return []dto.DailyActivity{}
+	}
+
+	result := make([]dto.DailyActivity, len(items))
+	for i, item := range items {
+		result[i] = dto.DailyActivity{
+			Date:  getString(item["date"]),
+			Count: getInt(item["count"]),
+		}
+	}
+	return result
+}
+
+func convertToTopActions(data interface{}) []dto.TopAction {
+	if data == nil {
+		return []dto.TopAction{}
+	}
+
+	items, ok := data.([]map[string]interface{})
+	if !ok {
+		return []dto.TopAction{}
+	}
+
+	result := make([]dto.TopAction, len(items))
+	for i, item := range items {
+		result[i] = dto.TopAction{
+			Action: getString(item["action"]),
+			Count:  getInt(item["count"]),
+		}
+	}
+	return result
+}
+
+func convertToLoginHistory(data interface{}) []dto.LoginHistory {
+	if data == nil {
+		return []dto.LoginHistory{}
+	}
+
+	items, ok := data.([]map[string]interface{})
+	if !ok {
+		return []dto.LoginHistory{}
+	}
+
+	result := make([]dto.LoginHistory, len(items))
+	for i, item := range items {
+		result[i] = dto.LoginHistory{
+			IPAddress: getString(item["ip_address"]),
+			UserAgent: getString(item["user_agent"]),
+			CreatedAt: getTime(item["created_at"]),
+			Success:   getBool(item["success"]),
+		}
+	}
+	return result
+}
+
+func getString(value interface{}) string {
+	if str, ok := value.(string); ok {
+		return str
+	}
+	return ""
+}
+
+func getInt(value interface{}) int {
+	if num, ok := value.(int); ok {
+		return num
+	}
+	if num, ok := value.(float64); ok {
+		return int(num)
+	}
+	return 0
+}
+
+func getBool(value interface{}) bool {
+	if b, ok := value.(bool); ok {
+		return b
+	}
+	return false
+}
+
+func getTime(value interface{}) time.Time {
+	if t, ok := value.(time.Time); ok {
+		return t
+	}
+	return time.Time{}
 }

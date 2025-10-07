@@ -352,8 +352,31 @@ func (s *UserService) GetUserDetailByTenant(ctx context.Context, userID, tenantI
 			"risks_count":     0,
 			"incidents_count": 0,
 			"assets_count":    0,
+			"sessions_count":  0,
+			"login_count":     0,
+			"activity_score":  0,
 		}
 	}
 
 	return user, roles, stats, nil
+}
+
+// GetUserActivity retrieves user activity with pagination
+func (s *UserService) GetUserActivity(ctx context.Context, userID string, page, pageSize int) ([]repo.UserActivity, int64, error) {
+	return s.userRepo.GetUserActivity(ctx, userID, page, pageSize)
+}
+
+// GetUserActivityStats retrieves user activity statistics
+func (s *UserService) GetUserActivityStats(ctx context.Context, userID string) (map[string]interface{}, error) {
+	return s.userRepo.GetUserActivityStats(ctx, userID)
+}
+
+// LogUserActivity logs a user activity
+func (s *UserService) LogUserActivity(ctx context.Context, userID, action, description, ipAddress, userAgent string, metadata map[string]interface{}) error {
+	return s.userRepo.LogUserActivity(ctx, userID, action, description, ipAddress, userAgent, metadata)
+}
+
+// LogLoginAttempt logs a login attempt
+func (s *UserService) LogLoginAttempt(ctx context.Context, userID, tenantID, email, ipAddress, userAgent string, success bool, failureReason string) error {
+	return s.userRepo.LogLoginAttempt(ctx, userID, tenantID, email, ipAddress, userAgent, success, failureReason)
 }

@@ -34,12 +34,14 @@ import {
   Visibility,
   History,
   Search,
+  Download,
 } from "@mui/icons-material"
 import {
   getDocuments,
   createDocument,
   updateDocument,
   deleteDocument,
+  downloadDocument,
   getDocumentTypeLabel,
   getDocumentStatusLabel,
   getDocumentStatusColor,
@@ -50,6 +52,7 @@ import {
 import { useAuth } from "../contexts/AuthContext"
 import CreateDocumentWizard from "../components/docs/CreateDocumentWizard"
 import DocumentVersionsDialog from "../components/docs/DocumentVersionsDialog"
+import { formatTextForDisplay } from "../shared/utils/textNormalization"
 
 
 function DocumentsPage() {
@@ -197,6 +200,28 @@ function DocumentsPage() {
     setOpenVersions(true)
   }
 
+  const handleDownloadDocument = async (doc: Document) => {
+    try {
+      const blob = await downloadDocument(doc.id)
+      const url = window.URL.createObjectURL(blob)
+      const link = window.document.createElement('a')
+      link.href = url
+      link.download = `${doc.title}.${getFileExtension(doc.storage_key || '')}`
+      window.document.body.appendChild(link)
+      link.click()
+      window.document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Error downloading document:', err)
+      setError('Ошибка скачивания документа')
+    }
+  }
+
+  const getFileExtension = (filename: string): string => {
+    const ext = filename.split('.').pop()
+    return ext || 'txt'
+  }
+
   const renderDocumentsList = () => (
     <Paper>
       <Box display="flex" justifyContent="space-between" alignItems="center" p={2}>
@@ -282,11 +307,11 @@ function DocumentsPage() {
                   <TableCell>
                     <Box display="flex" alignItems="center">
                       <Description sx={{ mr: 1 }} />
-                      {document.title}
+                      {formatTextForDisplay(document.title, 50)}
                     </Box>
                   </TableCell>
                   <TableCell>{getDocumentTypeLabel(document.type)}</TableCell>
-                  <TableCell>{document.category || '-'}</TableCell>
+                  <TableCell>{formatTextForDisplay(document.category) || '-'}</TableCell>
                   <TableCell>
                     <Chip
                       label={getDocumentStatusLabel(document.status)}
@@ -300,6 +325,11 @@ function DocumentsPage() {
                   </TableCell>
                   <TableCell>
                     <Box display="flex" gap={1}>
+                      <Tooltip title="Скачать">
+                        <IconButton size="small" onClick={() => handleDownloadDocument(document)}>
+                          <Download />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="Просмотр">
                         <IconButton size="small" onClick={() => openViewDialog(document)}>
                           <Visibility />
@@ -463,7 +493,7 @@ function DocumentsPage() {
           {selectedDocument && (
             <Box>
               <Typography variant="h6" gutterBottom>
-                {selectedDocument.title}
+                {formatTextForDisplay(selectedDocument.title)}
               </Typography>
               <Box mb={2}>
                 <Typography variant="body2" color="textSecondary">
@@ -473,7 +503,7 @@ function DocumentsPage() {
                   <strong>Статус:</strong> {getDocumentStatusLabel(selectedDocument.status)}
                 </Typography>
                 <Typography variant="body2" color="textSecondary">
-                  <strong>Категория:</strong> {selectedDocument.category || "Не указана"}
+                  <strong>Категория:</strong> {formatTextForDisplay(selectedDocument.category) || "Не указана"}
                 </Typography>
                 <Typography variant="body2" color="textSecondary">
                   <strong>Версия:</strong> v{selectedDocument.current_version}
@@ -488,7 +518,7 @@ function DocumentsPage() {
                     Описание:
                   </Typography>
                   <Typography variant="body2">
-                    {selectedDocument.description}
+                    {formatTextForDisplay(selectedDocument.description)}
                   </Typography>
                 </Box>
               )}
@@ -509,6 +539,15 @@ function DocumentsPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenView(false)}>Закрыть</Button>
+          {selectedDocument && (
+            <Button 
+              variant="contained" 
+              startIcon={<Download />}
+              onClick={() => handleDownloadDocument(selectedDocument)}
+            >
+              Скачать
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 

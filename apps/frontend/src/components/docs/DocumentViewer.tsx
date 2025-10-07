@@ -19,6 +19,7 @@ import {
   PictureAsPdf,
   Description as WordIcon,
 } from '@mui/icons-material'
+import { normalizeText, fixEncoding } from '../../shared/utils/textNormalization'
 
 interface DocumentViewerProps {
   open: boolean
@@ -78,7 +79,9 @@ export default function DocumentViewer({
         const arrayBuffer = await response.arrayBuffer()
         const decoder = new TextDecoder('utf-8')
         const text = decoder.decode(arrayBuffer)
-        setFileContent(text)
+        // Нормализуем текст для корректного отображения
+        const normalizedText = fixEncoding(text)
+        setFileContent(normalizedText)
       } else if (isOfficeDoc) {
         // For Office documents, get HTML version
         const htmlUrl = `${apiBaseUrl}/documents/versions/${versionId}/html?${query.toString()}`
@@ -93,7 +96,9 @@ export default function DocumentViewer({
         }
         
         const html = await response.text()
-        setFileContent(html)
+        // Нормализуем HTML для корректного отображения
+        const normalizedHtml = fixEncoding(html)
+        setFileContent(normalizedHtml)
       }
     } catch (err) {
       setError('Ошибка загрузки содержимого файла: ' + (err as Error).message)
@@ -173,9 +178,11 @@ export default function DocumentViewer({
                 lineHeight: 1.5,
                 margin: 0,
                 padding: 0,
+                direction: 'ltr',
+                unicodeBidi: 'normal',
               }}
             >
-              {fileContent}
+              {normalizeText(fileContent)}
             </Box>
           </Paper>
         </Box>

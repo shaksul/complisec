@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"risknexus/backend/internal/cache"
@@ -79,6 +80,7 @@ func (r *CachedRoleRepo) Create(ctx context.Context, tenantID, name, description
 	}
 
 	// Инвалидируем кэш
+	log.Printf("DEBUG: cached_role_repo.Create invalidate cache tenant=%s", tenantID)
 	r.invalidateRoleCache(ctx, tenantID)
 
 	return role, nil
@@ -99,9 +101,14 @@ func (r *CachedRoleRepo) Update(ctx context.Context, id, name, description strin
 	// Получаем роль для инвалидации кэша
 	role, err := r.roleRepo.GetByID(ctx, id)
 	if err == nil && role != nil {
+		log.Printf("DEBUG: cached_role_repo.Update invalidate cache tenant=%s role=%s", role.TenantID, role.ID)
 		r.invalidateRoleCache(ctx, role.TenantID)
-		r.cache.Delete(ctx, cache.GenerateKey("role", role.ID))
-		r.cache.Delete(ctx, cache.GenerateKey("role_with_permissions", role.ID))
+
+		roleKey := cache.GenerateKey("role", role.ID)
+		roleWithPermsKey := cache.GenerateKey("role_with_permissions", role.ID)
+		log.Printf("DEBUG: cached_role_repo.Update delete keys role=%s role_with_permissions=%s", roleKey, roleWithPermsKey)
+		r.cache.Delete(ctx, roleKey)
+		r.cache.Delete(ctx, roleWithPermsKey)
 	}
 
 	return nil
@@ -122,8 +129,12 @@ func (r *CachedRoleRepo) Delete(ctx context.Context, id string) error {
 
 	// Инвалидируем кэш
 	if role != nil {
+		log.Printf("DEBUG: cached_role_repo.Delete invalidate cache tenant=%s role=%s", role.TenantID, role.ID)
 		r.invalidateRoleCache(ctx, role.TenantID)
-		r.cache.Delete(ctx, cache.GenerateKey("role", id))
+
+		roleKey := cache.GenerateKey("role", id)
+		log.Printf("DEBUG: cached_role_repo.Delete delete key role=%s", roleKey)
+		r.cache.Delete(ctx, roleKey)
 	}
 
 	return nil
@@ -182,10 +193,27 @@ func (r *CachedRoleRepo) SetRolePermissions(ctx context.Context, roleID string, 
 		return err
 	}
 
+	role, getErr := r.roleRepo.GetByID(ctx, roleID)
+	if getErr != nil {
+		log.Printf("ERROR: cached_role_repo.SetRolePermissions failed to fetch role for cache invalidation role=%s err=%v", roleID, getErr)
+	}
+
 	// Инвалидируем кэш прав роли
-	r.cache.Delete(ctx, cache.GenerateKey("role_permissions", roleID))
+	rolePermsKey := cache.GenerateKey("role_permissions", roleID)
+	roleWithPermsKey := cache.GenerateKey("role_with_permissions", roleID)
+	log.Printf("DEBUG: cached_role_repo.SetRolePermissions delete keys role_permissions=%s role_with_permissions=%s", rolePermsKey, roleWithPermsKey)
+	r.cache.Delete(ctx, rolePermsKey)
 	// Инвалидируем кэш роли с правами
-	r.cache.Delete(ctx, cache.GenerateKey("role_with_permissions", roleID))
+	r.cache.Delete(ctx, roleWithPermsKey)
+
+	if role != nil {
+		log.Printf("DEBUG: cached_role_repo.SetRolePermissions invalidate tenant caches tenant=%s role=%s", role.TenantID, role.ID)
+		r.invalidateRoleCache(ctx, role.TenantID)
+
+		roleKey := cache.GenerateKey("role", role.ID)
+		log.Printf("DEBUG: cached_role_repo.SetRolePermissions delete key role=%s", roleKey)
+		r.cache.Delete(ctx, roleKey)
+	}
 
 	return nil
 }
@@ -240,6 +268,9 @@ func (r *CachedRoleRepo) GetUsersByRole(ctx context.Context, roleID string) ([]U
 
 // invalidateRoleCache инвалидирует кэш ролей для тенанта
 func (r *CachedRoleRepo) invalidateRoleCache(ctx context.Context, tenantID string) {
-	r.cache.Delete(ctx, cache.GenerateKey("roles", tenantID))
-	r.cache.Delete(ctx, cache.GenerateKey("permissions", tenantID))
+	rolesKey := cache.GenerateKey("roles", tenantID)
+	permissionsKey := cache.GenerateKey("permissions", tenantID)
+	log.Printf("DEBUG: cached_role_repo.invalidateRoleCache delete keys roles=%s permissions=%s", rolesKey, permissionsKey)
+	r.cache.Delete(ctx, rolesKey)
+	r.cache.Delete(ctx, permissionsKey)
 }

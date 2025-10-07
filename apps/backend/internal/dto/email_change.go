@@ -88,3 +88,4 @@ type EmailChangeAuditLogsResponse struct {
 	Logs  []EmailChangeAuditLogResponse `json:"logs"`
 	Total int                           `json:"total"`
 }
+

@@ -137,16 +137,29 @@ export interface RiskHistoryEntry {
 
 export interface RiskAttachment {
   id: string
-  risk_id: string
-  file_name: string
+  tenant_id: string
+  title: string
+  original_name: string
+  description?: string | null
+  type: string
+  category?: string | null
   file_path: string
   file_size: number
   mime_type: string
   file_hash?: string | null
-  description?: string | null
-  uploaded_by: string
-  uploaded_at: string
-  uploaded_by_name?: string | null
+  folder_id?: string | null
+  owner_id?: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+  is_active: boolean
+  version: string
+  metadata?: any
+  tags: string[]
+  links: Array<{
+    module: string
+    entity_id: string
+  }>
 }
 
 export interface CreateRiskAttachmentRequest {
@@ -319,15 +332,26 @@ export const risksApi = {
   },
 
   async getAttachments(riskId: string): Promise<RiskAttachment[]> {
-    const response = await api.get(`/risks/${riskId}/attachments`)
+    const response = await api.get(`/risks/${riskId}/documents`)
     return response.data.data ?? []
   },
 
-  async createAttachment(riskId: string, payload: CreateRiskAttachmentRequest): Promise<void> {
-    await api.post(`/risks/${riskId}/attachments`, payload)
+  async createAttachment(riskId: string, file: File, description?: string): Promise<void> {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('name', file.name)
+    if (description) {
+      formData.append('description', description)
+    }
+    
+    await api.post(`/risks/${riskId}/documents/upload`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    })
   },
 
   async deleteAttachment(riskId: string, attachmentId: string): Promise<void> {
-    await api.delete(`/risks/${riskId}/attachments/${attachmentId}`)
+    await api.delete(`/risks/${riskId}/documents/${attachmentId}`)
   },
 }

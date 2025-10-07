@@ -12,6 +12,14 @@ out/
 .nuxt/
 .output/
 
+#docs
+docs/
+*.pdf
+*.docx
+*.doc
+*.txt
+*.md
+
 # Environment variables and secrets
 .env
 .env.local

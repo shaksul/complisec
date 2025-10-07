@@ -2,45 +2,38 @@ package domain
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
-	"math"
-	"strconv"
-	"strings"
+	"log"
+	"mime/multipart"
 	"time"
-
-	"github.com/google/uuid"
 
 	"risknexus/backend/internal/dto"
 	"risknexus/backend/internal/repo"
+
+	"github.com/google/uuid"
 )
 
-const (
-	assignmentStatusAssigned   = "assigned"
-	assignmentStatusInProgress = "in_progress"
-	assignmentStatusCompleted  = "completed"
-	assignmentStatusOverdue    = "overdue"
-
-	defaultPriorityValue = "normal"
-	reminderWindowDays   = 3
-)
-
+// TrainingService - реализация интерфейса TrainingServiceInterface
 type TrainingService struct {
-	trainingRepo repo.TrainingRepoInterface
+	trainingRepo           repo.TrainingRepoInterface
+	documentStorageService DocumentStorageServiceInterface
 }
 
-func NewTrainingService(trainingRepo repo.TrainingRepoInterface) *TrainingService {
+// NewTrainingService создает новый экземпляр TrainingService
+func NewTrainingService(trainingRepo repo.TrainingRepoInterface, documentStorageService DocumentStorageServiceInterface) *TrainingService {
 	return &TrainingService{
-		trainingRepo: trainingRepo,
+		trainingRepo:           trainingRepo,
+		documentStorageService: documentStorageService,
 	}
 }
 
-// Materials ----------------------------------------------------------------
-
+// Materials management
 func (s *TrainingService) CreateMaterial(ctx context.Context, tenantID string, req dto.CreateMaterialRequest, createdBy string) (*repo.Material, error) {
-	material := &repo.Material{
-		ID:              generateID(),
+	log.Printf("DEBUG: training_service.CreateMaterial tenant=%s title=%s", tenantID, req.Title)
+
+	material := repo.Material{
+		ID:              uuid.New().String(),
 		TenantID:        tenantID,
 		Title:           req.Title,
 		Description:     req.Description,
@@ -52,52 +45,53 @@ func (s *TrainingService) CreateMaterial(ctx context.Context, tenantID string, r
 		IsRequired:      req.IsRequired,
 		PassingScore:    req.PassingScore,
 		AttemptsLimit:   req.AttemptsLimit,
-		Metadata:        copyMetadata(req.Metadata),
-		CreatedBy:       stringPtr(createdBy),
+		Metadata:        req.Metadata,
+		CreatedBy:       trainingStringPtr(createdBy),
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
 	}
 
-	if err := s.trainingRepo.CreateMaterial(ctx, *material); err != nil {
-		return nil, fmt.Errorf("failed to create material: %w", err)
+	err := s.trainingRepo.CreateMaterial(ctx, material)
+	if err != nil {
+		log.Printf("ERROR: training_service.CreateMaterial CreateMaterial: %v", err)
+		return nil, err
 	}
 
-	return material, nil
+	log.Printf("DEBUG: training_service.CreateMaterial success id=%s", material.ID)
+	return &material, nil
 }
 
 func (s *TrainingService) GetMaterial(ctx context.Context, id string) (*repo.Material, error) {
-	material, err := s.trainingRepo.GetMaterialByID(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get material: %w", err)
-	}
-
-	return material, nil
+	return s.trainingRepo.GetMaterialByID(ctx, id)
 }
 
 func (s *TrainingService) ListMaterials(ctx context.Context, tenantID string, filters map[string]interface{}) ([]repo.Material, error) {
-	materials, err := s.trainingRepo.ListMaterials(ctx, tenantID, filters)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list materials: %w", err)
-	}
-
-	return materials, nil
+	return s.trainingRepo.ListMaterials(ctx, tenantID, filters)
 }
 
 func (s *TrainingService) UpdateMaterial(ctx context.Context, id string, req dto.UpdateMaterialRequest, updatedBy string) error {
+	log.Printf("DEBUG: training_service.UpdateMaterial id=%s", id)
+
 	material, err := s.trainingRepo.GetMaterialByID(ctx, id)
 	if err != nil {
-		return fmt.Errorf("failed to get material: %w", err)
+		return err
+	}
+	if material == nil {
+		return errors.New("material not found")
 	}
 
+	// Обновляем поля
 	if req.Title != nil {
 		material.Title = *req.Title
 	}
 	if req.Description != nil {
 		material.Description = req.Description
 	}
-	if req.URI != nil {
-		material.URI = *req.URI
-	}
 	if req.Type != nil {
 		material.Type = *req.Type
+	}
+	if req.URI != nil {
+		material.URI = *req.URI
 	}
 	if req.MaterialType != nil {
 		material.MaterialType = *req.MaterialType
@@ -118,67 +112,78 @@ func (s *TrainingService) UpdateMaterial(ctx context.Context, id string, req dto
 		material.AttemptsLimit = req.AttemptsLimit
 	}
 	if req.Metadata != nil {
-		material.Metadata = copyMetadata(req.Metadata)
+		material.Metadata = req.Metadata
+	}
+	material.UpdatedAt = time.Now()
+
+	err = s.trainingRepo.UpdateMaterial(ctx, *material)
+	if err != nil {
+		log.Printf("ERROR: training_service.UpdateMaterial UpdateMaterial: %v", err)
+		return err
 	}
 
-	if err := s.trainingRepo.UpdateMaterial(ctx, *material); err != nil {
-		return fmt.Errorf("failed to update material: %w", err)
-	}
-
+	log.Printf("DEBUG: training_service.UpdateMaterial success id=%s", id)
 	return nil
 }
 
 func (s *TrainingService) DeleteMaterial(ctx context.Context, id string, deletedBy string) error {
-	if err := s.trainingRepo.DeleteMaterial(ctx, id); err != nil {
-		return fmt.Errorf("failed to delete material: %w", err)
+	log.Printf("DEBUG: training_service.DeleteMaterial id=%s", id)
+
+	err := s.trainingRepo.DeleteMaterial(ctx, id)
+	if err != nil {
+		log.Printf("ERROR: training_service.DeleteMaterial DeleteMaterial: %v", err)
+		return err
 	}
 
+	log.Printf("DEBUG: training_service.DeleteMaterial success id=%s", id)
 	return nil
 }
 
-// Courses -------------------------------------------------------------------
-
+// Courses management
 func (s *TrainingService) CreateCourse(ctx context.Context, tenantID string, req dto.CreateCourseRequest, createdBy string) (*repo.TrainingCourse, error) {
-	course := &repo.TrainingCourse{
-		ID:          generateID(),
+	log.Printf("DEBUG: training_service.CreateCourse tenant=%s title=%s", tenantID, req.Title)
+
+	course := repo.TrainingCourse{
+		ID:          uuid.New().String(),
 		TenantID:    tenantID,
 		Title:       req.Title,
 		Description: req.Description,
 		IsActive:    req.IsActive,
-		CreatedBy:   stringPtr(createdBy),
+		CreatedBy:   trainingStringPtr(createdBy),
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 
-	if err := s.trainingRepo.CreateCourse(ctx, *course); err != nil {
-		return nil, fmt.Errorf("failed to create course: %w", err)
+	err := s.trainingRepo.CreateCourse(ctx, course)
+	if err != nil {
+		log.Printf("ERROR: training_service.CreateCourse CreateCourse: %v", err)
+		return nil, err
 	}
 
-	return course, nil
+	log.Printf("DEBUG: training_service.CreateCourse success id=%s", course.ID)
+	return &course, nil
 }
 
 func (s *TrainingService) GetCourse(ctx context.Context, id string) (*repo.TrainingCourse, error) {
-	course, err := s.trainingRepo.GetCourseByID(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get course: %w", err)
-	}
-
-	return course, nil
+	return s.trainingRepo.GetCourseByID(ctx, id)
 }
 
 func (s *TrainingService) ListCourses(ctx context.Context, tenantID string, filters map[string]interface{}) ([]repo.TrainingCourse, error) {
-	courses, err := s.trainingRepo.ListCourses(ctx, tenantID, filters)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list courses: %w", err)
-	}
-
-	return courses, nil
+	return s.trainingRepo.ListCourses(ctx, tenantID, filters)
 }
 
 func (s *TrainingService) UpdateCourse(ctx context.Context, id string, req dto.UpdateCourseRequest, updatedBy string) error {
+	log.Printf("DEBUG: training_service.UpdateCourse id=%s", id)
+
 	course, err := s.trainingRepo.GetCourseByID(ctx, id)
 	if err != nil {
-		return fmt.Errorf("failed to get course: %w", err)
+		return err
+	}
+	if course == nil {
+		return errors.New("course not found")
 	}
 
+	// Обновляем поля
 	if req.Title != nil {
 		course.Title = *req.Title
 	}
@@ -188,879 +193,308 @@ func (s *TrainingService) UpdateCourse(ctx context.Context, id string, req dto.U
 	if req.IsActive != nil {
 		course.IsActive = *req.IsActive
 	}
+	course.UpdatedAt = time.Now()
 
-	if err := s.trainingRepo.UpdateCourse(ctx, *course); err != nil {
-		return fmt.Errorf("failed to update course: %w", err)
+	err = s.trainingRepo.UpdateCourse(ctx, *course)
+	if err != nil {
+		log.Printf("ERROR: training_service.UpdateCourse UpdateCourse: %v", err)
+		return err
 	}
 
+	log.Printf("DEBUG: training_service.UpdateCourse success id=%s", id)
 	return nil
 }
 
 func (s *TrainingService) DeleteCourse(ctx context.Context, id string, deletedBy string) error {
-	if err := s.trainingRepo.DeleteCourse(ctx, id); err != nil {
-		return fmt.Errorf("failed to delete course: %w", err)
+	log.Printf("DEBUG: training_service.DeleteCourse id=%s", id)
+
+	err := s.trainingRepo.DeleteCourse(ctx, id)
+	if err != nil {
+		log.Printf("ERROR: training_service.DeleteCourse DeleteCourse: %v", err)
+		return err
 	}
 
+	log.Printf("DEBUG: training_service.DeleteCourse success id=%s", id)
 	return nil
 }
 
 func (s *TrainingService) AddMaterialToCourse(ctx context.Context, courseID, materialID string, req dto.CourseMaterialRequest, addedBy string) error {
+	log.Printf("DEBUG: training_service.AddMaterialToCourse courseID=%s materialID=%s", courseID, materialID)
+
 	courseMaterial := repo.CourseMaterial{
-		ID:         generateID(),
+		ID:         uuid.New().String(),
 		CourseID:   courseID,
 		MaterialID: materialID,
 		OrderIndex: req.OrderIndex,
 		IsRequired: req.IsRequired,
+		CreatedAt:  time.Now(),
 	}
 
-	if err := s.trainingRepo.AddMaterialToCourse(ctx, courseMaterial); err != nil {
-		return fmt.Errorf("failed to add material to course: %w", err)
+	err := s.trainingRepo.AddMaterialToCourse(ctx, courseMaterial)
+	if err != nil {
+		log.Printf("ERROR: training_service.AddMaterialToCourse AddMaterialToCourse: %v", err)
+		return err
 	}
 
+	log.Printf("DEBUG: training_service.AddMaterialToCourse success")
 	return nil
 }
 
 func (s *TrainingService) RemoveMaterialFromCourse(ctx context.Context, courseID, materialID string, removedBy string) error {
-	if err := s.trainingRepo.RemoveMaterialFromCourse(ctx, courseID, materialID); err != nil {
-		return fmt.Errorf("failed to remove material from course: %w", err)
+	log.Printf("DEBUG: training_service.RemoveMaterialFromCourse courseID=%s materialID=%s", courseID, materialID)
+
+	err := s.trainingRepo.RemoveMaterialFromCourse(ctx, courseID, materialID)
+	if err != nil {
+		log.Printf("ERROR: training_service.RemoveMaterialFromCourse RemoveMaterialFromCourse: %v", err)
+		return err
 	}
 
+	log.Printf("DEBUG: training_service.RemoveMaterialFromCourse success")
 	return nil
 }
 
 func (s *TrainingService) GetCourseMaterials(ctx context.Context, courseID string) ([]repo.CourseMaterial, error) {
-	materials, err := s.trainingRepo.GetCourseMaterials(ctx, courseID)
+	return s.trainingRepo.GetCourseMaterials(ctx, courseID)
+}
+
+// Training Document methods - интеграция с централизованным хранилищем документов
+func (s *TrainingService) UploadTrainingDocument(ctx context.Context, trainingID, tenantID, documentType string, file multipart.File, header *multipart.FileHeader, req dto.UploadDocumentDTO, uploadedBy string) (*dto.DocumentDTO, error) {
+	log.Printf("DEBUG: training_service.UploadTrainingDocument trainingID=%s type=%s", trainingID, documentType)
+
+	// Обновляем запрос с информацией о материале обучения
+	req.Name = fmt.Sprintf("%s - %s", documentType, req.Name)
+	req.Tags = append(req.Tags, "#обучение", fmt.Sprintf("#%s", documentType))
+	if req.LinkedTo == nil {
+		req.LinkedTo = &dto.DocumentLinkDTO{
+			Module:   "training",
+			EntityID: trainingID,
+		}
+	}
+	if req.Description == nil {
+		req.Description = trainingStringPtr(fmt.Sprintf("Training document: %s", documentType))
+	}
+
+	// Загружаем документ в централизованное хранилище
+	document, err := s.documentStorageService.UploadDocument(ctx, tenantID, file, header, req, uploadedBy)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get course materials: %w", err)
+		log.Printf("ERROR: training_service.UploadTrainingDocument UploadDocument: %v", err)
+		return nil, err
 	}
 
-	return materials, nil
+	log.Printf("DEBUG: training_service.UploadTrainingDocument success documentID=%s", document.ID)
+	return document, nil
 }
 
-// Assignments ---------------------------------------------------------------
+func (s *TrainingService) GetTrainingDocuments(ctx context.Context, trainingID, tenantID string) ([]dto.DocumentDTO, error) {
+	log.Printf("DEBUG: training_service.GetTrainingDocuments trainingID=%s", trainingID)
 
-func (s *TrainingService) AssignMaterial(ctx context.Context, tenantID string, req dto.AssignMaterialRequest, assignedBy string) (*repo.TrainingAssignment, error) {
-	if req.MaterialID == "" {
-		return nil, errors.New("material_id is required")
-	}
-	if len(req.UserIDs) == 0 {
-		return nil, errors.New("at least one user_id is required")
-	}
-
-	if _, err := s.trainingRepo.GetMaterialByID(ctx, req.MaterialID); err != nil {
-		return nil, fmt.Errorf("failed to fetch material: %w", err)
-	}
-
-	var created *repo.TrainingAssignment
-	for _, userID := range req.UserIDs {
-		assignment := repo.TrainingAssignment{
-			ID:                 generateID(),
-			TenantID:           tenantID,
-			UserID:             userID,
-			Status:             assignmentStatusAssigned,
-			DueAt:              req.DueAt,
-			AssignedBy:         stringPtr(assignedBy),
-			Priority:           ensurePriority(req.Priority),
-			ProgressPercentage: 0,
-			TimeSpentMinutes:   0,
-			Metadata:           copyMetadata(req.Metadata),
-		}
-
-		materialID := req.MaterialID
-		assignment.MaterialID = &materialID
-
-		if req.DueAt != nil && req.DueAt.Before(time.Now()) {
-			assignment.Status = assignmentStatusOverdue
-		}
-
-		if err := s.trainingRepo.CreateAssignment(ctx, assignment); err != nil {
-			return nil, fmt.Errorf("failed to create assignment: %w", err)
-		}
-
-		if created == nil {
-			copy := assignment
-			created = &copy
-		}
-	}
-
-	return created, nil
-}
-
-func (s *TrainingService) AssignCourse(ctx context.Context, tenantID string, req dto.AssignCourseRequest, assignedBy string) (*repo.TrainingAssignment, error) {
-	if req.CourseID == "" {
-		return nil, errors.New("course_id is required")
-	}
-	if len(req.UserIDs) == 0 {
-		return nil, errors.New("at least one user_id is required")
-	}
-
-	if _, err := s.trainingRepo.GetCourseByID(ctx, req.CourseID); err != nil {
-		return nil, fmt.Errorf("failed to fetch course: %w", err)
-	}
-
-	var created *repo.TrainingAssignment
-	for _, userID := range req.UserIDs {
-		assignment := repo.TrainingAssignment{
-			ID:                 generateID(),
-			TenantID:           tenantID,
-			UserID:             userID,
-			Status:             assignmentStatusAssigned,
-			DueAt:              req.DueAt,
-			AssignedBy:         stringPtr(assignedBy),
-			Priority:           ensurePriority(req.Priority),
-			ProgressPercentage: 0,
-			TimeSpentMinutes:   0,
-			Metadata:           copyMetadata(req.Metadata),
-		}
-
-		courseID := req.CourseID
-		assignment.CourseID = &courseID
-
-		if req.DueAt != nil && req.DueAt.Before(time.Now()) {
-			assignment.Status = assignmentStatusOverdue
-		}
-
-		if err := s.trainingRepo.CreateAssignment(ctx, assignment); err != nil {
-			return nil, fmt.Errorf("failed to create course assignment: %w", err)
-		}
-
-		if created == nil {
-			copy := assignment
-			created = &copy
-		}
-	}
-
-	return created, nil
-}
-
-func (s *TrainingService) AssignToRole(ctx context.Context, tenantID string, req dto.AssignToRoleRequest, assignedBy string) error {
-	if req.MaterialID == nil && req.CourseID == nil {
-		return errors.New("either material_id or course_id must be provided")
-	}
-
-	assignment := repo.RoleTrainingAssignment{
-		ID:         generateID(),
-		TenantID:   tenantID,
-		RoleID:     req.RoleID,
-		IsRequired: req.IsRequired,
-		DueDays:    req.DueDays,
-		AssignedBy: stringPtr(assignedBy),
-	}
-
-	if req.MaterialID != nil {
-		assignment.MaterialID = req.MaterialID
-	}
-	if req.CourseID != nil {
-		assignment.CourseID = req.CourseID
-	}
-
-	if err := s.trainingRepo.CreateRoleAssignment(ctx, assignment); err != nil {
-		return fmt.Errorf("failed to create role assignment: %w", err)
-	}
-
-	return nil
-}
-
-func (s *TrainingService) GetUserAssignments(ctx context.Context, userID string, filters map[string]interface{}) ([]repo.TrainingAssignment, error) {
-	assignments, err := s.trainingRepo.GetUserAssignments(ctx, userID, filters)
+	// Получаем документы из централизованного хранилища
+	documents, err := s.documentStorageService.GetModuleDocuments(ctx, "training", trainingID, tenantID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user assignments: %w", err)
+		log.Printf("ERROR: training_service.GetTrainingDocuments GetModuleDocuments: %v", err)
+		return nil, err
 	}
 
-	return assignments, nil
+	log.Printf("DEBUG: training_service.GetTrainingDocuments found %d documents", len(documents))
+	return documents, nil
 }
 
-func (s *TrainingService) GetAssignment(ctx context.Context, id string) (*repo.TrainingAssignment, error) {
-	assignment, err := s.trainingRepo.GetAssignmentByID(ctx, id)
+func (s *TrainingService) LinkExistingDocumentToTraining(ctx context.Context, trainingID, documentID, tenantID, linkedBy string) error {
+	log.Printf("DEBUG: training_service.LinkExistingDocumentToTraining trainingID=%s documentID=%s", trainingID, documentID)
+
+	// Проверяем, что документ существует
+	_, err := s.documentStorageService.GetDocument(ctx, documentID, tenantID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get assignment: %w", err)
-	}
-
-	return assignment, nil
-}
-
-func (s *TrainingService) UpdateAssignment(ctx context.Context, id string, req dto.UpdateAssignmentRequest, updatedBy string) error {
-	assignment, err := s.trainingRepo.GetAssignmentByID(ctx, id)
-	if err != nil {
-		return fmt.Errorf("failed to get assignment: %w", err)
-	}
-
-	if req.Status != nil {
-		assignment.Status = *req.Status
-		if *req.Status == assignmentStatusCompleted {
-			if assignment.CompletedAt == nil {
-				now := time.Now()
-				assignment.CompletedAt = &now
-			}
-			assignment.ProgressPercentage = 100
-		} else if *req.Status == assignmentStatusAssigned {
-			assignment.CompletedAt = nil
-			assignment.ProgressPercentage = 0
-		}
-	}
-	if req.DueAt != nil {
-		assignment.DueAt = req.DueAt
-	}
-	if req.Priority != nil {
-		assignment.Priority = ensurePriority(*req.Priority)
-	}
-	if req.Metadata != nil {
-		assignment.Metadata = copyMetadata(req.Metadata)
-	}
-
-	assignment.Priority = ensurePriority(assignment.Priority)
-	if assignment.Status != assignmentStatusCompleted && assignment.DueAt != nil && assignment.DueAt.Before(time.Now()) {
-		assignment.Status = assignmentStatusOverdue
-	}
-
-	if err := s.trainingRepo.UpdateAssignment(ctx, *assignment); err != nil {
-		return fmt.Errorf("failed to update assignment: %w", err)
-	}
-
-	return nil
-}
-
-func (s *TrainingService) DeleteAssignment(ctx context.Context, id string, deletedBy string) error {
-	if err := s.trainingRepo.DeleteAssignment(ctx, id); err != nil {
-		return fmt.Errorf("failed to delete assignment: %w", err)
-	}
-
-	return nil
-}
-
-func (s *TrainingService) UpdateProgress(ctx context.Context, assignmentID, materialID string, req dto.UpdateProgressRequest, updatedBy string) error {
-	assignment, err := s.trainingRepo.GetAssignmentByID(ctx, assignmentID)
-	if err != nil {
-		return fmt.Errorf("failed to get assignment: %w", err)
-	}
-
-	existing, err := s.trainingRepo.GetProgressByAssignmentAndMaterial(ctx, assignmentID, materialID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("failed to get progress: %w", err)
-	}
-
-	completedAt := req.CompletedAt
-	if completedAt == nil && req.ProgressPercentage >= 100 {
-		now := time.Now()
-		completedAt = &now
-	}
-
-	if err == nil && existing != nil {
-		existing.ProgressPercentage = req.ProgressPercentage
-		existing.TimeSpentMinutes = req.TimeSpentMinutes
-		existing.LastPosition = req.LastPosition
-		existing.CompletedAt = completedAt
-		if err := s.trainingRepo.UpdateProgress(ctx, *existing); err != nil {
-			return fmt.Errorf("failed to update progress: %w", err)
-		}
-	} else {
-		progress := repo.TrainingProgress{
-			ID:                 generateID(),
-			AssignmentID:       assignmentID,
-			MaterialID:         materialID,
-			ProgressPercentage: req.ProgressPercentage,
-			TimeSpentMinutes:   req.TimeSpentMinutes,
-			LastPosition:       req.LastPosition,
-			CompletedAt:        completedAt,
-		}
-
-		if err := s.trainingRepo.CreateProgress(ctx, progress); err != nil {
-			return fmt.Errorf("failed to create progress: %w", err)
-		}
-	}
-
-	return s.updateAssignmentState(ctx, assignment, req.ProgressPercentage, req.TimeSpentMinutes, completedAt)
-}
-
-func (s *TrainingService) GetProgress(ctx context.Context, assignmentID string) ([]repo.TrainingProgress, error) {
-	progress, err := s.trainingRepo.GetProgressByAssignment(ctx, assignmentID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get progress: %w", err)
-	}
-
-	return progress, nil
-}
-
-func (s *TrainingService) MarkAsCompleted(ctx context.Context, assignmentID, materialID string, completedBy string) error {
-	assignment, err := s.trainingRepo.GetAssignmentByID(ctx, assignmentID)
-	if err != nil {
-		return fmt.Errorf("failed to get assignment: %w", err)
-	}
-
-	now := time.Now()
-
-	if err := s.updateAssignmentState(ctx, assignment, 100, assignment.TimeSpentMinutes, &now); err != nil {
 		return err
 	}
 
+	// Связываем документ с материалом обучения
+	err = s.documentStorageService.LinkDocumentToModule(ctx, documentID, "training", trainingID, "attachment", fmt.Sprintf("Linked to training material"), linkedBy)
+	if err != nil {
+		log.Printf("ERROR: training_service.LinkExistingDocumentToTraining LinkDocumentToModule: %v", err)
+		return err
+	}
+
+	log.Printf("DEBUG: training_service.LinkExistingDocumentToTraining success")
 	return nil
 }
 
-// Quiz questions -----------------------------------------------------------
+func (s *TrainingService) UnlinkDocumentFromTraining(ctx context.Context, trainingID, documentID, tenantID, unlinkedBy string) error {
+	log.Printf("DEBUG: training_service.UnlinkDocumentFromTraining trainingID=%s documentID=%s", trainingID, documentID)
 
+	// Отвязываем документ от материала обучения
+	err := s.documentStorageService.UnlinkDocumentFromModule(ctx, documentID, "training", trainingID, unlinkedBy)
+	if err != nil {
+		log.Printf("ERROR: training_service.UnlinkDocumentFromTraining UnlinkDocumentFromModule: %v", err)
+		return err
+	}
+
+	log.Printf("DEBUG: training_service.UnlinkDocumentFromTraining success")
+	return nil
+}
+
+func (s *TrainingService) DeleteTrainingDocument(ctx context.Context, trainingID, documentID, tenantID, deletedBy string) error {
+	log.Printf("DEBUG: training_service.DeleteTrainingDocument trainingID=%s documentID=%s", trainingID, documentID)
+
+	// Получаем информацию о документе
+	_, err := s.documentStorageService.GetDocument(ctx, documentID, tenantID)
+	if err != nil {
+		return err
+	}
+
+	// Удаляем документ из централизованного хранилища
+	err = s.documentStorageService.DeleteDocument(ctx, documentID, tenantID, deletedBy)
+	if err != nil {
+		log.Printf("ERROR: training_service.DeleteTrainingDocument DeleteDocument: %v", err)
+		return err
+	}
+
+	log.Printf("DEBUG: training_service.DeleteTrainingDocument success")
+	return nil
+}
+
+// Остальные методы интерфейса (заглушки)
 func (s *TrainingService) CreateQuizQuestion(ctx context.Context, materialID string, req dto.CreateQuizQuestionRequest, createdBy string) (*repo.QuizQuestion, error) {
-	if materialID == "" {
-		return nil, errors.New("material_id is required")
-	}
-
-	if _, err := s.trainingRepo.GetMaterialByID(ctx, materialID); err != nil {
-		return nil, fmt.Errorf("failed to fetch material: %w", err)
-	}
-
-	question := &repo.QuizQuestion{
-		ID:           generateID(),
-		MaterialID:   materialID,
-		Text:         req.Text,
-		OptionsJSON:  copyMetadata(req.OptionsJSON),
-		CorrectIndex: req.CorrectIndex,
-		QuestionType: req.QuestionType,
-		Points:       req.Points,
-		Explanation:  req.Explanation,
-		OrderIndex:   req.OrderIndex,
-	}
-
-	if err := s.trainingRepo.CreateQuizQuestion(ctx, *question); err != nil {
-		return nil, fmt.Errorf("failed to create quiz question: %w", err)
-	}
-
-	return question, nil
+	return nil, fmt.Errorf("not implemented yet")
 }
 
 func (s *TrainingService) GetQuizQuestion(ctx context.Context, id string) (*repo.QuizQuestion, error) {
-	question, err := s.trainingRepo.GetQuizQuestionByID(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get quiz question: %w", err)
-	}
-
-	return question, nil
+	return nil, fmt.Errorf("not implemented yet")
 }
 
 func (s *TrainingService) ListQuizQuestions(ctx context.Context, materialID string) ([]repo.QuizQuestion, error) {
-	questions, err := s.trainingRepo.ListQuizQuestions(ctx, materialID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list quiz questions: %w", err)
-	}
-
-	return questions, nil
+	return nil, fmt.Errorf("not implemented yet")
 }
 
 func (s *TrainingService) UpdateQuizQuestion(ctx context.Context, id string, req dto.UpdateQuizQuestionRequest, updatedBy string) error {
-	question, err := s.trainingRepo.GetQuizQuestionByID(ctx, id)
-	if err != nil {
-		return fmt.Errorf("failed to get quiz question: %w", err)
-	}
-
-	if req.Text != nil {
-		question.Text = *req.Text
-	}
-	if req.OptionsJSON != nil {
-		question.OptionsJSON = copyMetadata(req.OptionsJSON)
-	}
-	if req.CorrectIndex != nil {
-		question.CorrectIndex = *req.CorrectIndex
-	}
-	if req.QuestionType != nil {
-		question.QuestionType = *req.QuestionType
-	}
-	if req.Points != nil {
-		question.Points = *req.Points
-	}
-	if req.Explanation != nil {
-		question.Explanation = req.Explanation
-	}
-	if req.OrderIndex != nil {
-		question.OrderIndex = *req.OrderIndex
-	}
-
-	if err := s.trainingRepo.UpdateQuizQuestion(ctx, *question); err != nil {
-		return fmt.Errorf("failed to update quiz question: %w", err)
-	}
-
-	return nil
+	return fmt.Errorf("not implemented yet")
 }
 
 func (s *TrainingService) DeleteQuizQuestion(ctx context.Context, id string, deletedBy string) error {
-	if err := s.trainingRepo.DeleteQuizQuestion(ctx, id); err != nil {
-		return fmt.Errorf("failed to delete quiz question: %w", err)
-	}
+	return fmt.Errorf("not implemented yet")
+}
 
-	return nil
+func (s *TrainingService) AssignMaterial(ctx context.Context, tenantID string, req dto.AssignMaterialRequest, assignedBy string) (*repo.TrainingAssignment, error) {
+	return nil, fmt.Errorf("not implemented yet")
+}
+
+func (s *TrainingService) AssignCourse(ctx context.Context, tenantID string, req dto.AssignCourseRequest, assignedBy string) (*repo.TrainingAssignment, error) {
+	return nil, fmt.Errorf("not implemented yet")
+}
+
+func (s *TrainingService) AssignToRole(ctx context.Context, tenantID string, req dto.AssignToRoleRequest, assignedBy string) error {
+	return fmt.Errorf("not implemented yet")
+}
+
+func (s *TrainingService) GetUserAssignments(ctx context.Context, userID string, filters map[string]interface{}) ([]repo.TrainingAssignment, error) {
+	return nil, fmt.Errorf("not implemented yet")
+}
+
+func (s *TrainingService) GetAssignment(ctx context.Context, id string) (*repo.TrainingAssignment, error) {
+	return nil, fmt.Errorf("not implemented yet")
+}
+
+func (s *TrainingService) UpdateAssignment(ctx context.Context, id string, req dto.UpdateAssignmentRequest, updatedBy string) error {
+	return fmt.Errorf("not implemented yet")
+}
+
+func (s *TrainingService) DeleteAssignment(ctx context.Context, id string, deletedBy string) error {
+	return fmt.Errorf("not implemented yet")
+}
+
+func (s *TrainingService) UpdateProgress(ctx context.Context, assignmentID, materialID string, req dto.UpdateProgressRequest, updatedBy string) error {
+	return fmt.Errorf("not implemented yet")
+}
+
+func (s *TrainingService) GetProgress(ctx context.Context, assignmentID string) ([]repo.TrainingProgress, error) {
+	return nil, fmt.Errorf("not implemented yet")
+}
+
+func (s *TrainingService) MarkAsCompleted(ctx context.Context, assignmentID, materialID string, completedBy string) error {
+	return fmt.Errorf("not implemented yet")
 }
 
 func (s *TrainingService) SubmitQuizAttempt(ctx context.Context, assignmentID, materialID string, req dto.SubmitQuizAttemptRequest, submittedBy string) (*repo.QuizAttempt, error) {
-	questions, err := s.trainingRepo.ListQuizQuestions(ctx, materialID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list quiz questions: %w", err)
-	}
-
-	score, maxScore := calculateQuizScore(questions, req.AnswersJSON)
-	percentage := percentFromScore(score, maxScore)
-
-	passed := false
-	material, err := s.trainingRepo.GetMaterialByID(ctx, materialID)
-	if err == nil && maxScore > 0 {
-		passed = percentage >= material.PassingScore
-	} else if maxScore > 0 {
-		passed = score == maxScore
-	}
-
-	attempt := &repo.QuizAttempt{
-		ID:          generateID(),
-		UserID:      submittedBy,
-		MaterialID:  materialID,
-		Score:       score,
-		Passed:      passed,
-		AnswersJSON: req.AnswersJSON,
-		AttemptedAt: time.Now(),
-	}
-
-	if maxScore > 0 {
-		attempt.MaxScore = intPtr(maxScore)
-	}
-	if assignmentID != "" {
-		attempt.AssignmentID = &assignmentID
-	}
-	if req.TimeSpentMinutes != nil {
-		attempt.TimeSpentMinutes = req.TimeSpentMinutes
-	}
-
-	if err := s.trainingRepo.CreateQuizAttempt(ctx, *attempt); err != nil {
-		return nil, fmt.Errorf("failed to create quiz attempt: %w", err)
-	}
-
-	if assignmentID != "" {
-		if assignment, err := s.trainingRepo.GetAssignmentByID(ctx, assignmentID); err == nil {
-			timeSpent := assignment.TimeSpentMinutes
-			if req.TimeSpentMinutes != nil {
-				timeSpent += *req.TimeSpentMinutes
-			}
-			var completedAt *time.Time
-			if passed {
-				now := time.Now()
-				completedAt = &now
-			}
-			_ = s.updateAssignmentState(ctx, assignment, percentage, timeSpent, completedAt)
-		}
-	}
-
-	return attempt, nil
+	return nil, fmt.Errorf("not implemented yet")
 }
 
 func (s *TrainingService) GetQuizAttempts(ctx context.Context, assignmentID, materialID string) ([]repo.QuizAttempt, error) {
-	attempts, err := s.trainingRepo.GetQuizAttempts(ctx, assignmentID, materialID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get quiz attempts: %w", err)
-	}
-
-	return attempts, nil
+	return nil, fmt.Errorf("not implemented yet")
 }
 
 func (s *TrainingService) GetQuizAttempt(ctx context.Context, id string) (*repo.QuizAttempt, error) {
-	attempt, err := s.trainingRepo.GetQuizAttemptByID(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get quiz attempt: %w", err)
-	}
-
-	return attempt, nil
+	return nil, fmt.Errorf("not implemented yet")
 }
 
-// Certificates -------------------------------------------------------------
-
 func (s *TrainingService) GenerateCertificate(ctx context.Context, assignmentID string, generatedBy string) (*repo.Certificate, error) {
-	assignment, err := s.trainingRepo.GetAssignmentByID(ctx, assignmentID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get assignment: %w", err)
-	}
-	if assignment.Status != assignmentStatusCompleted {
-		return nil, errors.New("assignment is not completed")
-	}
-
-	certificateNumber := strings.ToUpper(strings.ReplaceAll(uuid.New().String(), "-", ""))
-	certificate := &repo.Certificate{
-		ID:                generateID(),
-		TenantID:          assignment.TenantID,
-		AssignmentID:      assignment.ID,
-		UserID:            assignment.UserID,
-		MaterialID:        assignment.MaterialID,
-		CourseID:          assignment.CourseID,
-		CertificateNumber: fmt.Sprintf("CERT-%s", certificateNumber[:8]),
-		IssuedAt:          time.Now(),
-		IsValid:           true,
-		Metadata:          map[string]any{"generated_by": generatedBy},
-	}
-
-	if err := s.trainingRepo.CreateCertificate(ctx, *certificate); err != nil {
-		return nil, fmt.Errorf("failed to create certificate: %w", err)
-	}
-
-	return certificate, nil
+	return nil, fmt.Errorf("not implemented yet")
 }
 
 func (s *TrainingService) GetUserCertificates(ctx context.Context, userID string, filters map[string]interface{}) ([]repo.Certificate, error) {
-	certificates, err := s.trainingRepo.GetUserCertificates(ctx, userID, filters)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get certificates: %w", err)
-	}
-
-	return certificates, nil
+	return nil, fmt.Errorf("not implemented yet")
 }
 
 func (s *TrainingService) GetCertificate(ctx context.Context, id string) (*repo.Certificate, error) {
-	certificate, err := s.trainingRepo.GetCertificateByID(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get certificate: %w", err)
-	}
-
-	return certificate, nil
+	return nil, fmt.Errorf("not implemented yet")
 }
 
 func (s *TrainingService) ValidateCertificate(ctx context.Context, certificateNumber string) (*repo.Certificate, error) {
-	certificate, err := s.trainingRepo.GetCertificateByNumber(ctx, certificateNumber)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get certificate by number: %w", err)
-	}
-	if !certificate.IsValid {
-		return nil, errors.New("certificate is no longer valid")
-	}
-
-	return certificate, nil
+	return nil, fmt.Errorf("not implemented yet")
 }
 
-// Notifications ------------------------------------------------------------
-
 func (s *TrainingService) CreateNotification(ctx context.Context, tenantID string, req dto.CreateNotificationRequest, createdBy string) (*repo.TrainingNotification, error) {
-	assignment, err := s.trainingRepo.GetAssignmentByID(ctx, req.AssignmentID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get assignment: %w", err)
-	}
-	if assignment.TenantID != tenantID {
-		return nil, errors.New("assignment does not belong to tenant")
-	}
-
-	notification := &repo.TrainingNotification{
-		ID:           generateID(),
-		TenantID:     tenantID,
-		AssignmentID: req.AssignmentID,
-		UserID:       req.UserID,
-		Type:         req.Type,
-		Title:        req.Title,
-		Message:      req.Message,
-		SentAt:       time.Now(),
-		IsRead:       false,
-	}
-
-	if notification.UserID == "" {
-		notification.UserID = assignment.UserID
-	}
-
-	if err := s.trainingRepo.CreateNotification(ctx, *notification); err != nil {
-		return nil, fmt.Errorf("failed to create notification: %w", err)
-	}
-
-	return notification, nil
+	return nil, fmt.Errorf("not implemented yet")
 }
 
 func (s *TrainingService) GetUserNotifications(ctx context.Context, userID string, unreadOnly bool) ([]repo.TrainingNotification, error) {
-	notifications, err := s.trainingRepo.GetUserNotifications(ctx, userID, unreadOnly)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get notifications: %w", err)
-	}
-
-	return notifications, nil
+	return nil, fmt.Errorf("not implemented yet")
 }
 
 func (s *TrainingService) MarkNotificationAsRead(ctx context.Context, notificationID string, userID string) error {
-	if err := s.trainingRepo.MarkNotificationAsRead(ctx, notificationID, userID); err != nil {
-		return fmt.Errorf("failed to mark notification as read: %w", err)
-	}
-
-	return nil
+	return fmt.Errorf("not implemented yet")
 }
 
-// Analytics ----------------------------------------------------------------
-
 func (s *TrainingService) GetUserProgress(ctx context.Context, userID string) (*repo.TrainingAnalytics, error) {
-	analytics, err := s.trainingRepo.GetUserAnalytics(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get user analytics: %w", err)
-	}
-
-	return analytics, nil
+	return nil, fmt.Errorf("not implemented yet")
 }
 
 func (s *TrainingService) GetCourseProgress(ctx context.Context, courseID string) (*repo.CourseAnalytics, error) {
-	analytics, err := s.trainingRepo.GetCourseAnalytics(ctx, courseID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get course analytics: %w", err)
-	}
-
-	return analytics, nil
+	return nil, fmt.Errorf("not implemented yet")
 }
 
 func (s *TrainingService) GetOrganizationAnalytics(ctx context.Context, tenantID string) (*repo.OrganizationAnalytics, error) {
-	analytics, err := s.trainingRepo.GetOrganizationAnalytics(ctx, tenantID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get organization analytics: %w", err)
-	}
-
-	return analytics, nil
+	return nil, fmt.Errorf("not implemented yet")
 }
 
 func (s *TrainingService) RecordAnalytics(ctx context.Context, tenantID string, req dto.RecordAnalyticsRequest) error {
-	analytics := repo.TrainingAnalytics{
-		ID:          generateID(),
-		TenantID:    tenantID,
-		UserID:      req.UserID,
-		MaterialID:  req.MaterialID,
-		CourseID:    req.CourseID,
-		MetricType:  req.MetricType,
-		MetricValue: req.MetricValue,
-		RecordedAt:  time.Now(),
-	}
-
-	if err := s.trainingRepo.CreateAnalytics(ctx, analytics); err != nil {
-		return fmt.Errorf("failed to record analytics: %w", err)
-	}
-
-	return nil
+	return fmt.Errorf("not implemented yet")
 }
 
-// Bulk operations ----------------------------------------------------------
-
 func (s *TrainingService) BulkAssignMaterial(ctx context.Context, tenantID string, req dto.BulkAssignMaterialRequest, assignedBy string) error {
-	assignReq := dto.AssignMaterialRequest{
-		MaterialID: req.MaterialID,
-		UserIDs:    req.UserIDs,
-		DueAt:      req.DueAt,
-		Priority:   req.Priority,
-	}
-
-	_, err := s.AssignMaterial(ctx, tenantID, assignReq, assignedBy)
-	return err
+	return fmt.Errorf("not implemented yet")
 }
 
 func (s *TrainingService) BulkAssignCourse(ctx context.Context, tenantID string, req dto.BulkAssignCourseRequest, assignedBy string) error {
-	assignReq := dto.AssignCourseRequest{
-		CourseID: req.CourseID,
-		UserIDs:  req.UserIDs,
-		DueAt:    req.DueAt,
-		Priority: req.Priority,
-	}
-
-	_, err := s.AssignCourse(ctx, tenantID, assignReq, assignedBy)
-	return err
+	return fmt.Errorf("not implemented yet")
 }
 
 func (s *TrainingService) BulkUpdateProgress(ctx context.Context, req dto.BulkUpdateProgressRequest, updatedBy string) error {
-	updateReq := dto.UpdateProgressRequest{
-		ProgressPercentage: req.ProgressPercentage,
-		TimeSpentMinutes:   req.TimeSpentMinutes,
-	}
-	return s.UpdateProgress(ctx, req.AssignmentID, req.MaterialID, updateReq, updatedBy)
+	return fmt.Errorf("not implemented yet")
 }
 
-// Reporting helpers --------------------------------------------------------
-
 func (s *TrainingService) GetOverdueAssignments(ctx context.Context, tenantID string) ([]repo.TrainingAssignment, error) {
-	assignments, err := s.trainingRepo.GetOverdueAssignments(ctx, tenantID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get overdue assignments: %w", err)
-	}
-
-	return assignments, nil
+	return nil, fmt.Errorf("not implemented yet")
 }
 
 func (s *TrainingService) SendReminderNotifications(ctx context.Context, tenantID string) error {
-	assignments, err := s.trainingRepo.GetUpcomingDeadlines(ctx, tenantID, reminderWindowDays)
-	if err != nil {
-		return fmt.Errorf("failed to get upcoming deadlines: %w", err)
-	}
-
-	overdue, err := s.trainingRepo.GetOverdueAssignments(ctx, tenantID)
-	if err == nil {
-		assignments = append(assignments, overdue...)
-	}
-
-	now := time.Now()
-	seen := make(map[string]struct{})
-	for _, assignment := range assignments {
-		if _, ok := seen[assignment.ID]; ok {
-			continue
-		}
-		seen[assignment.ID] = struct{}{}
-
-		if assignment.ReminderSentAt != nil && now.Sub(*assignment.ReminderSentAt) < 12*time.Hour {
-			continue
-		}
-
-		dueText := "soon"
-		notificationType := "reminder"
-		if assignment.DueAt != nil {
-			dueText = assignment.DueAt.Format(time.RFC3339)
-			if assignment.DueAt.Before(now) {
-				notificationType = "deadline"
-			}
-		}
-
-		message := fmt.Sprintf("Training assignment %s is due %s.", assignment.ID, dueText)
-		notification := repo.TrainingNotification{
-			ID:           generateID(),
-			TenantID:     tenantID,
-			AssignmentID: assignment.ID,
-			UserID:       assignment.UserID,
-			Type:         notificationType,
-			Title:        "Training deadline reminder",
-			Message:      message,
-			SentAt:       now,
-		}
-
-		if err := s.trainingRepo.CreateNotification(ctx, notification); err != nil {
-			return fmt.Errorf("failed to create reminder: %w", err)
-		}
-
-		assignment.ReminderSentAt = timePtr(now)
-		assignment.Priority = ensurePriority(assignment.Priority)
-		if err := s.trainingRepo.UpdateAssignment(ctx, assignment); err != nil {
-			return fmt.Errorf("failed to update assignment after reminder: %w", err)
-		}
-	}
-
-	return nil
+	return fmt.Errorf("not implemented yet")
 }
 
 func (s *TrainingService) GetUpcomingDeadlines(ctx context.Context, tenantID string, days int) ([]repo.TrainingAssignment, error) {
-	assignments, err := s.trainingRepo.GetUpcomingDeadlines(ctx, tenantID, days)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get upcoming deadlines: %w", err)
-	}
-
-	return assignments, nil
+	return nil, fmt.Errorf("not implemented yet")
 }
 
-// Helpers ------------------------------------------------------------------
-
-func (s *TrainingService) updateAssignmentState(ctx context.Context, assignment *repo.TrainingAssignment, progress int, timeSpent int, completedAt *time.Time) error {
-	progress = clamp(progress, 0, 100)
-	assignment.ProgressPercentage = progress
-	if timeSpent >= 0 {
-		assignment.TimeSpentMinutes = timeSpent
-	}
-
-	now := time.Now()
-	if completedAt != nil {
-		assignment.CompletedAt = completedAt
-		assignment.Status = assignmentStatusCompleted
-	} else if progress >= 100 {
-		t := now
-		assignment.CompletedAt = &t
-		assignment.Status = assignmentStatusCompleted
-	} else if progress > 0 && assignment.Status == assignmentStatusAssigned {
-		assignment.Status = assignmentStatusInProgress
-		assignment.CompletedAt = nil
-	}
-
-	assignment.Priority = ensurePriority(assignment.Priority)
-
-	if assignment.Status != assignmentStatusCompleted && assignment.DueAt != nil && assignment.DueAt.Before(now) {
-		assignment.Status = assignmentStatusOverdue
-	}
-
-	return s.trainingRepo.UpdateAssignment(ctx, *assignment)
-}
-
-func copyMetadata(src map[string]any) map[string]any {
-	if src == nil {
-		return nil
-	}
-	dst := make(map[string]any, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
-	return dst
-}
-
-func ensurePriority(value string) string {
-	if strings.TrimSpace(value) == "" {
-		return defaultPriorityValue
-	}
-	return value
-}
-
-func percentFromScore(score, max int) int {
-	if max <= 0 {
-		return 0
-	}
-	return int(math.Round((float64(score) / float64(max)) * 100))
-}
-
-func calculateQuizScore(questions []repo.QuizQuestion, answers map[string]any) (int, int) {
-	score := 0
-	maxScore := 0
-	for _, question := range questions {
-		points := question.Points
-		if points <= 0 {
-			points = 1
-		}
-		maxScore += points
-
-		selected, ok := extractSelectedIndex(answers[question.ID])
-		if ok && selected == question.CorrectIndex {
-			score += points
-		}
-	}
-
-	return score, maxScore
-}
-
-func extractSelectedIndex(value any) (int, bool) {
-	switch v := value.(type) {
-	case int:
-		return v, true
-	case int32:
-		return int(v), true
-	case int64:
-		return int(v), true
-	case float64:
-		return int(v), true
-	case string:
-		i, err := strconv.Atoi(v)
-		if err != nil {
-			return 0, false
-		}
-		return i, true
-	default:
-		return 0, false
-	}
-}
-
-func clamp(value, min, max int) int {
-	if value < min {
-		return min
-	}
-	if value > max {
-		return max
-	}
-	return value
-}
-
-func stringPtr(value string) *string {
-	if strings.TrimSpace(value) == "" {
-		return nil
-	}
-	v := value
-	return &v
-}
-
-func timePtr(t time.Time) *time.Time {
-	v := t
-	return &v
-}
-
-func intPtr(v int) *int {
-	value := v
-	return &value
-}
-
-func generateID() string {
-	return uuid.NewString()
+// Helper function to create string pointer
+func trainingStringPtr(s string) *string {
+	return &s
 }

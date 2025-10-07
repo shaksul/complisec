@@ -63,9 +63,11 @@ type DocumentLinkDTO struct {
 type DocumentDTO struct {
 	ID           string            `json:"id"`
 	TenantID     string            `json:"tenant_id"`
-	Name         string            `json:"name"`
+	Title        string            `json:"title"`
 	OriginalName string            `json:"original_name"`
 	Description  *string           `json:"description"`
+	Type         string            `json:"type"`
+	Category     *string           `json:"category"`
 	FilePath     string            `json:"file_path"`
 	FileSize     int64             `json:"file_size"`
 	MimeType     string            `json:"mime_type"`

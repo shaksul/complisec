@@ -467,16 +467,26 @@ func (r *AssetRepo) GetWithDetails(ctx context.Context, id string) (*AssetWithDe
 
 func (r *AssetRepo) AddDocument(ctx context.Context, assetID, documentType, filePath, createdBy string) error {
 	_, err := r.db.Exec(`
-		INSERT INTO asset_documents (id, asset_id, document_type, file_path, title, mime, size_bytes, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-	`, uuid.New().String(), assetID, documentType, filePath, "", "", 0, createdBy)
+		INSERT INTO asset_documents (id, asset_id, document_type, file_path, created_by)
+		VALUES ($1, $2, $3, $4, $5)
+	`, uuid.New().String(), assetID, documentType, filePath, createdBy)
 	return err
 }
 
 func (r *AssetRepo) GetAssetDocuments(ctx context.Context, assetID string) ([]AssetDocument, error) {
 	rows, err := r.db.Query(`
-		SELECT id, asset_id, document_type, file_path, title, mime, size_bytes, created_by, created_at
-		FROM asset_documents WHERE asset_id = $1 ORDER BY created_at DESC
+		SELECT d.id, $1 as asset_id, 
+		       COALESCE(d.category, 'other') as document_type,
+		       d.storage_uri as file_path,
+		       d.title,
+		       d.mime_type as mime,
+		       d.size_bytes,
+		       d.created_by,
+		       d.created_at
+		FROM documents d
+		WHERE d.deleted_at IS NULL 
+		  AND $1 = ANY(d.asset_ids)
+		ORDER BY d.created_at DESC
 	`, assetID)
 	if err != nil {
 		return nil, err

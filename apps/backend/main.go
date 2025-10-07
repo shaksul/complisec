@@ -71,28 +71,32 @@ func main() {
 	userService := domain.NewUserService(userRepo, baseRoleRepo)
 	roleService := domain.NewRoleService(roleRepo, userRepo, auditRepo)
 	tenantService := domain.NewTenantService(tenantRepo, auditRepo)
-	assetService := domain.NewAssetService(assetRepo, userRepo)
 	documentService := domain.NewDocumentService(documentRepo, "./storage/documents")
-	riskService := domain.NewRiskService(riskRepo, auditRepo, documentService)
-	incidentService := domain.NewIncidentService(incidentRepo, userRepo, assetRepo, riskRepo)
-	trainingService := domain.NewTrainingService(trainingRepo)
+	documentStorageService := domain.NewDocumentStorageService(documentService)
+	assetService := domain.NewAssetService(assetRepo, userRepo, documentStorageService)
+	riskService := domain.NewRiskService(riskRepo, auditRepo, documentStorageService)
+	incidentService := domain.NewIncidentService(incidentRepo, userRepo, assetRepo, riskRepo, documentStorageService)
+	trainingService := domain.NewTrainingService(trainingRepo, documentStorageService)
 	aiService := domain.NewAIService(aiRepo)
 	complianceService := domain.NewComplianceService(complianceRepo)
 	emailChangeService := domain.NewEmailChangeService(emailChangeRepo, userRepo)
 
 	// Initialize handlers
-	authHandler := http.NewAuthHandler(authService)
+	authHandler := http.NewAuthHandler(authService, userService)
 	userHandler := http.NewUserHandler(userService, roleService)
 	roleHandler := http.NewRoleHandler(roleService)
 	log.Printf("DEBUG: main.go roleHandler created: %+v", roleHandler)
 	tenantHandler := http.NewTenantHandler(tenantService)
 	auditHandler := http.NewAuditHandler(auditRepo)
 
+	// Initialize activity middleware
+	activityMiddleware := http.NewActivityMiddleware(userService)
+
 	// Set global permission checker
 	http.SetPermissionChecker(userService)
 	assetHandler := http.NewAssetHandler(assetService)
 	riskHandler := http.NewRiskHandler(riskService)
-	documentHandler := http.NewDocumentHandler(documentService)
+	documentHandler := http.NewDocumentHandler(documentStorageService)
 	incidentHandler := http.NewIncidentHandler(incidentService)
 	trainingHandler := http.NewTrainingHandler(trainingService)
 	aiHandler := http.NewAIHandler(aiService)
@@ -101,6 +105,10 @@ func main() {
 
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
+			log.Printf("ERROR: Global error handler caught error: %v", err)
+			log.Printf("ERROR: Request path: %s %s", c.Method(), c.Path())
+			log.Printf("ERROR: Request headers: %v", c.GetReqHeaders())
+			log.Printf("ERROR: Request body size: %d", len(c.Body()))
 			code := fiber.StatusInternalServerError
 			if e, ok := err.(*fiber.Error); ok {
 				code = e.Code
@@ -117,6 +125,9 @@ func main() {
 		AllowHeaders:     "Origin,Content-Type,Accept,Authorization",
 		AllowCredentials: true,
 	}))
+
+	// UTF-8 encoding middleware
+	app.Use(http.UTF8Middleware())
 
 	// Simple test endpoint (no auth)
 	app.Get("/health", func(c *fiber.Ctx) error {
@@ -135,7 +146,7 @@ func main() {
 	})
 
 	// Protected routes
-	protected := api.Group("", http.AuthMiddleware(authService))
+	protected := api.Group("", http.AuthMiddleware(authService), activityMiddleware.LogUserActivity())
 	// Register protected auth routes
 	authHandler.RegisterProtected(protected)
 	userHandler.Register(protected)
@@ -144,9 +155,9 @@ func main() {
 	log.Printf("DEBUG: main.go roleHandler registered")
 	tenantHandler.Register(protected)
 	auditHandler.Register(protected)
+	documentHandler.RegisterRoutes(protected)
 	assetHandler.Register(protected)
 	riskHandler.Register(protected)
-	documentHandler.RegisterRoutes(protected)
 	incidentHandler.Register(protected)
 	trainingHandler.Register(protected)
 	aiHandler.Register(protected)

@@ -59,6 +59,7 @@ const getModuleIcon = (module: string) => {
 const RolesManagementPage: React.FC = () => {
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [roleUserCounts, setRoleUserCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [selectedRole, setSelectedRole] = useState<RoleWithPermissions | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -99,11 +100,25 @@ const RolesManagementPage: React.FC = () => {
       setRoles(rolesData);
       setPermissions(permissionsData);
       
+      // Загружаем количество пользователей для каждой роли
+      const userCounts: Record<string, number> = {};
+      for (const role of rolesData) {
+        try {
+          const users = await rolesApi.getRoleUsers(role.id);
+          userCounts[role.id] = users.length;
+        } catch (error) {
+          console.error(`Ошибка загрузки пользователей для роли ${role.name}:`, error);
+          userCounts[role.id] = 0;
+        }
+      }
+      setRoleUserCounts(userCounts);
+      
       // Debug: проверим структуру данных
       console.log('Загруженные роли (нормализовано):', rolesData);
       console.log('Пример роли:', rolesData[0]);
       console.log('Загруженные права (нормализовано):', permissionsData);
       console.log('Пример права:', permissionsData[0]);
+      console.log('Количество пользователей по ролям:', userCounts);
     } catch (error) {
       console.error('Ошибка загрузки данных:', error);
     } finally {
@@ -214,7 +229,7 @@ const RolesManagementPage: React.FC = () => {
                   </TableCell>
                   <TableCell>
                     <Chip
-                      label="0"
+                      label={roleUserCounts[role.id] || 0}
                       size="small"
                       color="primary"
                       variant="outlined"

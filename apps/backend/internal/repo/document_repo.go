@@ -37,14 +37,16 @@ type Folder struct {
 type Document struct {
 	ID           string    `json:"id"`
 	TenantID     string    `json:"tenant_id"`
-	Name         string    `json:"name"`
-	OriginalName string    `json:"original_name"`
+	Title        string    `json:"title"`         // document title
+	OriginalName string    `json:"original_name"` // derived from title
 	Description  *string   `json:"description"`
-	FilePath     string    `json:"file_path"`
-	FileSize     int64     `json:"file_size"`
+	Type         string    `json:"type"`      // document type (policy, standard, procedure, etc.)
+	Category     *string   `json:"category"`  // document category
+	FilePath     string    `json:"file_path"` // maps to storage_uri in DB
+	FileSize     int64     `json:"file_size"` // maps to size_bytes in DB
 	MimeType     string    `json:"mime_type"`
-	FileHash     string    `json:"file_hash"`
-	FolderID     *string   `json:"folder_id"`
+	FileHash     string    `json:"file_hash"` // maps to checksum_sha256 in DB
+	FolderID     *string   `json:"folder_id"` // not in current schema
 	OwnerID      string    `json:"owner_id"`
 	CreatedBy    string    `json:"created_by"`
 	CreatedAt    time.Time `json:"created_at"`
@@ -52,6 +54,9 @@ type Document struct {
 	IsActive     bool      `json:"is_active"`
 	Version      string    `json:"version"`
 	Metadata     *string   `json:"metadata"`
+	AssetIDs     []string  `json:"asset_ids"`
+	RiskIDs      []string  `json:"risk_ids"`
+	ControlIDs   []string  `json:"control_ids"`
 }
 
 // DocumentTag структура тега документа
@@ -217,21 +222,21 @@ func (r *DocumentRepo) DeleteFolder(ctx context.Context, id, tenantID string) er
 // CreateDocument создает новый документ
 func (r *DocumentRepo) CreateDocument(ctx context.Context, document Document) error {
 	query := `
-		INSERT INTO documents (id, tenant_id, name, original_name, description, file_path, 
-		                      file_size, mime_type, file_hash, folder_id, owner_id, created_by, metadata)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`
+		INSERT INTO documents (id, tenant_id, title, description, type, category, storage_uri, 
+		                      size_bytes, mime_type, checksum_sha256, owner_id, created_by, asset_ids, risk_ids, control_ids)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`
 
-	_, err := r.db.ExecContext(ctx, query, document.ID, document.TenantID, document.Name,
-		document.OriginalName, document.Description, document.FilePath, document.FileSize,
-		document.MimeType, document.FileHash, document.FolderID, document.OwnerID,
-		document.CreatedBy, document.Metadata)
+	_, err := r.db.ExecContext(ctx, query, document.ID, document.TenantID, document.Title,
+		document.Description, document.Type, document.Category, document.FilePath, document.FileSize,
+		document.MimeType, document.FileHash, document.OwnerID,
+		document.CreatedBy, document.AssetIDs, document.RiskIDs, document.ControlIDs)
 	return err
 }
 
 // GetDocumentByID получает документ по ID
 func (r *DocumentRepo) GetDocumentByID(ctx context.Context, id, tenantID string) (*Document, error) {
 	query := `
-		SELECT id, tenant_id, title as name, title as original_name, description, storage_uri as file_path, size_bytes as file_size, 
+		SELECT id, tenant_id, title, title as original_name, description, type, category, storage_uri as file_path, size_bytes as file_size, 
 		       mime_type, checksum_sha256 as file_hash, NULL as folder_id, owner_id, created_by, created_at, 
 		       updated_at, CASE WHEN deleted_at IS NULL THEN true ELSE false END as is_active, version, NULL as metadata
 		FROM documents 
@@ -239,8 +244,8 @@ func (r *DocumentRepo) GetDocumentByID(ctx context.Context, id, tenantID string)
 
 	var document Document
 	err := r.db.QueryRowContext(ctx, query, id, tenantID).Scan(
-		&document.ID, &document.TenantID, &document.Name, &document.OriginalName,
-		&document.Description, &document.FilePath, &document.FileSize, &document.MimeType,
+		&document.ID, &document.TenantID, &document.Title, &document.OriginalName,
+		&document.Description, &document.Type, &document.Category, &document.FilePath, &document.FileSize, &document.MimeType,
 		&document.FileHash, &document.FolderID, &document.OwnerID, &document.CreatedBy,
 		&document.CreatedAt, &document.UpdatedAt, &document.IsActive, &document.Version,
 		&document.Metadata)
@@ -254,7 +259,7 @@ func (r *DocumentRepo) GetDocumentByID(ctx context.Context, id, tenantID string)
 // ListDocuments получает список документов
 func (r *DocumentRepo) ListDocuments(ctx context.Context, tenantID string, filters map[string]interface{}) ([]Document, error) {
 	query := `
-		SELECT id, tenant_id, title as name, title as original_name, description, storage_uri as file_path, size_bytes as file_size, 
+		SELECT id, tenant_id, title, title as original_name, description, type, category, storage_uri as file_path, size_bytes as file_size, 
 		       mime_type, checksum_sha256 as file_hash, NULL as folder_id, owner_id, created_by, created_at, 
 		       updated_at, CASE WHEN deleted_at IS NULL THEN true ELSE false END as is_active, version, NULL as metadata
 		FROM documents 
@@ -318,8 +323,8 @@ func (r *DocumentRepo) ListDocuments(ctx context.Context, tenantID string, filte
 	documents := make([]Document, 0)
 	for rows.Next() {
 		var document Document
-		err := rows.Scan(&document.ID, &document.TenantID, &document.Name, &document.OriginalName,
-			&document.Description, &document.FilePath, &document.FileSize, &document.MimeType,
+		err := rows.Scan(&document.ID, &document.TenantID, &document.Title, &document.OriginalName,
+			&document.Description, &document.Type, &document.Category, &document.FilePath, &document.FileSize, &document.MimeType,
 			&document.FileHash, &document.FolderID, &document.OwnerID, &document.CreatedBy,
 			&document.CreatedAt, &document.UpdatedAt, &document.IsActive, &document.Version,
 			&document.Metadata)
@@ -340,14 +345,14 @@ func (r *DocumentRepo) UpdateDocument(ctx context.Context, document Document) er
 		SET name = $1, description = $2, folder_id = $3, metadata = $4, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $5 AND tenant_id = $6`
 
-	_, err := r.db.ExecContext(ctx, query, document.Name, document.Description,
+	_, err := r.db.ExecContext(ctx, query, document.Title, document.Description,
 		document.FolderID, document.Metadata, document.ID, document.TenantID)
 	return err
 }
 
 // DeleteDocument удаляет документ
 func (r *DocumentRepo) DeleteDocument(ctx context.Context, id, tenantID string) error {
-	query := `UPDATE documents SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND tenant_id = $2`
+	query := `UPDATE documents SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND tenant_id = $2`
 	_, err := r.db.ExecContext(ctx, query, id, tenantID)
 	return err
 }
@@ -483,19 +488,19 @@ func (r *DocumentRepo) GetDocumentPermissions(ctx context.Context, objectType, o
 // CreateDocumentVersion создает версию документа
 func (r *DocumentRepo) CreateDocumentVersion(ctx context.Context, version DocumentVersion) error {
 	query := `
-		INSERT INTO document_versions (id, document_id, version_number, file_path, file_size, file_hash, created_by, change_description)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+		INSERT INTO document_versions (id, document_id, version_number, storage_key, size_bytes, checksum_sha256, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`
 	_, err := r.db.ExecContext(ctx, query, version.ID, version.DocumentID, version.VersionNumber,
-		version.FilePath, version.FileSize, version.FileHash, version.CreatedBy, version.ChangeDescription)
+		version.FilePath, version.FileSize, version.FileHash, version.CreatedBy)
 	return err
 }
 
 // GetDocumentVersions получает версии документа
 func (r *DocumentRepo) GetDocumentVersions(ctx context.Context, documentID string) ([]DocumentVersion, error) {
 	query := `
-		SELECT id, document_id, version_number, file_path, file_size, file_hash, created_by, created_at, change_description
+		SELECT id, document_id, version_number, storage_key, size_bytes, checksum_sha256, created_by, created_at
 		FROM document_versions 
-		WHERE document_id = $1 
+		WHERE document_id = $1 AND deleted_at IS NULL
 		ORDER BY version_number DESC`
 
 	rows, err := r.db.QueryContext(ctx, query, documentID)
@@ -509,7 +514,7 @@ func (r *DocumentRepo) GetDocumentVersions(ctx context.Context, documentID strin
 		var version DocumentVersion
 		err := rows.Scan(&version.ID, &version.DocumentID, &version.VersionNumber,
 			&version.FilePath, &version.FileSize, &version.FileHash, &version.CreatedBy,
-			&version.CreatedAt, &version.ChangeDescription)
+			&version.CreatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -590,7 +595,7 @@ func (r *DocumentRepo) GetDocumentAuditLog(ctx context.Context, tenantID string,
 // SearchDocuments выполняет поиск документов
 func (r *DocumentRepo) SearchDocuments(ctx context.Context, tenantID, searchTerm string) ([]Document, error) {
 	query := `
-		SELECT DISTINCT d.id, d.tenant_id, d.title as name, d.title as original_name, d.description, d.storage_uri as file_path, 
+		SELECT DISTINCT d.id, d.tenant_id, d.title as name, d.title as original_name, d.description, d.type, d.storage_uri as file_path, 
 		       d.size_bytes as file_size, d.mime_type, d.checksum_sha256 as file_hash, NULL as folder_id, d.owner_id, d.created_by, 
 		       d.created_at, d.updated_at, CASE WHEN d.deleted_at IS NULL THEN true ELSE false END as is_active, d.version, NULL as metadata
 		FROM documents d
@@ -610,8 +615,8 @@ func (r *DocumentRepo) SearchDocuments(ctx context.Context, tenantID, searchTerm
 	documents := make([]Document, 0)
 	for rows.Next() {
 		var document Document
-		err := rows.Scan(&document.ID, &document.TenantID, &document.Name, &document.OriginalName,
-			&document.Description, &document.FilePath, &document.FileSize, &document.MimeType,
+		err := rows.Scan(&document.ID, &document.TenantID, &document.Title, &document.OriginalName,
+			&document.Description, &document.Type, &document.FilePath, &document.FileSize, &document.MimeType,
 			&document.FileHash, &document.FolderID, &document.OwnerID, &document.CreatedBy,
 			&document.CreatedAt, &document.UpdatedAt, &document.IsActive, &document.Version,
 			&document.Metadata)

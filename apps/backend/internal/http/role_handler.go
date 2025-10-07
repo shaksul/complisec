@@ -28,7 +28,7 @@ func (h *RoleHandler) Register(r fiber.Router) {
 	roles.Post("/", h.createRole) // Временно без middleware для отладки
 	roles.Get("/test", h.testRoleHandler)
 	roles.Get("/:id", RequirePermission("roles.view"), h.getRole)
-	roles.Put("/:id", RequirePermission("roles.update"), h.updateRole)
+	roles.Put("/:id", RequirePermission("roles.edit"), h.updateRole)
 	roles.Delete("/:id", RequirePermission("roles.delete"), h.deleteRole)
 	roles.Get("/:id/users", RequirePermission("roles.view"), h.getRoleUsers)
 	log.Printf("DEBUG: RoleHandler.Register completed")
@@ -130,8 +130,11 @@ func (h *RoleHandler) getRole(c *fiber.Ctx) error {
 }
 
 func (h *RoleHandler) updateRole(c *fiber.Ctx) error {
+	log.Printf("DEBUG: updateRole method called!")
 	roleID := c.Params("id")
 	log.Printf("DEBUG: updateRole called with roleID: %s", roleID)
+	log.Printf("DEBUG: updateRole method: %s, path: %s", c.Method(), c.Path())
+	log.Printf("DEBUG: updateRole headers: %v", c.GetReqHeaders())
 
 	var req dto.UpdateRoleRequest
 	if err := c.BodyParser(&req); err != nil {

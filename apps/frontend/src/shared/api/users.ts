@@ -32,12 +32,44 @@ export interface UserDetail {
   roles: string[]
   created_at: string
   updated_at: string
+  last_login?: string
   stats: {
     documents_count: number
     risks_count: number
     incidents_count: number
     assets_count: number
+    sessions_count: number
+    login_count: number
+    activity_score: number
   }
+}
+
+export interface UserActivity {
+  id: string
+  user_id: string
+  action: string
+  description: string
+  ip_address?: string
+  user_agent?: string
+  created_at: string
+  metadata?: Record<string, any>
+}
+
+export interface UserActivityStats {
+  daily_activity: Array<{
+    date: string
+    count: number
+  }>
+  top_actions: Array<{
+    action: string
+    count: number
+  }>
+  login_history: Array<{
+    ip_address: string
+    user_agent: string
+    created_at: string
+    success: boolean
+  }>
 }
 
 export interface PaginationResponse {
@@ -107,6 +139,19 @@ export const getUserDetail = async (id: string): Promise<UserDetail> => {
   return response.data.data
 }
 
+export const getUserActivity = async (id: string, page: number = 1, pageSize: number = 50): Promise<PaginatedResponse<UserActivity>> => {
+  const response = await apiClient.get(`/users/${id}/activity?page=${page}&page_size=${pageSize}`)
+  return {
+    data: response.data.data || [],
+    pagination: response.data.pagination
+  }
+}
+
+export const getUserActivityStats = async (id: string): Promise<UserActivityStats> => {
+  const response = await apiClient.get(`/users/${id}/activity/stats`)
+  return response.data.data
+}
+
 export const createUser = async (userData: {
   email: string
   password: string
@@ -140,6 +185,8 @@ export const usersApi = {
   getUserCatalog,
   getUser,
   getUserDetail,
+  getUserActivity,
+  getUserActivityStats,
   createUser,
   updateUser,
   deleteUser

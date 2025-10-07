@@ -414,6 +414,34 @@ export interface QuizAnswerDTO {
 }
 
 // Enhanced API functions
+export const uploadDocument = async (
+  file: File,
+  name: string,
+  description?: string,
+  tags?: string[],
+  linkedTo?: { module: string; entity_id: string }
+): Promise<Document> => {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('name', name)
+  if (description) {
+    formData.append('description', description)
+  }
+  if (tags && tags.length > 0) {
+    formData.append('tags', JSON.stringify(tags))
+  }
+  if (linkedTo) {
+    formData.append('linked_to', JSON.stringify(linkedTo))
+  }
+
+  const response = await apiClient.post('/documents/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  })
+  return response.data.data
+}
+
 export const uploadDocumentVersion = async (
   documentId: string, 
   file: File, 
@@ -514,6 +542,13 @@ export const submitQuizAnswers = async (
 }
 
 // File operations API
+export const downloadDocument = async (documentId: string): Promise<Blob> => {
+  const response = await apiClient.get(`/documents/${documentId}/download`, {
+    responseType: 'blob'
+  })
+  return response.data
+}
+
 export const downloadDocumentVersion = async (versionId: string): Promise<Blob> => {
   const response = await apiClient.get(`/documents/versions/${versionId}/download`, {
     responseType: 'blob'

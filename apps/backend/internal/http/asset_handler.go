@@ -2,8 +2,8 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 
@@ -45,6 +45,8 @@ func (h *AssetHandler) Register(r fiber.Router) {
 	assets.Get("/documents/:docId/download", RequirePermission("assets.view"), h.downloadAssetDocument)
 	// Document storage endpoints
 	assets.Get("/documents/storage", RequirePermission("assets.view"), h.getDocumentStorage)
+	// New centralized document endpoints
+	assets.Post("/:id/documents/unlink", RequirePermission("assets.edit"), h.unlinkAssetDocument)
 	assets.Get("/:id/software", RequirePermission("assets.view"), h.getAssetSoftware)
 	assets.Post("/:id/software", RequirePermission("assets.edit"), h.addAssetSoftware)
 	assets.Get("/:id/history", RequirePermission("assets.view"), h.getAssetHistory)
@@ -229,10 +231,11 @@ func (h *AssetHandler) deleteAsset(c *fiber.Ctx) error {
 func (h *AssetHandler) getAssetDocuments(c *fiber.Ctx) error {
 	id := c.Params("id")
 	userID := c.Locals("user_id").(string)
+	tenantID := c.Locals("tenant_id").(string)
 
 	log.Printf("DEBUG: AssetHandler.getAssetDocuments id=%s user=%s", id, userID)
 
-	documents, err := h.assetService.GetAssetDocuments(context.Background(), id)
+	documents, err := h.assetService.GetAssetDocumentsFromStorage(context.Background(), id, tenantID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.getAssetDocuments service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -290,6 +293,21 @@ func (h *AssetHandler) uploadAssetDocument(c *fiber.Ctx) error {
 
 	// Get title (optional)
 	title := c.FormValue("title")
+	if title == "" {
+		title = documentType
+	}
+
+	// Get description (optional)
+	_ = c.FormValue("description")
+
+	// Get tags (optional)
+	tags := []string{"#активы", fmt.Sprintf("#%s", documentType)}
+	if tagsStr := c.FormValue("tags"); tagsStr != "" {
+		// Parse tags from JSON array
+		if err := json.Unmarshal([]byte(tagsStr), &tags); err != nil {
+			log.Printf("WARN: AssetHandler.uploadAssetDocument invalid tags format: %v", err)
+		}
+	}
 
 	// Get file
 	file, err := c.FormFile("file")
@@ -313,6 +331,7 @@ func (h *AssetHandler) uploadAssetDocument(c *fiber.Ctx) error {
 		"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
 		"application/vnd.ms-excel": true,
 		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": true,
+		"text/plain": true, // Add support for TXT files
 	}
 
 	// Get content type from file header
@@ -339,22 +358,11 @@ func (h *AssetHandler) uploadAssetDocument(c *fiber.Ctx) error {
 	// Reset file pointer
 	fileHeader.Seek(0, 0)
 
-	// Read file content
-	fileContent, err := io.ReadAll(fileHeader)
-	if err != nil {
-		log.Printf("ERROR: AssetHandler.uploadAssetDocument file read all: %v", err)
-		return c.Status(400).JSON(fiber.Map{"error": "Cannot read file content"})
-	}
-
-	// Create upload request
-	uploadReq := dto.AssetDocumentUploadRequest{
+	// Upload document to centralized storage
+	document, err := h.assetService.UploadAssetDocument(context.Background(), id, tenantID, fileHeader, file, dto.AssetDocumentUploadRequest{
 		DocumentType: documentType,
 		Title:        title,
-		File:         fileContent,
-	}
-
-	// Upload document
-	document, err := h.assetService.UploadDocument(context.Background(), id, uploadReq, userID, tenantID)
+	}, userID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.uploadAssetDocument service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -367,10 +375,14 @@ func (h *AssetHandler) uploadAssetDocument(c *fiber.Ctx) error {
 func (h *AssetHandler) linkAssetDocument(c *fiber.Ctx) error {
 	id := c.Params("id")
 	userID := c.Locals("user_id").(string)
+	tenantID := c.Locals("tenant_id").(string)
 
 	log.Printf("DEBUG: AssetHandler.linkAssetDocument id=%s user=%s", id, userID)
 
-	var req dto.AssetDocumentLinkRequest
+	var req struct {
+		DocumentID string `json:"document_id" validate:"required"`
+	}
+
 	if err := c.BodyParser(&req); err != nil {
 		log.Printf("ERROR: AssetHandler.linkAssetDocument invalid body: %v", err)
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
@@ -381,14 +393,14 @@ func (h *AssetHandler) linkAssetDocument(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
 	}
 
-	document, err := h.assetService.LinkDocument(context.Background(), id, req, userID)
+	err := h.assetService.LinkExistingDocumentToAsset(context.Background(), id, req.DocumentID, tenantID, userID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.linkAssetDocument service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	log.Printf("DEBUG: AssetHandler.linkAssetDocument success id=%s", id)
-	return c.Status(200).JSON(fiber.Map{"data": document})
+	return c.Status(200).JSON(fiber.Map{"message": "Document linked successfully"})
 }
 
 func (h *AssetHandler) downloadAssetDocument(c *fiber.Ctx) error {
@@ -528,11 +540,17 @@ func (h *AssetHandler) performInventory(c *fiber.Ctx) error {
 
 func (h *AssetHandler) deleteAssetDocument(c *fiber.Ctx) error {
 	documentID := c.Params("docId")
+	assetID := c.Query("asset_id") // Получаем asset_id из query параметров
 	userID := c.Locals("user_id").(string)
+	tenantID := c.Locals("tenant_id").(string)
 
-	log.Printf("DEBUG: AssetHandler.deleteAssetDocument docID=%s user=%s", documentID, userID)
+	log.Printf("DEBUG: AssetHandler.deleteAssetDocument docID=%s assetID=%s user=%s", documentID, assetID, userID)
 
-	err := h.assetService.DeleteDocument(context.Background(), documentID, userID)
+	if assetID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "asset_id query parameter is required"})
+	}
+
+	err := h.assetService.DeleteAssetDocument(context.Background(), assetID, documentID, tenantID, userID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.deleteAssetDocument service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -801,4 +819,35 @@ func (h *AssetHandler) exportAssets(c *fiber.Ctx) error {
 	}
 
 	return c.SendString(csv)
+}
+
+func (h *AssetHandler) unlinkAssetDocument(c *fiber.Ctx) error {
+	id := c.Params("id")
+	userID := c.Locals("user_id").(string)
+	tenantID := c.Locals("tenant_id").(string)
+
+	log.Printf("DEBUG: AssetHandler.unlinkAssetDocument id=%s user=%s", id, userID)
+
+	var req struct {
+		DocumentID string `json:"document_id" validate:"required"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		log.Printf("ERROR: AssetHandler.unlinkAssetDocument invalid body: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if err := h.validator.Struct(req); err != nil {
+		log.Printf("ERROR: AssetHandler.unlinkAssetDocument validation failed: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
+	}
+
+	err := h.assetService.UnlinkDocumentFromAsset(context.Background(), id, req.DocumentID, tenantID, userID)
+	if err != nil {
+		log.Printf("ERROR: AssetHandler.unlinkAssetDocument service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	log.Printf("DEBUG: AssetHandler.unlinkAssetDocument success id=%s", id)
+	return c.Status(200).JSON(fiber.Map{"message": "Document unlinked successfully"})
 }

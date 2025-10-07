@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"io"
 	"mime/multipart"
 	"time"
 
@@ -24,6 +25,7 @@ type AssetServiceInterface interface {
 	GetDocumentDownloadPath(ctx context.Context, documentID, userID string) (string, string, error)
 	GetDocumentStorage(ctx context.Context, tenantID string, req dto.DocumentStorageRequest) ([]dto.DocumentStorageResponse, int64, error)
 	GetAssetDocuments(ctx context.Context, assetID string) ([]repo.AssetDocument, error)
+	GetAssetDocumentsFromStorage(ctx context.Context, assetID, tenantID string) ([]dto.DocumentDTO, error)
 	DeleteDocument(ctx context.Context, documentID string, deletedBy string) error
 	GetDocumentByID(ctx context.Context, documentID string) (*repo.AssetDocument, error)
 	AddSoftware(ctx context.Context, assetID string, req dto.AssetSoftwareRequest, addedBy string) error
@@ -40,6 +42,12 @@ type AssetServiceInterface interface {
 	BulkUpdateStatus(ctx context.Context, assetIDs []string, newStatus string, updatedBy string) error
 	BulkUpdateOwner(ctx context.Context, assetIDs []string, newOwnerID string, updatedBy string) error
 	PerformInventory(ctx context.Context, tenantID string, req dto.AssetInventoryRequest, performedBy string) error
+
+	// New centralized document methods
+	UploadAssetDocument(ctx context.Context, assetID, tenantID string, file multipart.File, header *multipart.FileHeader, req dto.AssetDocumentUploadRequest, createdBy string) (*dto.DocumentDTO, error)
+	LinkExistingDocumentToAsset(ctx context.Context, assetID, documentID, tenantID, linkedBy string) error
+	UnlinkDocumentFromAsset(ctx context.Context, assetID, documentID, tenantID, unlinkedBy string) error
+	DeleteAssetDocument(ctx context.Context, assetID, documentID, tenantID, deletedBy string) error
 }
 
 // RiskServiceInterface - интерфейс для RiskService
@@ -148,6 +156,7 @@ type DocumentServiceInterface interface {
 	DeleteFolder(ctx context.Context, id, tenantID string, deletedBy string) error
 
 	// Documents
+	CreateDocument(ctx context.Context, tenantID string, req dto.CreateDocumentDTO, createdBy string) (*dto.DocumentDTO, error)
 	UploadDocument(ctx context.Context, tenantID string, file multipart.File, header *multipart.FileHeader, req dto.UploadDocumentDTO, createdBy string) (*dto.DocumentDTO, error)
 	GetDocument(ctx context.Context, id, tenantID string) (*dto.DocumentDTO, error)
 	ListDocuments(ctx context.Context, tenantID string, filters dto.FileDocumentFiltersDTO) ([]dto.DocumentDTO, error)
@@ -158,6 +167,10 @@ type DocumentServiceInterface interface {
 	// Search and Stats
 	SearchDocuments(ctx context.Context, tenantID, searchTerm string) ([]dto.FileDocumentSearchResultDTO, error)
 	GetDocumentStats(ctx context.Context, tenantID string) (*dto.FileDocumentStatsDTO, error)
+
+	// Document Versions
+	CreateDocumentVersion(ctx context.Context, documentID, tenantID string, file io.ReadSeeker, header *multipart.FileHeader, createdBy string) (*dto.DocumentVersionDTO, error)
+	GetDocumentVersions(ctx context.Context, documentID, tenantID string) ([]dto.DocumentVersionDTO, error)
 
 	// Document Links
 	AddDocumentLink(ctx context.Context, documentID string, link dto.CreateDocumentLinkDTO) error

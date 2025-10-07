@@ -3,7 +3,9 @@ package domain
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
+	"mime/multipart"
 	"time"
 
 	"risknexus/backend/internal/dto"
@@ -13,18 +15,20 @@ import (
 )
 
 type IncidentService struct {
-	incidentRepo IncidentRepoInterface
-	userRepo     UserRepoInterface
-	assetRepo    AssetRepoInterface
-	riskRepo     RiskRepoInterface
+	incidentRepo           IncidentRepoInterface
+	userRepo               UserRepoInterface
+	assetRepo              AssetRepoInterface
+	riskRepo               RiskRepoInterface
+	documentStorageService DocumentStorageServiceInterface
 }
 
-func NewIncidentService(incidentRepo IncidentRepoInterface, userRepo UserRepoInterface, assetRepo AssetRepoInterface, riskRepo RiskRepoInterface) *IncidentService {
+func NewIncidentService(incidentRepo IncidentRepoInterface, userRepo UserRepoInterface, assetRepo AssetRepoInterface, riskRepo RiskRepoInterface, documentStorageService DocumentStorageServiceInterface) *IncidentService {
 	return &IncidentService{
-		incidentRepo: incidentRepo,
-		userRepo:     userRepo,
-		assetRepo:    assetRepo,
-		riskRepo:     riskRepo,
+		incidentRepo:           incidentRepo,
+		userRepo:               userRepo,
+		assetRepo:              assetRepo,
+		riskRepo:               riskRepo,
+		documentStorageService: documentStorageService,
 	}
 }
 
@@ -562,4 +566,150 @@ func (s *IncidentService) UpdateIncidentStatus(ctx context.Context, id, tenantID
 
 	log.Printf("INFO: incident_service.UpdateIncidentStatus updated id=%s status=%s", id, req.Status)
 	return incident, nil
+}
+
+// Incident Document methods - интеграция с централизованным хранилищем документов
+func (s *IncidentService) UploadIncidentDocument(ctx context.Context, incidentID, tenantID string, file multipart.File, header *multipart.FileHeader, req dto.UploadDocumentDTO, uploadedBy string) (*dto.DocumentDTO, error) {
+	log.Printf("DEBUG: incident_service.UploadIncidentDocument incidentID=%s", incidentID)
+
+	// Проверяем, что инцидент существует
+	incident, err := s.incidentRepo.GetByID(ctx, incidentID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if incident == nil {
+		return nil, errors.New("incident not found")
+	}
+
+	// Обновляем запрос с информацией об инциденте
+	req.Name = fmt.Sprintf("%s - %s", incident.Title, req.Name)
+	req.Tags = append(req.Tags, "#инциденты")
+	if req.LinkedTo == nil {
+		req.LinkedTo = &dto.DocumentLinkDTO{
+			Module:   "incidents",
+			EntityID: incidentID,
+		}
+	}
+	if req.Description == nil {
+		req.Description = incidentStringPtr(fmt.Sprintf("Document for incident: %s", incident.Title))
+	}
+
+	// Загружаем документ в централизованное хранилище
+	document, err := s.documentStorageService.UploadDocument(ctx, tenantID, file, header, req, uploadedBy)
+	if err != nil {
+		log.Printf("ERROR: incident_service.UploadIncidentDocument UploadDocument: %v", err)
+		return nil, err
+	}
+
+	log.Printf("DEBUG: incident_service.UploadIncidentDocument success documentID=%s", document.ID)
+	return document, nil
+}
+
+func (s *IncidentService) GetIncidentDocuments(ctx context.Context, incidentID, tenantID string) ([]dto.DocumentDTO, error) {
+	log.Printf("DEBUG: incident_service.GetIncidentDocuments incidentID=%s", incidentID)
+
+	// Проверяем, что инцидент существует
+	incident, err := s.incidentRepo.GetByID(ctx, incidentID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if incident == nil {
+		return nil, errors.New("incident not found")
+	}
+
+	// Получаем документы из централизованного хранилища
+	documents, err := s.documentStorageService.GetModuleDocuments(ctx, "incidents", incidentID, tenantID)
+	if err != nil {
+		log.Printf("ERROR: incident_service.GetIncidentDocuments GetModuleDocuments: %v", err)
+		return nil, err
+	}
+
+	log.Printf("DEBUG: incident_service.GetIncidentDocuments found %d documents", len(documents))
+	return documents, nil
+}
+
+func (s *IncidentService) LinkExistingDocumentToIncident(ctx context.Context, incidentID, documentID, tenantID, linkedBy string) error {
+	log.Printf("DEBUG: incident_service.LinkExistingDocumentToIncident incidentID=%s documentID=%s", incidentID, documentID)
+
+	// Проверяем, что инцидент существует
+	incident, err := s.incidentRepo.GetByID(ctx, incidentID, tenantID)
+	if err != nil {
+		return err
+	}
+	if incident == nil {
+		return errors.New("incident not found")
+	}
+
+	// Проверяем, что документ существует
+	_, err = s.documentStorageService.GetDocument(ctx, documentID, tenantID)
+	if err != nil {
+		return err
+	}
+
+	// Связываем документ с инцидентом
+	err = s.documentStorageService.LinkDocumentToModule(ctx, documentID, "incidents", incidentID, "attachment", fmt.Sprintf("Linked to incident: %s", incident.Title), linkedBy)
+	if err != nil {
+		log.Printf("ERROR: incident_service.LinkExistingDocumentToIncident LinkDocumentToModule: %v", err)
+		return err
+	}
+
+	log.Printf("DEBUG: incident_service.LinkExistingDocumentToIncident success")
+	return nil
+}
+
+func (s *IncidentService) UnlinkDocumentFromIncident(ctx context.Context, incidentID, documentID, tenantID, unlinkedBy string) error {
+	log.Printf("DEBUG: incident_service.UnlinkDocumentFromIncident incidentID=%s documentID=%s", incidentID, documentID)
+
+	// Проверяем, что инцидент существует
+	incident, err := s.incidentRepo.GetByID(ctx, incidentID, tenantID)
+	if err != nil {
+		return err
+	}
+	if incident == nil {
+		return errors.New("incident not found")
+	}
+
+	// Отвязываем документ от инцидента
+	err = s.documentStorageService.UnlinkDocumentFromModule(ctx, documentID, "incidents", incidentID, unlinkedBy)
+	if err != nil {
+		log.Printf("ERROR: incident_service.UnlinkDocumentFromIncident UnlinkDocumentFromModule: %v", err)
+		return err
+	}
+
+	log.Printf("DEBUG: incident_service.UnlinkDocumentFromIncident success")
+	return nil
+}
+
+func (s *IncidentService) DeleteIncidentDocument(ctx context.Context, incidentID, documentID, tenantID, deletedBy string) error {
+	log.Printf("DEBUG: incident_service.DeleteIncidentDocument incidentID=%s documentID=%s", incidentID, documentID)
+
+	// Проверяем, что инцидент существует
+	incident, err := s.incidentRepo.GetByID(ctx, incidentID, tenantID)
+	if err != nil {
+		return err
+	}
+	if incident == nil {
+		return errors.New("incident not found")
+	}
+
+	// Получаем информацию о документе
+	_, err = s.documentStorageService.GetDocument(ctx, documentID, tenantID)
+	if err != nil {
+		return err
+	}
+
+	// Удаляем документ из централизованного хранилища
+	err = s.documentStorageService.DeleteDocument(ctx, documentID, tenantID, deletedBy)
+	if err != nil {
+		log.Printf("ERROR: incident_service.DeleteIncidentDocument DeleteDocument: %v", err)
+		return err
+	}
+
+	log.Printf("DEBUG: incident_service.DeleteIncidentDocument success")
+	return nil
+}
+
+// Helper function to create string pointer
+func incidentStringPtr(s string) *string {
+	return &s
 }

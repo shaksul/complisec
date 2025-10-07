@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,14 +18,16 @@ import (
 )
 
 type AssetService struct {
-	assetRepo AssetRepoInterface
-	userRepo  UserRepoInterface
+	assetRepo              AssetRepoInterface
+	userRepo               UserRepoInterface
+	documentStorageService DocumentStorageServiceInterface
 }
 
-func NewAssetService(assetRepo AssetRepoInterface, userRepo UserRepoInterface) *AssetService {
+func NewAssetService(assetRepo AssetRepoInterface, userRepo UserRepoInterface, documentStorageService DocumentStorageServiceInterface) *AssetService {
 	return &AssetService{
-		assetRepo: assetRepo,
-		userRepo:  userRepo,
+		assetRepo:              assetRepo,
+		userRepo:               userRepo,
+		documentStorageService: documentStorageService,
 	}
 }
 
@@ -750,4 +753,184 @@ func (s *AssetService) PerformInventory(ctx context.Context, tenantID string, re
 
 	log.Printf("DEBUG: asset_service.PerformInventory success")
 	return nil
+}
+
+// UploadAssetDocument загружает документ в централизованное хранилище и связывает с активом
+func (s *AssetService) UploadAssetDocument(ctx context.Context, assetID, tenantID string, file multipart.File, header *multipart.FileHeader, req dto.AssetDocumentUploadRequest, createdBy string) (*dto.DocumentDTO, error) {
+	log.Printf("DEBUG: asset_service.UploadAssetDocument assetID=%s type=%s", assetID, req.DocumentType)
+
+	// Проверяем, что актив существует
+	asset, err := s.assetRepo.GetByID(ctx, assetID)
+	if err != nil {
+		return nil, err
+	}
+	if asset == nil {
+		return nil, errors.New("asset not found")
+	}
+
+	// Создаем запрос для загрузки в централизованное хранилище
+	uploadReq := dto.UploadDocumentDTO{
+		Name:        req.Title,
+		Description: assetStringPtr(fmt.Sprintf("Document for asset %s (%s)", asset.Name, asset.InventoryNumber)),
+		FolderID:    nil, // Можно создать папку для документов активов
+		Tags:        []string{"#активы", fmt.Sprintf("#%s", req.DocumentType)},
+		LinkedTo: &dto.DocumentLinkDTO{
+			Module:   "assets",
+			EntityID: assetID,
+		},
+		Metadata: assetStringPtr(fmt.Sprintf(`{"asset_id": "%s", "asset_name": "%s", "document_type": "%s"}`, assetID, asset.Name, req.DocumentType)),
+	}
+
+	// Загружаем документ в централизованное хранилище
+	document, err := s.documentStorageService.UploadDocument(ctx, tenantID, file, header, uploadReq, createdBy)
+	if err != nil {
+		log.Printf("ERROR: asset_service.UploadAssetDocument UploadDocument: %v", err)
+		return nil, err
+	}
+
+	// Логируем в историю актива
+	err = s.assetRepo.AddHistory(ctx, assetID, "document_uploaded", "", fmt.Sprintf("Document uploaded: %s", document.Title), createdBy)
+	if err != nil {
+		log.Printf("WARN: asset_service.UploadAssetDocument AddHistory: %v", err)
+	}
+
+	log.Printf("DEBUG: asset_service.UploadAssetDocument success documentID=%s", document.ID)
+	return document, nil
+}
+
+// GetAssetDocumentsFromStorage получает документы, связанные с активом из централизованного хранилища
+func (s *AssetService) GetAssetDocumentsFromStorage(ctx context.Context, assetID, tenantID string) ([]dto.DocumentDTO, error) {
+	log.Printf("DEBUG: asset_service.GetAssetDocuments assetID=%s", assetID)
+
+	// Проверяем, что актив существует
+	asset, err := s.assetRepo.GetByID(ctx, assetID)
+	if err != nil {
+		return nil, err
+	}
+	if asset == nil {
+		return nil, errors.New("asset not found")
+	}
+
+	// Получаем документы из централизованного хранилища
+	documents, err := s.documentStorageService.GetModuleDocuments(ctx, "assets", assetID, tenantID)
+	if err != nil {
+		log.Printf("ERROR: asset_service.GetAssetDocuments GetModuleDocuments: %v", err)
+		return nil, err
+	}
+
+	log.Printf("DEBUG: asset_service.GetAssetDocuments found %d documents", len(documents))
+	return documents, nil
+}
+
+// LinkExistingDocumentToAsset связывает существующий документ с активом
+func (s *AssetService) LinkExistingDocumentToAsset(ctx context.Context, assetID, documentID, tenantID, linkedBy string) error {
+	log.Printf("DEBUG: asset_service.LinkExistingDocumentToAsset assetID=%s documentID=%s", assetID, documentID)
+
+	// Проверяем, что актив существует
+	asset, err := s.assetRepo.GetByID(ctx, assetID)
+	if err != nil {
+		return err
+	}
+	if asset == nil {
+		return errors.New("asset not found")
+	}
+
+	// Проверяем, что документ существует
+	document, err := s.documentStorageService.GetDocument(ctx, documentID, tenantID)
+	if err != nil {
+		return err
+	}
+
+	// Связываем документ с активом
+	err = s.documentStorageService.LinkDocumentToModule(ctx, documentID, "assets", assetID, "attachment", fmt.Sprintf("Linked to asset %s", asset.Name), linkedBy)
+	if err != nil {
+		log.Printf("ERROR: asset_service.LinkExistingDocumentToAsset LinkDocumentToModule: %v", err)
+		return err
+	}
+
+	// Логируем в историю актива
+	err = s.assetRepo.AddHistory(ctx, assetID, "document_linked", "", fmt.Sprintf("Document linked: %s", document.Title), linkedBy)
+	if err != nil {
+		log.Printf("WARN: asset_service.LinkExistingDocumentToAsset AddHistory: %v", err)
+	}
+
+	log.Printf("DEBUG: asset_service.LinkExistingDocumentToAsset success")
+	return nil
+}
+
+// UnlinkDocumentFromAsset отвязывает документ от актива
+func (s *AssetService) UnlinkDocumentFromAsset(ctx context.Context, assetID, documentID, tenantID, unlinkedBy string) error {
+	log.Printf("DEBUG: asset_service.UnlinkDocumentFromAsset assetID=%s documentID=%s", assetID, documentID)
+
+	// Проверяем, что актив существует
+	asset, err := s.assetRepo.GetByID(ctx, assetID)
+	if err != nil {
+		return err
+	}
+	if asset == nil {
+		return errors.New("asset not found")
+	}
+
+	// Получаем информацию о документе
+	document, err := s.documentStorageService.GetDocument(ctx, documentID, tenantID)
+	if err != nil {
+		return err
+	}
+
+	// Отвязываем документ от актива
+	err = s.documentStorageService.UnlinkDocumentFromModule(ctx, documentID, "assets", assetID, unlinkedBy)
+	if err != nil {
+		log.Printf("ERROR: asset_service.UnlinkDocumentFromAsset UnlinkDocumentFromModule: %v", err)
+		return err
+	}
+
+	// Логируем в историю актива
+	err = s.assetRepo.AddHistory(ctx, assetID, "document_unlinked", "", fmt.Sprintf("Document unlinked: %s", document.Title), unlinkedBy)
+	if err != nil {
+		log.Printf("WARN: asset_service.UnlinkDocumentFromAsset AddHistory: %v", err)
+	}
+
+	log.Printf("DEBUG: asset_service.UnlinkDocumentFromAsset success")
+	return nil
+}
+
+// DeleteAssetDocument удаляет документ из централизованного хранилища
+func (s *AssetService) DeleteAssetDocument(ctx context.Context, assetID, documentID, tenantID, deletedBy string) error {
+	log.Printf("DEBUG: asset_service.DeleteAssetDocument assetID=%s documentID=%s", assetID, documentID)
+
+	// Проверяем, что актив существует
+	asset, err := s.assetRepo.GetByID(ctx, assetID)
+	if err != nil {
+		return err
+	}
+	if asset == nil {
+		return errors.New("asset not found")
+	}
+
+	// Получаем информацию о документе
+	document, err := s.documentStorageService.GetDocument(ctx, documentID, tenantID)
+	if err != nil {
+		return err
+	}
+
+	// Удаляем документ из централизованного хранилища
+	err = s.documentStorageService.DeleteDocument(ctx, documentID, tenantID, deletedBy)
+	if err != nil {
+		log.Printf("ERROR: asset_service.DeleteAssetDocument DeleteDocument: %v", err)
+		return err
+	}
+
+	// Логируем в историю актива
+	err = s.assetRepo.AddHistory(ctx, assetID, "document_deleted", "", fmt.Sprintf("Document deleted: %s", document.Title), deletedBy)
+	if err != nil {
+		log.Printf("WARN: asset_service.DeleteAssetDocument AddHistory: %v", err)
+	}
+
+	log.Printf("DEBUG: asset_service.DeleteAssetDocument success")
+	return nil
+}
+
+// Helper function to create string pointer
+func assetStringPtr(s string) *string {
+	return &s
 }

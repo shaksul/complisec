@@ -66,3 +66,4 @@ export const tenantsApi = {
     await apiClient.delete(`/tenants/${id}`)
   }
 }
+

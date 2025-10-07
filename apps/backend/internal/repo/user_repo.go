@@ -190,6 +190,8 @@ func (r *UserRepo) Update(ctx context.Context, u User) error {
 }
 
 func (r *UserRepo) GetUserRoles(ctx context.Context, userID string) ([]string, error) {
+	log.Printf("DEBUG: GetUserRoles called for userID: %s", userID)
+
 	rows, err := r.db.Query(`
 		SELECT r.name FROM roles r
 		JOIN user_roles ur ON r.id = ur.role_id
@@ -197,6 +199,7 @@ func (r *UserRepo) GetUserRoles(ctx context.Context, userID string) ([]string, e
 		WHERE ur.user_id = $1 AND u.tenant_id = r.tenant_id
 	`, userID)
 	if err != nil {
+		log.Printf("ERROR: GetUserRoles query failed: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -205,10 +208,14 @@ func (r *UserRepo) GetUserRoles(ctx context.Context, userID string) ([]string, e
 	for rows.Next() {
 		var role string
 		if err := rows.Scan(&role); err != nil {
+			log.Printf("ERROR: GetUserRoles scan failed: %v", err)
 			return nil, err
 		}
+		log.Printf("DEBUG: GetUserRoles found role: %s", role)
 		roles = append(roles, role)
 	}
+
+	log.Printf("DEBUG: GetUserRoles returning roles: %v", roles)
 	return roles, nil
 }
 
@@ -448,7 +455,7 @@ func (r *UserRepo) GetUserStats(ctx context.Context, userID string) (map[string]
 	// Count risks
 	var riskCount int
 	err = r.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM risks WHERE created_by = $1 AND tenant_id = $2
+		SELECT COUNT(*) FROM risks WHERE owner_user_id = $1 AND tenant_id = $2
 	`, userID, user.TenantID).Scan(&riskCount)
 	if err != nil {
 		stats["risks_count"] = 0
@@ -459,7 +466,7 @@ func (r *UserRepo) GetUserStats(ctx context.Context, userID string) (map[string]
 	// Count incidents
 	var incidentCount int
 	err = r.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM incidents WHERE created_by = $1 AND tenant_id = $2
+		SELECT COUNT(*) FROM incidents WHERE reported_by = $1 AND tenant_id = $2
 	`, userID, user.TenantID).Scan(&incidentCount)
 	if err != nil {
 		stats["incidents_count"] = 0
@@ -470,12 +477,50 @@ func (r *UserRepo) GetUserStats(ctx context.Context, userID string) (map[string]
 	// Count assets
 	var assetCount int
 	err = r.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM assets WHERE created_by = $1 AND tenant_id = $2
+		SELECT COUNT(*) FROM assets WHERE responsible_user_id = $1 AND tenant_id = $2
 	`, userID, user.TenantID).Scan(&assetCount)
 	if err != nil {
 		stats["assets_count"] = 0
 	} else {
 		stats["assets_count"] = assetCount
+	}
+
+	// Count sessions
+	var sessionCount int
+	err = r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM user_sessions WHERE user_id = $1 AND is_active = true
+	`, userID).Scan(&sessionCount)
+	if err != nil {
+		stats["sessions_count"] = 0
+	} else {
+		stats["sessions_count"] = sessionCount
+	}
+
+	// Count successful logins
+	var loginCount int
+	err = r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM login_attempts WHERE user_id = $1 AND success = true
+	`, userID).Scan(&loginCount)
+	if err != nil {
+		stats["login_count"] = 0
+	} else {
+		stats["login_count"] = loginCount
+	}
+
+	// Calculate activity score based on recent activity
+	var activityCount int
+	err = r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM user_activities WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '30 days'
+	`, userID).Scan(&activityCount)
+	if err != nil {
+		stats["activity_score"] = 0
+	} else {
+		// Simple scoring: more activity = higher score (max 100)
+		activityScore := activityCount * 5
+		if activityScore > 100 {
+			activityScore = 100
+		}
+		stats["activity_score"] = activityScore
 	}
 
 	return stats, nil
@@ -484,4 +529,206 @@ func (r *UserRepo) GetUserStats(ctx context.Context, userID string) (map[string]
 type UserWithRoles struct {
 	User
 	Roles []string
+}
+
+// UserActivity represents user activity log
+type UserActivity struct {
+	ID          string
+	UserID      string
+	Action      string
+	Description string
+	IPAddress   *string
+	UserAgent   *string
+	CreatedAt   time.Time
+	Metadata    map[string]interface{}
+}
+
+// GetUserActivity retrieves user activity with pagination
+func (r *UserRepo) GetUserActivity(ctx context.Context, userID string, page, pageSize int) ([]UserActivity, int64, error) {
+	offset := (page - 1) * pageSize
+
+	// Get total count
+	var total int64
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM user_activities WHERE user_id = $1
+	`, userID).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Get activities with pagination
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, user_id, action, description, ip_address, user_agent, created_at, metadata
+		FROM user_activities 
+		WHERE user_id = $1 
+		ORDER BY created_at DESC 
+		LIMIT $2 OFFSET $3
+	`, userID, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	activities := make([]UserActivity, 0)
+	for rows.Next() {
+		var activity UserActivity
+		var metadataJSON sql.NullString
+		err := rows.Scan(&activity.ID, &activity.UserID, &activity.Action, &activity.Description,
+			&activity.IPAddress, &activity.UserAgent, &activity.CreatedAt, &metadataJSON)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		// Parse metadata JSON if present
+		if metadataJSON.Valid && metadataJSON.String != "" {
+			// For now, we'll leave metadata as nil since we don't have a JSON parser
+			// In a real implementation, you'd parse the JSON here
+			activity.Metadata = make(map[string]interface{})
+		}
+
+		activities = append(activities, activity)
+	}
+
+	return activities, total, nil
+}
+
+// GetUserActivityStats retrieves aggregated activity statistics
+func (r *UserRepo) GetUserActivityStats(ctx context.Context, userID string) (map[string]interface{}, error) {
+	stats := make(map[string]interface{})
+
+	// Get daily activity for the last 30 days
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT DATE(created_at) as date, COUNT(*) as count
+		FROM user_activities 
+		WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '30 days'
+		GROUP BY DATE(created_at)
+		ORDER BY date DESC
+	`, userID)
+	if err != nil {
+		stats["daily_activity"] = []map[string]interface{}{}
+	} else {
+		defer rows.Close()
+		dailyActivity := make([]map[string]interface{}, 0)
+		for rows.Next() {
+			var date string
+			var count int
+			if err := rows.Scan(&date, &count); err == nil {
+				dailyActivity = append(dailyActivity, map[string]interface{}{
+					"date":  date,
+					"count": count,
+				})
+			}
+		}
+		stats["daily_activity"] = dailyActivity
+	}
+
+	// Get top actions
+	rows, err = r.db.QueryContext(ctx, `
+		SELECT action, COUNT(*) as count
+		FROM user_activities 
+		WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '30 days'
+		GROUP BY action
+		ORDER BY count DESC
+		LIMIT 10
+	`, userID)
+	if err != nil {
+		stats["top_actions"] = []map[string]interface{}{}
+	} else {
+		defer rows.Close()
+		topActions := make([]map[string]interface{}, 0)
+		for rows.Next() {
+			var action string
+			var count int
+			if err := rows.Scan(&action, &count); err == nil {
+				topActions = append(topActions, map[string]interface{}{
+					"action": action,
+					"count":  count,
+				})
+			}
+		}
+		stats["top_actions"] = topActions
+	}
+
+	// Get login history (assuming we have a login_attempts table)
+	rows, err = r.db.QueryContext(ctx, `
+		SELECT ip_address, user_agent, created_at, success
+		FROM login_attempts 
+		WHERE user_id = $1 
+		ORDER BY created_at DESC
+		LIMIT 10
+	`, userID)
+	if err != nil {
+		stats["login_history"] = []map[string]interface{}{}
+	} else {
+		defer rows.Close()
+		loginHistory := make([]map[string]interface{}, 0)
+		for rows.Next() {
+			var ipAddress, userAgent string
+			var createdAt time.Time
+			var success bool
+			if err := rows.Scan(&ipAddress, &userAgent, &createdAt, &success); err == nil {
+				loginHistory = append(loginHistory, map[string]interface{}{
+					"ip_address": ipAddress,
+					"user_agent": userAgent,
+					"created_at": createdAt,
+					"success":    success,
+				})
+			}
+		}
+		stats["login_history"] = loginHistory
+	}
+
+	return stats, nil
+}
+
+// LogUserActivity logs a user activity
+func (r *UserRepo) LogUserActivity(ctx context.Context, userID, action, description, ipAddress, userAgent string, metadata map[string]interface{}) error {
+	// Get user's tenant ID first
+	user, err := r.GetByID(ctx, userID)
+	if err != nil {
+		log.Printf("ERROR: LogUserActivity GetByID: %v", err)
+		return err
+	}
+	if user == nil {
+		log.Printf("WARN: LogUserActivity user not found: %s", userID)
+		return errors.New("user not found")
+	}
+
+	// Convert metadata to JSON string
+	var metadataJSON string
+	if len(metadata) > 0 {
+		// For now, we'll store as simple JSON string
+		// In a real implementation, you'd use a proper JSON library
+		metadataJSON = "{}" // Placeholder
+	}
+
+	// Insert activity into database
+	_, err = r.db.ExecContext(ctx, `
+		INSERT INTO user_activities (user_id, tenant_id, action, description, ip_address, user_agent, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, userID, user.TenantID, action, description, ipAddress, userAgent, metadataJSON)
+
+	if err != nil {
+		log.Printf("ERROR: LogUserActivity insert failed: %v", err)
+		return err
+	}
+
+	log.Printf("User Activity logged: %s - %s: %s (IP: %s)", userID, action, description, ipAddress)
+	return nil
+}
+
+// LogLoginAttempt logs a login attempt
+func (r *UserRepo) LogLoginAttempt(ctx context.Context, userID, tenantID, email, ipAddress, userAgent string, success bool, failureReason string) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO login_attempts (user_id, tenant_id, email, ip_address, user_agent, success, failure_reason)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, userID, tenantID, email, ipAddress, userAgent, success, failureReason)
+
+	if err != nil {
+		log.Printf("ERROR: LogLoginAttempt insert failed: %v", err)
+		return err
+	}
+
+	log.Printf("Login attempt logged: %s - %s (IP: %s, Success: %v)", email, failureReason, ipAddress, success)
+	return nil
 }

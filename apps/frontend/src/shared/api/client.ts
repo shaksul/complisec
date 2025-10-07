@@ -10,7 +10,8 @@ const API_BASE_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:
 export const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
-    'Content-Type': 'application/json',
+    'Content-Type': 'application/json; charset=utf-8',
+    'Accept': 'application/json; charset=utf-8',
   },
 })
 
@@ -31,9 +32,20 @@ api.interceptors.request.use(
   }
 )
 
-// Response interceptor to handle token refresh
+// Response interceptor to handle UTF-8 encoding and token refresh
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Принудительно устанавливаем UTF-8 кодировку для ответов
+    if (response.headers['content-type'] && 
+        response.headers['content-type'].includes('application/json') &&
+        !response.headers['content-type'].includes('charset=utf-8')) {
+      response.headers['content-type'] = response.headers['content-type'].replace(
+        'application/json', 
+        'application/json; charset=utf-8'
+      )
+    }
+    return response
+  },
   async (error) => {
     const originalRequest = error.config
 

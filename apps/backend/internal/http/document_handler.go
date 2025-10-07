@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"mime/multipart"
 	"strconv"
 	"strings"
@@ -15,11 +16,11 @@ import (
 
 // DocumentHandler - обработчик для документов
 type DocumentHandler struct {
-	documentService domain.DocumentServiceInterface
+	documentService domain.DocumentStorageServiceInterface
 }
 
 // NewDocumentHandler создает новый экземпляр DocumentHandler
-func NewDocumentHandler(documentService domain.DocumentServiceInterface) *DocumentHandler {
+func NewDocumentHandler(documentService domain.DocumentStorageServiceInterface) *DocumentHandler {
 	return &DocumentHandler{
 		documentService: documentService,
 	}
@@ -40,14 +41,24 @@ func (h *DocumentHandler) RegisterRoutes(router fiber.Router) {
 	router.Delete("/folders/:id", RequirePermission("document.delete"), h.DeleteFolder)
 
 	// Документы
-	router.Post("/documents/upload", RequirePermission("document.create"), h.UploadDocument)
+	router.Post("/documents", RequirePermission("document.create"), h.CreateDocument)
+	router.Post("/documents/upload", RequirePermission("document.create"), func(c *fiber.Ctx) error {
+		log.Printf("DEBUG: DocumentHandler.UploadDocument middleware - before handler")
+		return h.UploadDocument(c)
+	})
+	router.Post("/documents/test-upload", h.TestUploadDocument)
+	router.Post("/documents/simple-upload", h.SimpleUploadDocument)
+	router.Post("/documents/test-multipart", h.TestMultipartForm)
 	router.Get("/documents", RequirePermission("document.read"), h.ListDocuments)
+	router.Get("/documents/structured", RequirePermission("document.read"), h.ListStructuredDocuments)
 	router.Get("/documents/search", RequirePermission("document.read"), h.SearchDocuments)
 	router.Get("/stats", RequirePermission("document.read"), h.GetDocumentStats)
 	router.Get("/documents/:id", RequirePermission("document.read"), h.GetDocument)
 	router.Put("/documents/:id", RequirePermission("document.edit"), h.UpdateDocument)
 	router.Delete("/documents/:id", RequirePermission("document.delete"), h.DeleteDocument)
 	router.Get("/documents/:id/download", RequirePermission("document.read"), h.DownloadDocument)
+	router.Get("/documents/:id/versions", RequirePermission("document.read"), h.GetDocumentVersions)
+	router.Post("/documents/:id/versions", RequirePermission("document.edit"), h.UploadDocumentVersion)
 }
 
 // CreateFolder создает новую папку
@@ -114,7 +125,7 @@ func (h *DocumentHandler) UpdateFolder(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	err := h.documentService.UpdateFolder(ctx, folderID, tenantID, req, userID)
+	_, err := h.documentService.UpdateFolder(ctx, folderID, tenantID, req, userID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to update folder: %v", err)})
 	}
@@ -139,15 +150,33 @@ func (h *DocumentHandler) DeleteFolder(c *fiber.Ctx) error {
 
 // UploadDocument загружает документ
 func (h *DocumentHandler) UploadDocument(c *fiber.Ctx) error {
+	log.Printf("DEBUG: DocumentHandler.UploadDocument START - handler called")
+
+	// Добавляем обработку panic
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("ERROR: DocumentHandler.UploadDocument panic: %v", r)
+		}
+	}()
+
 	ctx := c.Context()
 	tenantID := c.Locals("tenant_id").(string)
 	userID := c.Locals("user_id").(string)
 
+	log.Printf("DEBUG: DocumentHandler.UploadDocument called with tenantID=%s, userID=%s", tenantID, userID)
+	log.Printf("DEBUG: DocumentHandler.UploadDocument request method: %s", c.Method())
+	log.Printf("DEBUG: DocumentHandler.UploadDocument request path: %s", c.Path())
+	log.Printf("DEBUG: DocumentHandler.UploadDocument content type: %s", c.Get("Content-Type"))
+	log.Printf("DEBUG: DocumentHandler.UploadDocument starting multipart form parsing")
+
 	// Получаем файл из формы
+	log.Printf("DEBUG: DocumentHandler.UploadDocument getting form file")
 	file, err := c.FormFile("file")
 	if err != nil {
+		log.Printf("ERROR: DocumentHandler.UploadDocument FormFile error: %v", err)
 		return c.Status(400).JSON(fiber.Map{"error": "No file provided"})
 	}
+	log.Printf("DEBUG: DocumentHandler.UploadDocument got file: %s", file.Filename)
 
 	// Открываем файл
 	src, err := file.Open()
@@ -179,6 +208,9 @@ func (h *DocumentHandler) UploadDocument(c *fiber.Ctx) error {
 		for i, tag := range req.Tags {
 			req.Tags[i] = strings.TrimSpace(tag)
 		}
+	} else {
+		// Если теги не указаны, добавляем автоматический тег #documents
+		req.Tags = []string{"#documents"}
 	}
 
 	// Парсим связи с другими модулями
@@ -189,12 +221,127 @@ func (h *DocumentHandler) UploadDocument(c *fiber.Ctx) error {
 		}
 	}
 
+	log.Printf("DEBUG: DocumentHandler.UploadDocument calling service with req=%+v", req)
 	document, err := h.documentService.UploadDocument(ctx, tenantID, src, header, req, userID)
 	if err != nil {
+		log.Printf("ERROR: DocumentHandler.UploadDocument service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to upload document: %v", err)})
 	}
 
-	return c.JSON(document)
+	log.Printf("DEBUG: DocumentHandler.UploadDocument success, documentID=%s", document.ID)
+	return c.JSON(fiber.Map{"data": document})
+}
+
+// TestUploadDocument - простой тест загрузки файла
+func (h *DocumentHandler) TestUploadDocument(c *fiber.Ctx) error {
+	log.Printf("DEBUG: TestUploadDocument called")
+
+	// Получаем файл из формы
+	file, err := c.FormFile("file")
+	if err != nil {
+		log.Printf("ERROR: TestUploadDocument FormFile error: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "No file provided"})
+	}
+
+	log.Printf("DEBUG: TestUploadDocument got file: %s", file.Filename)
+
+	return c.JSON(fiber.Map{"message": "File received successfully", "filename": file.Filename})
+}
+
+// CreateDocument создает документ без файла
+func (h *DocumentHandler) CreateDocument(c *fiber.Ctx) error {
+	ctx := c.Context()
+	tenantID := c.Locals("tenant_id").(string)
+	userID := c.Locals("user_id").(string)
+
+	log.Printf("DEBUG: DocumentHandler.CreateDocument called")
+
+	var req dto.CreateDocumentDTO
+	if err := c.BodyParser(&req); err != nil {
+		log.Printf("ERROR: DocumentHandler.CreateDocument BodyParser error: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	log.Printf("DEBUG: DocumentHandler.CreateDocument req=%+v", req)
+
+	// Создаем документ без файла
+	document, err := h.documentService.CreateDocument(ctx, tenantID, req, userID)
+	if err != nil {
+		log.Printf("ERROR: DocumentHandler.CreateDocument service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to create document: %v", err)})
+	}
+
+	log.Printf("DEBUG: DocumentHandler.CreateDocument success, documentID=%s", document.ID)
+	return c.Status(201).JSON(fiber.Map{"data": document})
+}
+
+// UploadDocumentVersion загружает новую версию документа
+func (h *DocumentHandler) UploadDocumentVersion(c *fiber.Ctx) error {
+	ctx := c.Context()
+	tenantID := c.Locals("tenant_id").(string)
+	userID := c.Locals("user_id").(string)
+	documentID := c.Params("id")
+
+	log.Printf("DEBUG: DocumentHandler.UploadDocumentVersion called for documentID=%s", documentID)
+
+	// Получаем файл из формы
+	file, err := c.FormFile("file")
+	if err != nil {
+		log.Printf("ERROR: DocumentHandler.UploadDocumentVersion FormFile error: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "No file provided"})
+	}
+
+	// Открываем файл
+	src, err := file.Open()
+	if err != nil {
+		log.Printf("ERROR: DocumentHandler.UploadDocumentVersion file open error: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Cannot open file"})
+	}
+	defer src.Close()
+
+	log.Printf("DEBUG: DocumentHandler.UploadDocumentVersion calling service with documentID=%s", documentID)
+
+	// Создаем версию документа
+	version, err := h.documentService.CreateDocumentVersion(ctx, documentID, tenantID, src, file, userID)
+	if err != nil {
+		log.Printf("ERROR: DocumentHandler.UploadDocumentVersion service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to create document version: %v", err)})
+	}
+
+	log.Printf("DEBUG: DocumentHandler.UploadDocumentVersion success, versionID=%s", version.ID)
+	return c.JSON(fiber.Map{"data": version})
+}
+
+// SimpleUploadDocument - максимально простой тест загрузки файла
+func (h *DocumentHandler) SimpleUploadDocument(c *fiber.Ctx) error {
+	log.Printf("DEBUG: SimpleUploadDocument called")
+
+	return c.JSON(fiber.Map{"message": "Simple endpoint works"})
+}
+
+// TestMultipartForm - тест multipart form parsing
+func (h *DocumentHandler) TestMultipartForm(c *fiber.Ctx) error {
+	log.Printf("DEBUG: TestMultipartForm called")
+
+	// Попробуем получить форму
+	_, err := c.MultipartForm()
+	if err != nil {
+		log.Printf("ERROR: TestMultipartForm MultipartForm error: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": fmt.Sprintf("MultipartForm error: %v", err)})
+	}
+
+	log.Printf("DEBUG: TestMultipartForm got form successfully")
+
+	// Попробуем получить файл
+	file, err := c.FormFile("file")
+	if err != nil {
+		log.Printf("ERROR: TestMultipartForm FormFile error: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": fmt.Sprintf("FormFile error: %v", err)})
+	}
+
+	log.Printf("DEBUG: TestMultipartForm got file: %s", file.Filename)
+
+	return c.JSON(fiber.Map{"message": "Multipart form parsing works", "filename": file.Filename})
 }
 
 // GetDocument получает документ по ID
@@ -208,7 +355,7 @@ func (h *DocumentHandler) GetDocument(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to get document: %v", err)})
 	}
 
-	return c.JSON(document)
+	return c.JSON(fiber.Map{"data": document})
 }
 
 // ListDocuments получает список документов
@@ -274,7 +421,7 @@ func (h *DocumentHandler) ListDocuments(c *fiber.Ctx) error {
 	}
 	fmt.Printf("DEBUG: DocumentHandler.ListDocuments got %d documents\n", len(documents))
 
-	return c.JSON(documents)
+	return c.JSON(fiber.Map{"data": documents})
 }
 
 // UpdateDocument обновляет документ
@@ -284,12 +431,12 @@ func (h *DocumentHandler) UpdateDocument(c *fiber.Ctx) error {
 	userID := c.Locals("user_id").(string)
 	documentID := c.Params("id")
 
-	var req dto.UpdateFileDocumentDTO
+	var req dto.UpdateDocumentDTO
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	err := h.documentService.UpdateDocument(ctx, documentID, tenantID, req, userID)
+	_, err := h.documentService.UpdateDocument(ctx, documentID, tenantID, req, userID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to update document: %v", err)})
 	}
@@ -323,11 +470,22 @@ func (h *DocumentHandler) DownloadDocument(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to download document: %v", err)})
 	}
 
-	// Устанавливаем заголовки для скачивания
-	c.Set("Content-Type", downloadData.MimeType)
+	// Устанавливаем заголовки для скачивания с UTF-8 кодировкой
+	contentType := downloadData.MimeType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	// Для текстовых файлов принудительно устанавливаем UTF-8
+	if strings.HasPrefix(contentType, "text/") {
+		contentType += "; charset=utf-8"
+	}
+
+	c.Set("Content-Type", contentType)
 	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", downloadData.FileName))
 	c.Set("Content-Length", strconv.FormatInt(downloadData.FileSize, 10))
 	c.Set("Last-Modified", downloadData.LastModified.Format("Mon, 02 Jan 2006 15:04:05 GMT"))
+	c.Set("Accept-Charset", "utf-8")
 
 	return c.Send(downloadData.Content)
 }
@@ -347,7 +505,7 @@ func (h *DocumentHandler) SearchDocuments(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to search documents: %v", err)})
 	}
 
-	return c.JSON(results)
+	return c.JSON(fiber.Map{"data": results})
 }
 
 // GetDocumentStats получает статистику документов
@@ -360,7 +518,101 @@ func (h *DocumentHandler) GetDocumentStats(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to get document stats: %v", err)})
 	}
 
-	return c.JSON(stats)
+	return c.JSON(fiber.Map{"data": stats})
+}
+
+// GetDocumentVersions получает версии документа
+func (h *DocumentHandler) GetDocumentVersions(c *fiber.Ctx) error {
+	ctx := c.Context()
+	tenantID := c.Locals("tenant_id").(string)
+	documentID := c.Params("id")
+
+	log.Printf("DEBUG: DocumentHandler.GetDocumentVersions called for documentID=%s", documentID)
+
+	// Получаем версии документа
+	versions, err := h.documentService.GetDocumentVersions(ctx, documentID, tenantID)
+	if err != nil {
+		log.Printf("ERROR: DocumentHandler.GetDocumentVersions service error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to get document versions: %v", err)})
+	}
+
+	log.Printf("DEBUG: DocumentHandler.GetDocumentVersions returning %d versions", len(versions))
+	return c.JSON(fiber.Map{"data": versions})
+}
+
+// ListStructuredDocuments получает документы, организованные по структуре папок
+func (h *DocumentHandler) ListStructuredDocuments(c *fiber.Ctx) error {
+	ctx := c.Context()
+	tenantID := c.Locals("tenant_id").(string)
+
+	// Получаем все документы
+	documents, err := h.documentService.ListDocuments(ctx, tenantID, dto.FileDocumentFiltersDTO{
+		Page:  1,
+		Limit: 1000, // Большое число для получения всех документов
+	})
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to list documents: %v", err)})
+	}
+
+	// Организуем документы по структуре папок
+	structuredData := organizeDocumentsByStructure(documents)
+
+	return c.JSON(fiber.Map{"data": structuredData})
+}
+
+// organizeDocumentsByStructure организует документы по их структуре папок
+func organizeDocumentsByStructure(documents []dto.DocumentDTO) map[string]interface{} {
+	structure := make(map[string]interface{})
+
+	for _, doc := range documents {
+		// Извлекаем модуль и категорию из пути файла
+		module, category := extractModuleAndCategoryFromPath(doc.FilePath)
+
+		// Создаем структуру папок
+		if structure["modules"] == nil {
+			structure["modules"] = make(map[string]interface{})
+		}
+		modules := structure["modules"].(map[string]interface{})
+
+		if modules[module] == nil {
+			modules[module] = make(map[string]interface{})
+		}
+		moduleMap := modules[module].(map[string]interface{})
+
+		if moduleMap["categories"] == nil {
+			moduleMap["categories"] = make(map[string]interface{})
+		}
+		categories := moduleMap["categories"].(map[string]interface{})
+
+		if categories[category] == nil {
+			categories[category] = make([]dto.DocumentDTO, 0)
+		}
+		documents := categories[category].([]dto.DocumentDTO)
+		categories[category] = append(documents, doc)
+	}
+
+	return structure
+}
+
+// extractModuleAndCategoryFromPath извлекает модуль и категорию из пути файла
+func extractModuleAndCategoryFromPath(filePath string) (string, string) {
+	// Пример пути: storage/documents/00000000-0000-0000-0000-000000000001/modules/documents/categories/uncategorized/file.txt
+	parts := strings.Split(filePath, "/")
+
+	module := "general"
+	category := "uncategorized"
+
+	// Ищем "modules" в пути
+	for i, part := range parts {
+		if part == "modules" && i+1 < len(parts) {
+			module = parts[i+1]
+		}
+		if part == "categories" && i+1 < len(parts) {
+			category = parts[i+1]
+		}
+	}
+
+	return module, category
 }
 
 // Helper function to get string pointer

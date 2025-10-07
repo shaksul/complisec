@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"os"
 	"path/filepath"
@@ -180,12 +181,99 @@ func (s *DocumentService) DeleteFolder(ctx context.Context, id, tenantID string,
 	return nil
 }
 
+// CreateDocument создает документ без файла
+func (s *DocumentService) CreateDocument(ctx context.Context, tenantID string, req dto.CreateDocumentDTO, createdBy string) (*dto.DocumentDTO, error) {
+	// Создаем документ в БД
+	documentID := uuid.New().String()
+	document := repo.Document{
+		ID:           documentID,
+		TenantID:     tenantID,
+		Title:        req.Title,
+		OriginalName: req.Title,
+		Description:  req.Description,
+		Type:         req.Type,
+		Category:     req.Category,
+		FilePath:     "", // Нет файла
+		FileSize:     0,
+		MimeType:     "",
+		FileHash:     "",
+		FolderID:     nil, // Нет папки в CreateDocumentDTO
+		OwnerID:      createdBy,
+		CreatedBy:    createdBy,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+		IsActive:     true,
+		Version:      "1",
+		Metadata:     nil, // Нет метаданных в CreateDocumentDTO
+	}
+
+	if err := s.documentRepo.CreateDocument(ctx, document); err != nil {
+		return nil, fmt.Errorf("failed to create document: %w", err)
+	}
+
+	// Добавляем теги
+	for _, tag := range req.Tags {
+		if err := s.documentRepo.AddDocumentTag(ctx, documentID, tag); err != nil {
+			fmt.Printf("Failed to add tag %s: %v\n", tag, err)
+		}
+	}
+
+	// Создаем аудит запись
+	auditLog := repo.DocumentAuditLog{
+		ID:         uuid.New().String(),
+		TenantID:   tenantID,
+		DocumentID: &documentID,
+		UserID:     createdBy,
+		Action:     "created",
+		Details:    &req.Title,
+		CreatedAt:  time.Now(),
+	}
+	s.documentRepo.CreateDocumentAuditLog(ctx, auditLog)
+
+	// Получаем теги для ответа
+	tags, _ := s.documentRepo.GetDocumentTags(ctx, documentID)
+
+	return &dto.DocumentDTO{
+		ID:           document.ID,
+		TenantID:     document.TenantID,
+		Title:        document.Title,
+		OriginalName: document.OriginalName,
+		Description:  document.Description,
+		Type:         document.Type,
+		Category:     document.Category,
+		FilePath:     document.FilePath,
+		FileSize:     document.FileSize,
+		MimeType:     document.MimeType,
+		FileHash:     document.FileHash,
+		FolderID:     document.FolderID,
+		OwnerID:      document.OwnerID,
+		CreatedBy:    document.CreatedBy,
+		CreatedAt:    document.CreatedAt,
+		UpdatedAt:    document.UpdatedAt,
+		IsActive:     document.IsActive,
+		Version:      document.Version,
+		Metadata:     document.Metadata,
+		Tags:         tags,
+		Links:        []dto.DocumentLinkDTO{},
+	}, nil
+}
+
 // UploadDocument загружает документ
 func (s *DocumentService) UploadDocument(ctx context.Context, tenantID string, file multipart.File, header *multipart.FileHeader, req dto.UploadDocumentDTO, createdBy string) (*dto.DocumentDTO, error) {
+	log.Printf("DEBUG: DocumentService.UploadDocument called with tenantID=%s, filename=%s, name=%s", tenantID, header.Filename, req.Name)
+
 	// Создаем уникальное имя файла
 	fileExt := filepath.Ext(header.Filename)
 	fileName := fmt.Sprintf("%s%s", uuid.New().String(), fileExt)
-	filePath := filepath.Join(s.storagePath, "documents", tenantID, fileName)
+
+	// Определяем модуль и категорию из контекста
+	module := s.detectModuleFromContext(req)
+	category := s.detectCategoryFromContext(req)
+
+	// Создаем структурированный путь к файлу
+	filePath := s.buildStoragePath(tenantID, module, category, fileName)
+
+	log.Printf("DEBUG: DocumentService.UploadDocument filePath=%s, module=%s, category=%s", filePath, module, category)
 
 	// Создаем директорию если не существует
 	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
@@ -215,12 +303,28 @@ func (s *DocumentService) UploadDocument(ctx context.Context, tenantID string, f
 
 	// Создаем документ в БД
 	documentID := uuid.New().String()
+
+	// Обрабатываем связанные сущности
+	var assetIDs, riskIDs, controlIDs []string
+	if req.LinkedTo != nil {
+		switch req.LinkedTo.Module {
+		case "assets":
+			assetIDs = []string{req.LinkedTo.EntityID}
+		case "risks":
+			riskIDs = []string{req.LinkedTo.EntityID}
+		case "compliance":
+			controlIDs = []string{req.LinkedTo.EntityID}
+		}
+	}
+
 	document := repo.Document{
 		ID:           documentID,
 		TenantID:     tenantID,
-		Name:         req.Name,
+		Title:        req.Name,
 		OriginalName: header.Filename,
 		Description:  req.Description,
+		Type:         "other",   // По умолчанию для загруженных документов
+		Category:     &category, // Сохраняем категорию
 		FilePath:     filePath,
 		FileSize:     fileSize,
 		MimeType:     header.Header.Get("Content-Type"),
@@ -233,6 +337,9 @@ func (s *DocumentService) UploadDocument(ctx context.Context, tenantID string, f
 		IsActive:     true,
 		Version:      "1",
 		Metadata:     req.Metadata,
+		AssetIDs:     assetIDs,
+		RiskIDs:      riskIDs,
+		ControlIDs:   controlIDs,
 	}
 
 	if err := s.documentRepo.CreateDocument(ctx, document); err != nil {
@@ -241,8 +348,17 @@ func (s *DocumentService) UploadDocument(ctx context.Context, tenantID string, f
 		return nil, fmt.Errorf("failed to create document: %w", err)
 	}
 
-	// Добавляем теги
-	for _, tag := range req.Tags {
+	// Добавляем автоматические теги на основе модуля и категории
+	autoTags := []string{
+		fmt.Sprintf("#%s", module),
+		fmt.Sprintf("#%s", category),
+	}
+
+	// Добавляем пользовательские теги
+	allTags := append(autoTags, req.Tags...)
+
+	// Добавляем теги в БД
+	for _, tag := range allTags {
 		if err := s.documentRepo.AddDocumentTag(ctx, documentID, tag); err != nil {
 			// Логируем ошибку, но не прерываем процесс
 			fmt.Printf("Failed to add tag %s: %v\n", tag, err)
@@ -288,10 +404,12 @@ func (s *DocumentService) UploadDocument(ctx context.Context, tenantID string, f
 		})
 	}
 
+	log.Printf("DEBUG: DocumentService.UploadDocument success, documentID=%s", document.ID)
+
 	return &dto.DocumentDTO{
 		ID:           document.ID,
 		TenantID:     document.TenantID,
-		Name:         document.Name,
+		Title:        document.Title,
 		OriginalName: document.OriginalName,
 		Description:  document.Description,
 		FilePath:     document.FilePath,
@@ -340,7 +458,7 @@ func (s *DocumentService) GetDocument(ctx context.Context, id, tenantID string) 
 	return &dto.DocumentDTO{
 		ID:           document.ID,
 		TenantID:     document.TenantID,
-		Name:         document.Name,
+		Title:        document.Title,
 		OriginalName: document.OriginalName,
 		Description:  document.Description,
 		FilePath:     document.FilePath,
@@ -417,7 +535,7 @@ func (s *DocumentService) ListDocuments(ctx context.Context, tenantID string, fi
 		result = append(result, dto.DocumentDTO{
 			ID:           document.ID,
 			TenantID:     document.TenantID,
-			Name:         document.Name,
+			Title:        document.Title,
 			OriginalName: document.OriginalName,
 			Description:  document.Description,
 			FilePath:     document.FilePath,
@@ -447,7 +565,7 @@ func (s *DocumentService) UpdateDocument(ctx context.Context, id, tenantID strin
 		return fmt.Errorf("failed to get document: %w", err)
 	}
 
-	document.Name = req.Name
+	document.Title = req.Name
 	document.Description = req.Description
 	document.FolderID = req.FolderID
 	document.Metadata = req.Metadata
@@ -512,7 +630,7 @@ func (s *DocumentService) DeleteDocument(ctx context.Context, id, tenantID strin
 		DocumentID: &id,
 		UserID:     deletedBy,
 		Action:     "deleted",
-		Details:    &document.Name,
+		Details:    &document.Title,
 		CreatedAt:  time.Now(),
 	}
 	s.documentRepo.CreateDocumentAuditLog(ctx, auditLog)
@@ -577,7 +695,7 @@ func (s *DocumentService) SearchDocuments(ctx context.Context, tenantID, searchT
 
 		result = append(result, dto.FileDocumentSearchResultDTO{
 			DocumentID:     document.ID,
-			Name:           document.Name,
+			Name:           document.Title,
 			Description:    document.Description,
 			MimeType:       document.MimeType,
 			FileSize:       document.FileSize,
@@ -588,6 +706,178 @@ func (s *DocumentService) SearchDocuments(ctx context.Context, tenantID, searchT
 	}
 
 	return result, nil
+}
+
+// CreateDocumentVersion создает новую версию документа
+func (s *DocumentService) CreateDocumentVersion(ctx context.Context, documentID, tenantID string, file io.ReadSeeker, header *multipart.FileHeader, createdBy string) (*dto.DocumentVersionDTO, error) {
+	// Получаем существующий документ
+	document, err := s.documentRepo.GetDocumentByID(ctx, documentID, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get document: %w", err)
+	}
+
+	// Получаем следующий номер версии
+	versions, err := s.documentRepo.GetDocumentVersions(ctx, documentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get document versions: %w", err)
+	}
+	nextVersion := len(versions) + 1
+
+	// Создаем путь для новой версии
+	ext := filepath.Ext(header.Filename)
+	fileName := fmt.Sprintf("%s_v%d%s", documentID, nextVersion, ext)
+
+	// Определяем модуль и категорию из существующего документа
+	module := s.detectModuleFromDocument(document)
+	category := s.detectCategoryFromDocument(document)
+
+	// Создаем структурированный путь к файлу версии
+	filePath := s.buildStoragePath(tenantID, module, category, fileName)
+
+	// Создаем директорию если не существует
+	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+		return nil, fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	// Создаем файл версии
+	dst, err := os.Create(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create file: %w", err)
+	}
+	defer dst.Close()
+
+	// Копируем содержимое файла
+	fileSize, err := io.Copy(dst, file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to copy file: %w", err)
+	}
+
+	// Вычисляем хеш файла
+	hash := sha256.New()
+	file.Seek(0, 0) // Возвращаемся к началу файла
+	if _, err := io.Copy(hash, file); err != nil {
+		return nil, fmt.Errorf("failed to calculate hash: %w", err)
+	}
+	fileHash := fmt.Sprintf("%x", hash.Sum(nil))
+
+	// Создаем версию документа в БД
+	versionID := uuid.New().String()
+	version := repo.DocumentVersion{
+		ID:                versionID,
+		DocumentID:        documentID,
+		VersionNumber:     nextVersion,
+		FilePath:          filePath,
+		FileSize:          fileSize,
+		FileHash:          fileHash,
+		CreatedBy:         createdBy,
+		CreatedAt:         time.Now(),
+		ChangeDescription: nil, // TODO: добавить описание изменений
+	}
+
+	if err := s.documentRepo.CreateDocumentVersion(ctx, version); err != nil {
+		return nil, fmt.Errorf("failed to create document version: %w", err)
+	}
+
+	// Создаем аудит запись
+	auditLog := repo.DocumentAuditLog{
+		ID:         uuid.New().String(),
+		TenantID:   tenantID,
+		DocumentID: &documentID,
+		UserID:     createdBy,
+		Action:     "version_created",
+		Details:    &fileName,
+		CreatedAt:  time.Now(),
+	}
+	s.documentRepo.CreateDocumentAuditLog(ctx, auditLog)
+
+	return &dto.DocumentVersionDTO{
+		ID:                version.ID,
+		DocumentID:        version.DocumentID,
+		VersionNumber:     version.VersionNumber,
+		FilePath:          version.FilePath,
+		FileSize:          version.FileSize,
+		FileHash:          version.FileHash,
+		CreatedBy:         version.CreatedBy,
+		CreatedAt:         version.CreatedAt,
+		ChangeDescription: version.ChangeDescription,
+	}, nil
+}
+
+// GetDocumentVersions получает версии документа
+func (s *DocumentService) GetDocumentVersions(ctx context.Context, documentID, tenantID string) ([]dto.DocumentVersionDTO, error) {
+	// Проверяем, что документ существует
+	_, err := s.documentRepo.GetDocumentByID(ctx, documentID, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get document: %w", err)
+	}
+
+	// Получаем версии
+	versions, err := s.documentRepo.GetDocumentVersions(ctx, documentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get document versions: %w", err)
+	}
+
+	// Конвертируем в DTO
+	var result []dto.DocumentVersionDTO
+	for _, version := range versions {
+		result = append(result, dto.DocumentVersionDTO{
+			ID:                version.ID,
+			DocumentID:        version.DocumentID,
+			VersionNumber:     version.VersionNumber,
+			FilePath:          version.FilePath,
+			FileSize:          version.FileSize,
+			FileHash:          version.FileHash,
+			CreatedBy:         version.CreatedBy,
+			CreatedAt:         version.CreatedAt,
+			ChangeDescription: version.ChangeDescription,
+		})
+	}
+
+	return result, nil
+}
+
+// detectModuleFromDocument определяет модуль из существующего документа
+func (s *DocumentService) detectModuleFromDocument(document *repo.Document) string {
+	// Анализируем путь файла для определения модуля
+	path := document.FilePath
+	if strings.Contains(path, "/modules/assets/") {
+		return "assets"
+	} else if strings.Contains(path, "/modules/risks/") {
+		return "risks"
+	} else if strings.Contains(path, "/modules/incidents/") {
+		return "incidents"
+	} else if strings.Contains(path, "/modules/training/") {
+		return "training"
+	} else if strings.Contains(path, "/modules/compliance/") {
+		return "compliance"
+	} else if strings.Contains(path, "/modules/documents/") {
+		return "documents"
+	}
+	return "general"
+}
+
+// detectCategoryFromDocument определяет категорию из существующего документа
+func (s *DocumentService) detectCategoryFromDocument(document *repo.Document) string {
+	// Используем категорию из документа или определяем по пути
+	if document.Category != nil {
+		return *document.Category
+	}
+
+	path := document.FilePath
+	if strings.Contains(path, "/categories/passport/") {
+		return "passport"
+	} else if strings.Contains(path, "/categories/transfer_act/") {
+		return "transfer_act"
+	} else if strings.Contains(path, "/categories/analysis/") {
+		return "analysis"
+	} else if strings.Contains(path, "/categories/reports/") {
+		return "reports"
+	} else if strings.Contains(path, "/categories/materials/") {
+		return "materials"
+	} else if strings.Contains(path, "/categories/policies/") {
+		return "policies"
+	}
+	return "uncategorized"
 }
 
 // GetDocumentStats получает статистику документов
@@ -623,7 +913,7 @@ func (s *DocumentService) GetDocumentStats(ctx context.Context, tenantID string)
 		recentDocs = append(recentDocs, dto.DocumentDTO{
 			ID:           doc.ID,
 			TenantID:     doc.TenantID,
-			Name:         doc.Name,
+			Title:        doc.Title,
 			OriginalName: doc.OriginalName,
 			Description:  doc.Description,
 			FilePath:     doc.FilePath,
@@ -696,6 +986,69 @@ func (s *DocumentService) RemoveDocumentLink(ctx context.Context, documentID, mo
 	}
 
 	return nil
+}
+
+// buildStoragePath создает структурированный путь к файлу
+func (s *DocumentService) buildStoragePath(tenantID, module, category, fileName string) string {
+	// Определяем базовую структуру папок
+	basePath := filepath.Join(s.storagePath, tenantID)
+
+	// Добавляем модуль если указан
+	if module != "" {
+		basePath = filepath.Join(basePath, "modules", module)
+	}
+
+	// Добавляем категорию если указана
+	if category != "" {
+		basePath = filepath.Join(basePath, "categories", category)
+	}
+
+	// Добавляем имя файла
+	return filepath.Join(basePath, fileName)
+}
+
+// detectModuleFromContext определяет модуль из контекста запроса
+func (s *DocumentService) detectModuleFromContext(req dto.UploadDocumentDTO) string {
+	// Если есть связи с модулями, используем их
+	if req.LinkedTo != nil && req.LinkedTo.Module != "" {
+		return req.LinkedTo.Module
+	}
+
+	// Если есть теги, пытаемся определить модуль по тегам
+	for _, tag := range req.Tags {
+		switch strings.ToLower(tag) {
+		case "#активы", "#assets", "активы", "assets":
+			return "assets"
+		case "#риски", "#risks", "риски", "risks", "управление рисками":
+			return "risks"
+		case "#инциденты", "#incidents", "инциденты", "incidents":
+			return "incidents"
+		case "#обучение", "#training", "обучение", "training":
+			return "training"
+		case "#соответствие", "#compliance", "соответствие", "compliance", "политики":
+			return "compliance"
+		}
+	}
+
+	// По умолчанию - общие документы
+	return "general"
+}
+
+// detectCategoryFromContext определяет категорию из контекста запроса
+func (s *DocumentService) detectCategoryFromContext(req dto.UploadDocumentDTO) string {
+	// Если есть теги, пытаемся определить категорию по тегам
+	for _, tag := range req.Tags {
+		// Убираем # из тега для использования как категории
+		if strings.HasPrefix(tag, "#") {
+			category := strings.TrimPrefix(tag, "#")
+			if category != "" {
+				return category
+			}
+		}
+	}
+
+	// По умолчанию - uncategorized
+	return "uncategorized"
 }
 
 // Helper function to check if slice contains string

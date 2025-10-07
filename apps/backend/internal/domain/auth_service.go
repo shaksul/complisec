@@ -22,6 +22,7 @@ type AuthService struct {
 func NewAuthService(userRepo *repo.UserRepo, roleRepo *repo.RoleRepo, permissionRepo *repo.PermissionRepo, jwtSecret string) *AuthService {
 	return &AuthService{
 		userRepo:       userRepo,
+		roleRepo:       roleRepo, // Исправлено: теперь roleRepo сохраняется в поле структуры
 		permissionRepo: permissionRepo,
 		jwtSecret:      jwtSecret,
 	}

@@ -38,3 +38,4 @@ type PaginationInfo struct {
 	HasNext    bool  `json:"has_next"`
 	HasPrev    bool  `json:"has_prev"`
 }
+

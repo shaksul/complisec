@@ -1,5 +1,5 @@
 -- Создание таблицы для запросов на смену email
-CREATE TABLE email_change_requests (
+CREATE TABLE IF NOT EXISTS email_change_requests (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -15,18 +15,18 @@ CREATE TABLE email_change_requests (
 );
 
 -- Индексы для оптимизации запросов
-CREATE INDEX idx_email_change_requests_user_id ON email_change_requests(user_id);
-CREATE INDEX idx_email_change_requests_tenant_id ON email_change_requests(tenant_id);
-CREATE INDEX idx_email_change_requests_verification_code ON email_change_requests(verification_code);
-CREATE INDEX idx_email_change_requests_status ON email_change_requests(status);
-CREATE INDEX idx_email_change_requests_expires_at ON email_change_requests(expires_at);
+CREATE INDEX IF NOT EXISTS idx_email_change_requests_user_id ON email_change_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_email_change_requests_tenant_id ON email_change_requests(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_email_change_requests_verification_code ON email_change_requests(verification_code);
+CREATE INDEX IF NOT EXISTS idx_email_change_requests_status ON email_change_requests(status);
+CREATE INDEX IF NOT EXISTS idx_email_change_requests_expires_at ON email_change_requests(expires_at);
 
 -- Уникальный индекс для предотвращения дублирования активных запросов
-CREATE UNIQUE INDEX idx_email_change_requests_active_user ON email_change_requests(user_id, tenant_id) 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_email_change_requests_active_user ON email_change_requests(user_id, tenant_id) 
 WHERE status IN ('pending', 'old_email_verified', 'new_email_verified');
 
 -- Создание таблицы для аудит-лога изменений email
-CREATE TABLE email_change_audit_log (
+CREATE TABLE IF NOT EXISTS email_change_audit_log (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -39,21 +39,6 @@ CREATE TABLE email_change_audit_log (
 );
 
 -- Индексы для аудит-лога
-CREATE INDEX idx_email_change_audit_log_user_id ON email_change_audit_log(user_id);
-CREATE INDEX idx_email_change_audit_log_tenant_id ON email_change_audit_log(tenant_id);
-CREATE INDEX idx_email_change_audit_log_created_at ON email_change_audit_log(created_at);
-
--- Функция для автоматического обновления updated_at
-CREATE OR REPLACE FUNCTION update_email_change_requests_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Триггер для автоматического обновления updated_at
-CREATE TRIGGER trigger_update_email_change_requests_updated_at
-    BEFORE UPDATE ON email_change_requests
-    FOR EACH ROW
-    EXECUTE FUNCTION update_email_change_requests_updated_at();
+CREATE INDEX IF NOT EXISTS idx_email_change_audit_log_user_id ON email_change_audit_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_email_change_audit_log_tenant_id ON email_change_audit_log(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_email_change_audit_log_created_at ON email_change_audit_log(created_at);

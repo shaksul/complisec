@@ -173,7 +173,7 @@ export const getFolder = async (id: string): Promise<Folder> => {
 export const listFolders = async (parentId?: string): Promise<Folder[]> => {
   const params = parentId ? `?parent_id=${parentId}` : ''
   const response = await apiClient.get(`/folders${params}`)
-  return response.data
+  return Array.isArray(response.data) ? response.data : response.data.data || []
 }
 
 export const updateFolder = async (id: string, data: UpdateFolderDTO): Promise<void> => {
@@ -228,7 +228,12 @@ export const listDocuments = async (filters: DocumentFilters): Promise<FileDocum
   params.append('limit', filters.limit.toString())
 
   const response = await apiClient.get(`/documents?${params.toString()}`)
-  return response.data
+  return Array.isArray(response.data) ? response.data : response.data.data || []
+}
+
+export const listStructuredDocuments = async (): Promise<any> => {
+  const response = await apiClient.get('/documents/structured')
+  return response.data.data
 }
 
 export const updateDocument = async (id: string, data: UpdateDocumentDTO): Promise<void> => {

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo } from 'react'
+﻿import React, { useEffect, useMemo, useState } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -89,6 +89,8 @@ export const RiskModal: React.FC<RiskModalProps> = ({
   initialData,
   users = [],
 }) => {
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  
   const {
     control,
     handleSubmit,
@@ -137,16 +139,23 @@ export const RiskModal: React.FC<RiskModalProps> = ({
     [],
   )
 
-  const handleFormSubmit = (data: RiskFormData) => {
-    onSubmit({
-      ...data,
-      description: data.description?.trim() || undefined,
-      category: data.category?.trim() || '',
-      owner_user_id: data.owner_user_id?.trim() || undefined,
-      methodology: data.methodology?.trim() || undefined,
-      strategy: data.strategy?.trim() || undefined,
-      due_date: data.due_date?.trim() || undefined,
-    })
+  const handleFormSubmit = async (data: RiskFormData) => {
+    try {
+      setIsSubmitting(true)
+      await onSubmit({
+        ...data,
+        description: data.description?.trim() || undefined,
+        category: data.category?.trim() || '',
+        owner_user_id: data.owner_user_id?.trim() || undefined,
+        methodology: data.methodology?.trim() || undefined,
+        strategy: data.strategy?.trim() || undefined,
+        due_date: data.due_date?.trim() || undefined,
+      })
+    } catch (error) {
+      console.error('Error submitting form:', error)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const likelihood = watch('likelihood')
@@ -181,25 +190,31 @@ export const RiskModal: React.FC<RiskModalProps> = ({
           </Grid>
 
           <Grid item xs={12} sm={6}>
-            <FormControl fullWidth error={!!errors.category}>
-              <InputLabel>Категория</InputLabel>
-              <Select
-                label="Категория"
-                {...register('category')}
-                defaultValue={initialData?.category ?? ''}
-              >
-                {RISK_CATEGORIES.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-              {errors.category && (
-                <Typography variant="caption" color="error">
-                  {errors.category.message}
-                </Typography>
+            <Controller
+              name="category"
+              control={control}
+              render={({ field }) => (
+                <FormControl fullWidth error={!!errors.category}>
+                  <InputLabel>Категория</InputLabel>
+                  <Select
+                    {...field}
+                    label="Категория"
+                    value={field.value ?? ''}
+                  >
+                    {RISK_CATEGORIES.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  {errors.category && (
+                    <Typography variant="caption" color="error">
+                      {errors.category.message}
+                    </Typography>
+                  )}
+                </FormControl>
               )}
-            </FormControl>
+            />
           </Grid>
 
           <Grid item xs={12} sm={6}>
@@ -323,43 +338,55 @@ export const RiskModal: React.FC<RiskModalProps> = ({
           </Grid>
 
           <Grid item xs={12} sm={6}>
-            <FormControl fullWidth>
-              <InputLabel>Метод оценки</InputLabel>
-              <Select
-                {...register('methodology')}
-                label="Метод оценки"
-                defaultValue={initialData?.methodology ?? ''}
-              >
-                <MenuItem value="">
-                  <em>Не выбран</em>
-                </MenuItem>
-                {RISK_METHODOLOGIES.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <Controller
+              name="methodology"
+              control={control}
+              render={({ field }) => (
+                <FormControl fullWidth>
+                  <InputLabel>Метод оценки</InputLabel>
+                  <Select
+                    {...field}
+                    label="Метод оценки"
+                    value={field.value ?? ''}
+                  >
+                    <MenuItem value="">
+                      <em>Не выбран</em>
+                    </MenuItem>
+                    {RISK_METHODOLOGIES.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+            />
           </Grid>
 
           <Grid item xs={12} sm={6}>
-            <FormControl fullWidth>
-              <InputLabel>Стратегия обработки</InputLabel>
-              <Select
-                {...register('strategy')}
-                label="Стратегия обработки"
-                defaultValue={initialData?.strategy ?? ''}
-              >
-                <MenuItem value="">
-                  <em>Не выбрана</em>
-                </MenuItem>
-                {RISK_STRATEGIES.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <Controller
+              name="strategy"
+              control={control}
+              render={({ field }) => (
+                <FormControl fullWidth>
+                  <InputLabel>Стратегия обработки</InputLabel>
+                  <Select
+                    {...field}
+                    label="Стратегия обработки"
+                    value={field.value ?? ''}
+                  >
+                    <MenuItem value="">
+                      <em>Не выбрана</em>
+                    </MenuItem>
+                    {RISK_STRATEGIES.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+            />
           </Grid>
 
           <Grid item xs={12} sm={6}>
@@ -376,9 +403,15 @@ export const RiskModal: React.FC<RiskModalProps> = ({
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={onClose}>Отмена</Button>
-        <Button onClick={handleSubmit(handleFormSubmit)} variant="contained">
-          Сохранить
+        <Button onClick={onClose} disabled={isSubmitting}>
+          Отмена
+        </Button>
+        <Button 
+          onClick={handleSubmit(handleFormSubmit)} 
+          variant="contained"
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? 'Сохранение...' : 'Сохранить'}
         </Button>
       </DialogActions>
     </Dialog>

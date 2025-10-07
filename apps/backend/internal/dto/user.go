@@ -72,8 +72,46 @@ type UserDetailResponse struct {
 }
 
 type UserStats struct {
-	DocumentsCount int `json:"documents_count"`
-	RisksCount     int `json:"risks_count"`
-	IncidentsCount int `json:"incidents_count"`
-	AssetsCount    int `json:"assets_count"`
+	DocumentsCount int     `json:"documents_count"`
+	RisksCount     int     `json:"risks_count"`
+	IncidentsCount int     `json:"incidents_count"`
+	AssetsCount    int     `json:"assets_count"`
+	SessionsCount  int     `json:"sessions_count"`
+	LoginCount     int     `json:"login_count"`
+	ActivityScore  int     `json:"activity_score"`
+	LastLogin      *string `json:"last_login,omitempty"`
+}
+
+type UserActivity struct {
+	ID          string                 `json:"id"`
+	UserID      string                 `json:"user_id"`
+	Action      string                 `json:"action"`
+	Description string                 `json:"description"`
+	IPAddress   *string                `json:"ip_address,omitempty"`
+	UserAgent   *string                `json:"user_agent,omitempty"`
+	CreatedAt   time.Time              `json:"created_at"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+}
+
+type UserActivityStats struct {
+	DailyActivity []DailyActivity `json:"daily_activity"`
+	TopActions    []TopAction     `json:"top_actions"`
+	LoginHistory  []LoginHistory  `json:"login_history"`
+}
+
+type DailyActivity struct {
+	Date  string `json:"date"`
+	Count int    `json:"count"`
+}
+
+type TopAction struct {
+	Action string `json:"action"`
+	Count  int    `json:"count"`
+}
+
+type LoginHistory struct {
+	IPAddress string    `json:"ip_address"`
+	UserAgent string    `json:"user_agent"`
+	CreatedAt time.Time `json:"created_at"`
+	Success   bool      `json:"success"`
 }
