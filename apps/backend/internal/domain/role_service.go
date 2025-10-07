@@ -15,7 +15,7 @@ type RoleRepository interface {
 	GetByID(ctx context.Context, id string) (*repo.Role, error)
 	GetByName(ctx context.Context, tenantID, name string) (*repo.Role, error)
 	List(ctx context.Context, tenantID string) ([]repo.Role, error)
-	Update(ctx context.Context, id, name, description string) error
+	Update(ctx context.Context, id, name string, description *string) error
 	Delete(ctx context.Context, id string) error
 	SetRolePermissions(ctx context.Context, roleID string, permissionIDs []string) error
 	GetRolePermissions(ctx context.Context, roleID string) ([]string, error)
@@ -248,16 +248,18 @@ func (s *RoleService) UpdateRole(ctx context.Context, roleID string, name, descr
 
 	// Обновляем поля роли
 	updateName := role.Name
-	updateDescription := ""
-	if role.Description != nil {
-		updateDescription = *role.Description
-	}
+	var updateDescription *string
 
 	if name != nil {
 		updateName = *name
 	}
+
+	// Если description передан, используем его; иначе сохраняем существующее значение
 	if description != nil {
-		updateDescription = *description
+		updateDescription = description
+	} else {
+		// Сохраняем существующее описание (может быть NULL)
+		updateDescription = role.Description
 	}
 
 	err = s.roleRepo.Update(ctx, roleID, updateName, updateDescription)
@@ -280,8 +282,13 @@ func (s *RoleService) UpdateRole(ctx context.Context, roleID string, name, descr
 	if s.auditRepo != nil {
 		auditData := map[string]interface{}{
 			"role_name":        updateName,
-			"description":      updateDescription,
 			"permission_count": len(permissionIDs),
+		}
+		// Добавляем описание только если оно не NULL
+		if updateDescription != nil {
+			auditData["description"] = *updateDescription
+		} else {
+			auditData["description"] = nil
 		}
 		s.auditRepo.LogAction(ctx, role.TenantID, "system", "role.update", "role", &roleID, auditData)
 	}

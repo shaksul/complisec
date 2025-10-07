@@ -268,12 +268,13 @@ func (s *UserService) UpdateRole(ctx context.Context, id, name, description *str
 	if name != nil {
 		updatedName = *name
 	}
-	var updatedDescription string
-	if role.Description != nil {
-		updatedDescription = *role.Description
-	}
+
+	var updatedDescription *string
 	if description != nil {
-		updatedDescription = *description
+		updatedDescription = description
+	} else {
+		// Сохраняем существующее описание (может быть NULL)
+		updatedDescription = role.Description
 	}
 
 	err = s.roleRepo.Update(ctx, *id, updatedName, updatedDescription)

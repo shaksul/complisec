@@ -112,7 +112,7 @@ func (r *RoleRepo) List(ctx context.Context, tenantID string) ([]Role, error) {
 	return roles, nil
 }
 
-func (r *RoleRepo) Update(ctx context.Context, id, name, description string) error {
+func (r *RoleRepo) Update(ctx context.Context, id, name string, description *string) error {
 	_, err := r.db.Exec(`
 		UPDATE roles SET name = $1, description = $2, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $3

@@ -92,7 +92,7 @@ func (r *CachedRoleRepo) GetByName(ctx context.Context, tenantID, name string) (
 }
 
 // Update обновляет роль и инвалидирует кэш
-func (r *CachedRoleRepo) Update(ctx context.Context, id, name, description string) error {
+func (r *CachedRoleRepo) Update(ctx context.Context, id, name string, description *string) error {
 	err := r.roleRepo.Update(ctx, id, name, description)
 	if err != nil {
 		return err

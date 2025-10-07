@@ -993,18 +993,98 @@ func (s *DocumentService) buildStoragePath(tenantID, module, category, fileName 
 	// Определяем базовую структуру папок
 	basePath := filepath.Join(s.storagePath, tenantID)
 
-	// Добавляем модуль если указан
+	// Добавляем модуль если указан (с валидацией)
 	if module != "" {
-		basePath = filepath.Join(basePath, "modules", module)
+		// Очищаем модуль от опасных символов
+		cleanModule := s.sanitizePathComponent(module)
+		if cleanModule != "" {
+			basePath = filepath.Join(basePath, "modules", cleanModule)
+		}
 	}
 
-	// Добавляем категорию если указана
+	// Добавляем категорию если указана (с валидацией)
 	if category != "" {
-		basePath = filepath.Join(basePath, "categories", category)
+		// Очищаем категорию от опасных символов
+		cleanCategory := s.sanitizePathComponent(category)
+		if cleanCategory != "" {
+			basePath = filepath.Join(basePath, "categories", cleanCategory)
+		}
 	}
 
-	// Добавляем имя файла
-	return filepath.Join(basePath, fileName)
+	// Добавляем имя файла (с валидацией)
+	cleanFileName := s.sanitizeFileName(fileName)
+	if cleanFileName == "" {
+		// Если имя файла невалидно, используем UUID
+		cleanFileName = uuid.New().String()
+	}
+
+	// Создаем итоговый путь
+	finalPath := filepath.Join(basePath, cleanFileName)
+	
+	// Дополнительная проверка: убеждаемся, что итоговый путь находится внутри storagePath
+	absStoragePath, err := filepath.Abs(s.storagePath)
+	if err != nil {
+		log.Printf("ERROR: Failed to get absolute storage path: %v", err)
+		return filepath.Join(s.storagePath, tenantID, "secure", uuid.New().String())
+	}
+	
+	absFinalPath, err := filepath.Abs(finalPath)
+	if err != nil {
+		log.Printf("ERROR: Failed to get absolute final path: %v", err)
+		return filepath.Join(s.storagePath, tenantID, "secure", uuid.New().String())
+	}
+	
+	// Проверяем, что итоговый путь начинается с storagePath
+	if !strings.HasPrefix(absFinalPath, absStoragePath) {
+		log.Printf("WARNING: Path traversal attempt detected. Original path: %s, Final path: %s", finalPath, absFinalPath)
+		return filepath.Join(s.storagePath, tenantID, "secure", uuid.New().String())
+	}
+
+	return finalPath
+}
+
+// sanitizePathComponent очищает компонент пути от опасных символов
+func (s *DocumentService) sanitizePathComponent(component string) string {
+	// Убираем все символы, кроме букв, цифр, дефисов и подчеркиваний
+	cleaned := ""
+	for _, r := range component {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || 
+		   (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			cleaned += string(r)
+		}
+	}
+	
+	// Ограничиваем длину
+	if len(cleaned) > 50 {
+		cleaned = cleaned[:50]
+	}
+	
+	// Убираем точки в начале и конце
+	cleaned = strings.Trim(cleaned, ".")
+	
+	return cleaned
+}
+
+// sanitizeFileName очищает имя файла от опасных символов
+func (s *DocumentService) sanitizeFileName(fileName string) string {
+	// Убираем все символы, кроме букв, цифр, дефисов, подчеркиваний и точки
+	cleaned := ""
+	for _, r := range fileName {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || 
+		   (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
+			cleaned += string(r)
+		}
+	}
+	
+	// Ограничиваем длину
+	if len(cleaned) > 100 {
+		cleaned = cleaned[:100]
+	}
+	
+	// Убираем точки в начале и конце (кроме расширения)
+	cleaned = strings.Trim(cleaned, ".")
+	
+	return cleaned
 }
 
 // detectModuleFromContext определяет модуль из контекста запроса

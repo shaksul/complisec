@@ -24,9 +24,10 @@ func NewRoleHandler(roleService *domain.RoleService) *RoleHandler {
 func (h *RoleHandler) Register(r fiber.Router) {
 	log.Printf("DEBUG: RoleHandler.Register called")
 	roles := r.Group("/roles")
-	roles.Get("/", h.listRoles)
-	roles.Post("/", h.createRole) // Временно без middleware для отладки
-	roles.Get("/test", h.testRoleHandler)
+	roles.Get("/", RequirePermission("roles.view"), h.listRoles)
+	roles.Post("/", RequirePermission("roles.create"), h.createRole)
+	// Удаляем тестовый эндпоинт - он не должен быть в продакшене
+	// roles.Get("/test", h.testRoleHandler)
 	roles.Get("/:id", RequirePermission("roles.view"), h.getRole)
 	roles.Put("/:id", RequirePermission("roles.edit"), h.updateRole)
 	roles.Delete("/:id", RequirePermission("roles.delete"), h.deleteRole)
@@ -58,11 +59,6 @@ func (h *RoleHandler) listRoles(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"data": roleResponses})
-}
-
-func (h *RoleHandler) testRoleHandler(c *fiber.Ctx) error {
-	log.Printf("DEBUG: testRoleHandler called - ROLE HANDLER IS WORKING!")
-	return c.JSON(fiber.Map{"message": "Role handler is working!"})
 }
 
 func (h *RoleHandler) createRole(c *fiber.Ctx) error {
