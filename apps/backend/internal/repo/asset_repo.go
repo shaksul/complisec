@@ -37,25 +37,29 @@ type Asset struct {
 }
 
 type AssetDocument struct {
-	ID           string    `json:"id"`
-	AssetID      string    `json:"asset_id"`
-	DocumentType string    `json:"document_type"`
-	FilePath     string    `json:"file_path"`
-	Title        string    `json:"title"`
-	Mime         string    `json:"mime"`
-	SizeBytes    int64     `json:"size_bytes"`
-	CreatedBy    string    `json:"created_by"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID             string    `json:"id"`
+	AssetID        string    `json:"asset_id"`
+	DocumentType   string    `json:"document_type"`
+	FilePath       string    `json:"file_path"`
+	Title          string    `json:"title"`
+	Mime           string    `json:"mime"`
+	SizeBytes      int64     `json:"size_bytes"`
+	CreatedBy      string    `json:"created_by"`
+	CreatedByName  *string   `json:"created_by_name,omitempty"`  // ФИО пользователя
+	CreatedByEmail *string   `json:"created_by_email,omitempty"` // Email пользователя
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type AssetHistory struct {
-	ID           string    `json:"id"`
-	AssetID      string    `json:"asset_id"`
-	FieldChanged string    `json:"field_changed"`
-	OldValue     *string   `json:"old_value,omitempty"`
-	NewValue     string    `json:"new_value"`
-	ChangedBy    string    `json:"changed_by"`
-	ChangedAt    time.Time `json:"changed_at"`
+	ID             string    `json:"id"`
+	AssetID        string    `json:"asset_id"`
+	FieldChanged   string    `json:"field_changed"`
+	OldValue       *string   `json:"old_value,omitempty"`
+	NewValue       string    `json:"new_value"`
+	ChangedBy      string    `json:"changed_by"`
+	ChangedByName  *string   `json:"changed_by_name,omitempty"`  // ФИО пользователя
+	ChangedByEmail *string   `json:"changed_by_email,omitempty"` // Email пользователя
+	ChangedAt      time.Time `json:"changed_at"`
 }
 
 type AssetSoftware struct {
@@ -487,6 +491,7 @@ func (r *AssetRepo) AddDocument(ctx context.Context, assetID, documentType, file
 
 func (r *AssetRepo) GetAssetDocuments(ctx context.Context, assetID string) ([]AssetDocument, error) {
 	// Используем document_links для получения документов, связанных с активом
+	// JOIN с users для получения имени и email создателя
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT d.id, dl.entity_id as asset_id, 
 		       COALESCE(d.category, 'other') as document_type,
@@ -495,9 +500,12 @@ func (r *AssetRepo) GetAssetDocuments(ctx context.Context, assetID string) ([]As
 		       d.mime_type as mime,
 		       d.size_bytes,
 		       d.created_by,
+		       COALESCE(u.first_name || ' ' || u.last_name, u.email) as created_by_name,
+		       u.email as created_by_email,
 		       d.created_at
 		FROM documents d
 		INNER JOIN document_links dl ON d.id = dl.document_id
+		LEFT JOIN users u ON d.created_by = u.id
 		WHERE d.deleted_at IS NULL 
 		  AND dl.module = 'assets'
 		  AND dl.entity_id = $1
@@ -512,10 +520,17 @@ func (r *AssetRepo) GetAssetDocuments(ctx context.Context, assetID string) ([]As
 	var documents []AssetDocument
 	for rows.Next() {
 		var doc AssetDocument
-		err := rows.Scan(&doc.ID, &doc.AssetID, &doc.DocumentType, &doc.FilePath, &doc.Title, &doc.Mime, &doc.SizeBytes, &doc.CreatedBy, &doc.CreatedAt)
+		var createdByName, createdByEmail sql.NullString
+		err := rows.Scan(&doc.ID, &doc.AssetID, &doc.DocumentType, &doc.FilePath, &doc.Title, &doc.Mime, &doc.SizeBytes, &doc.CreatedBy, &createdByName, &createdByEmail, &doc.CreatedAt)
 		if err != nil {
 			log.Printf("ERROR: GetAssetDocuments scan failed: %v", err)
 			return nil, err
+		}
+		if createdByName.Valid {
+			doc.CreatedByName = &createdByName.String
+		}
+		if createdByEmail.Valid {
+			doc.CreatedByEmail = &createdByEmail.String
 		}
 		documents = append(documents, doc)
 	}
@@ -563,9 +578,16 @@ func (r *AssetRepo) AddHistory(ctx context.Context, assetID, fieldChanged, oldVa
 }
 
 func (r *AssetRepo) GetAssetHistory(ctx context.Context, assetID string) ([]AssetHistory, error) {
+	// JOIN с users для получения имени и email пользователя
 	rows, err := r.db.Query(`
-		SELECT id, asset_id, field_changed, old_value, new_value, changed_by, changed_at
-		FROM asset_history WHERE asset_id = $1 ORDER BY changed_at DESC
+		SELECT h.id, h.asset_id, h.field_changed, h.old_value, h.new_value, h.changed_by, 
+		       COALESCE(u.first_name || ' ' || u.last_name, u.email) as changed_by_name,
+		       u.email as changed_by_email,
+		       h.changed_at
+		FROM asset_history h
+		LEFT JOIN users u ON h.changed_by = u.id
+		WHERE h.asset_id = $1 
+		ORDER BY h.changed_at DESC
 	`, assetID)
 	if err != nil {
 		return nil, err
@@ -575,9 +597,16 @@ func (r *AssetRepo) GetAssetHistory(ctx context.Context, assetID string) ([]Asse
 	var history []AssetHistory
 	for rows.Next() {
 		var h AssetHistory
-		err := rows.Scan(&h.ID, &h.AssetID, &h.FieldChanged, &h.OldValue, &h.NewValue, &h.ChangedBy, &h.ChangedAt)
+		var changedByName, changedByEmail sql.NullString
+		err := rows.Scan(&h.ID, &h.AssetID, &h.FieldChanged, &h.OldValue, &h.NewValue, &h.ChangedBy, &changedByName, &changedByEmail, &h.ChangedAt)
 		if err != nil {
 			return nil, err
+		}
+		if changedByName.Valid {
+			h.ChangedByName = &changedByName.String
+		}
+		if changedByEmail.Valid {
+			h.ChangedByEmail = &changedByEmail.String
 		}
 		history = append(history, h)
 	}
@@ -586,9 +615,14 @@ func (r *AssetRepo) GetAssetHistory(ctx context.Context, assetID string) ([]Asse
 
 // GetAssetHistoryWithFilters returns asset history with optional filters
 func (r *AssetRepo) GetAssetHistoryWithFilters(ctx context.Context, assetID string, filters map[string]interface{}) ([]AssetHistory, error) {
+	// JOIN с users для получения имени и email пользователя
 	query := `
-		SELECT h.id, h.asset_id, h.field_changed, h.old_value, h.new_value, h.changed_by, h.changed_at
+		SELECT h.id, h.asset_id, h.field_changed, h.old_value, h.new_value, h.changed_by,
+		       COALESCE(u.first_name || ' ' || u.last_name, u.email) as changed_by_name,
+		       u.email as changed_by_email,
+		       h.changed_at
 		FROM asset_history h
+		LEFT JOIN users u ON h.changed_by = u.id
 		WHERE h.asset_id = $1
 	`
 	args := []interface{}{assetID}
@@ -622,9 +656,16 @@ func (r *AssetRepo) GetAssetHistoryWithFilters(ctx context.Context, assetID stri
 	var history []AssetHistory
 	for rows.Next() {
 		var h AssetHistory
-		err := rows.Scan(&h.ID, &h.AssetID, &h.FieldChanged, &h.OldValue, &h.NewValue, &h.ChangedBy, &h.ChangedAt)
+		var changedByName, changedByEmail sql.NullString
+		err := rows.Scan(&h.ID, &h.AssetID, &h.FieldChanged, &h.OldValue, &h.NewValue, &h.ChangedBy, &changedByName, &changedByEmail, &h.ChangedAt)
 		if err != nil {
 			return nil, err
+		}
+		if changedByName.Valid {
+			h.ChangedByName = &changedByName.String
+		}
+		if changedByEmail.Valid {
+			h.ChangedByEmail = &changedByEmail.String
 		}
 		history = append(history, h)
 	}

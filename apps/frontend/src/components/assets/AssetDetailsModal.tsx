@@ -398,8 +398,11 @@ const AssetDetailsModal: React.FC<AssetDetailsModalProps> = ({ assetId, onClose 
                         <Typography variant="body2" fontWeight="medium">
                           {getDocumentTypeLabel(doc.document_type)}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography variant="caption" color="text.secondary" display="block">
                           {formatDate(doc.created_at)}
+                        </Typography>
+                        <Typography variant="caption" color="text.disabled">
+                          {doc.created_by_name || doc.created_by_email || `ID: ${doc.created_by}`}
                         </Typography>
                       </Box>
                     </Box>
@@ -495,7 +498,7 @@ const AssetDetailsModal: React.FC<AssetDetailsModalProps> = ({ assetId, onClose 
                               {entry.new_value && `Стало: ${entry.new_value}`}
                       </Typography>
                       <Typography variant="caption" color="text.disabled" display="block" sx={{ mt: 0.5 }}>
-                              {formatDate(entry.changed_at)} • {entry.changed_by}
+                              {formatDate(entry.changed_at)} • {entry.changed_by_name || entry.changed_by_email || entry.changed_by}
                       </Typography>
                     </Box>
                   </Box>

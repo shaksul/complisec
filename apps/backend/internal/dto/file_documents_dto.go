@@ -61,28 +61,30 @@ type DocumentLinkDTO struct {
 
 // DocumentDTO represents a document response
 type DocumentDTO struct {
-	ID           string            `json:"id"`
-	TenantID     string            `json:"tenant_id"`
-	Title        string            `json:"title"`
-	OriginalName string            `json:"original_name"`
-	Description  *string           `json:"description"`
-	Type         string            `json:"type"`
-	Category     *string           `json:"category"`
-	FilePath     string            `json:"file_path"`
-	FileSize     int64             `json:"file_size"`
-	MimeType     string            `json:"mime_type"`
-	FileHash     string            `json:"file_hash"`
-	FolderID     *string           `json:"folder_id"`
-	OwnerID      string            `json:"owner_id"`
-	CreatedBy    string            `json:"created_by"`
-	CreatedAt    time.Time         `json:"created_at"`
-	UpdatedAt    time.Time         `json:"updated_at"`
-	IsActive     bool              `json:"is_active"`
-	Version      string            `json:"version"`
-	Metadata     *string           `json:"metadata"`
-	Tags         []string          `json:"tags"`
-	Links        []DocumentLinkDTO `json:"links"`
-	OCRText      *string           `json:"ocr_text,omitempty"`
+	ID              string            `json:"id"`
+	TenantID        string            `json:"tenant_id"`
+	Title           string            `json:"title"`
+	OriginalName    string            `json:"original_name"`
+	Description     *string           `json:"description"`
+	Type            string            `json:"type"`
+	Category        *string           `json:"category"`
+	FilePath        string            `json:"file_path"`
+	FileSize        int64             `json:"file_size"`
+	MimeType        string            `json:"mime_type"`
+	FileHash        string            `json:"file_hash"`
+	FolderID        *string           `json:"folder_id"`
+	OwnerID         string            `json:"owner_id"`
+	CreatedBy       string            `json:"created_by"`
+	CreatedByName   *string           `json:"created_by_name,omitempty"`  // ФИО пользователя
+	CreatedByEmail  *string           `json:"created_by_email,omitempty"` // Email пользователя
+	CreatedAt       time.Time         `json:"created_at"`
+	UpdatedAt       time.Time         `json:"updated_at"`
+	IsActive        bool              `json:"is_active"`
+	Version         string            `json:"version"`
+	Metadata        *string           `json:"metadata"`
+	Tags            []string          `json:"tags"`
+	Links           []DocumentLinkDTO `json:"links"`
+	OCRText         *string           `json:"ocr_text,omitempty"`
 }
 
 // DocumentPermissionDTO represents document permission

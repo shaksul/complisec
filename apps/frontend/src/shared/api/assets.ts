@@ -45,6 +45,8 @@ export interface AssetDocument {
   size_bytes: number
   download_url: string
   created_by: string
+  created_by_name?: string | null  // ФИО пользователя
+  created_by_email?: string | null // Email пользователя
   created_at: string
 }
 
@@ -75,6 +77,8 @@ export interface AssetHistory {
   old_value?: string | null
   new_value: string
   changed_by: string
+  changed_by_name?: string | null  // ФИО пользователя
+  changed_by_email?: string | null // Email пользователя
   changed_at: string
 }
 
