@@ -474,8 +474,9 @@ func (r *AssetRepo) AddDocument(ctx context.Context, assetID, documentType, file
 }
 
 func (r *AssetRepo) GetAssetDocuments(ctx context.Context, assetID string) ([]AssetDocument, error) {
+	// Используем document_links для получения документов, связанных с активом
 	rows, err := r.db.Query(`
-		SELECT d.id, $1 as asset_id, 
+		SELECT d.id, dl.entity_id as asset_id, 
 		       COALESCE(d.category, 'other') as document_type,
 		       d.storage_uri as file_path,
 		       d.title,
@@ -484,8 +485,10 @@ func (r *AssetRepo) GetAssetDocuments(ctx context.Context, assetID string) ([]As
 		       d.created_by,
 		       d.created_at
 		FROM documents d
+		INNER JOIN document_links dl ON d.id = dl.document_id
 		WHERE d.deleted_at IS NULL 
-		  AND $1 = ANY(d.asset_ids)
+		  AND dl.module = 'assets'
+		  AND dl.entity_id = $1
 		ORDER BY d.created_at DESC
 	`, assetID)
 	if err != nil {
