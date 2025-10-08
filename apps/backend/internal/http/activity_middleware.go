@@ -48,18 +48,19 @@ func (m *ActivityMiddleware) LogUserActivity() fiber.Handler {
 			"query":  c.Queries(),
 		}
 
-		// Log activity in background (don't block the request)
-		go func() {
-			ctx, cancel := context.WithTimeout(c.Context(), 5*time.Second)
-			defer cancel()
+	// Log activity in background (don't block the request)
+	// ВАЖНО: Создаем новый контекст, т.к. c.Context() становится невалидным после завершения обработки запроса
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 
-			err := m.userService.LogUserActivity(ctx, userID, action, description, ipAddress, userAgent, metadata)
-			if err != nil {
-				log.Printf("Failed to log user activity: %v", err)
-			}
-		}()
+		err := m.userService.LogUserActivity(ctx, userID, action, description, ipAddress, userAgent, metadata)
+		if err != nil {
+			log.Printf("Failed to log user activity: %v", err)
+		}
+	}()
 
-		return c.Next()
+	return c.Next()
 	}
 }
 
