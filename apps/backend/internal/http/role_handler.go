@@ -4,6 +4,7 @@ import (
 	"log"
 	"risknexus/backend/internal/domain"
 	"risknexus/backend/internal/dto"
+	"risknexus/backend/internal/repo"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
@@ -168,6 +169,11 @@ func (h *RoleHandler) getRoleUsers(c *fiber.Ctx) error {
 	users, err := h.roleService.GetUsersByRole(c.Context(), roleID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Если users равен nil, возвращаем пустой массив
+	if users == nil {
+		users = []repo.User{}
 	}
 
 	return c.JSON(fiber.Map{"data": users})
