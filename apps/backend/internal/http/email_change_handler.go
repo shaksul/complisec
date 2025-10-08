@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"strconv"
 
 	"risknexus/backend/internal/domain"
@@ -50,7 +49,7 @@ func (h *EmailChangeHandler) requestEmailChange(c *fiber.Ctx) error {
 	userID := c.Locals("user_id").(string)
 	tenantID := c.Locals("tenant_id").(string)
 
-	request, err := h.emailChangeService.RequestEmailChange(context.Background(), userID, tenantID, req.NewEmail)
+	request, err := h.emailChangeService.RequestEmailChange(c.Context(), userID, tenantID, req.NewEmail)
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -74,7 +73,7 @@ func (h *EmailChangeHandler) verifyOldEmail(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	err := h.emailChangeService.VerifyOldEmail(context.Background(), req.RequestID, req.VerificationCode)
+	err := h.emailChangeService.VerifyOldEmail(c.Context(), req.RequestID, req.VerificationCode)
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -98,7 +97,7 @@ func (h *EmailChangeHandler) verifyNewEmail(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	err := h.emailChangeService.VerifyNewEmail(context.Background(), req.RequestID, req.VerificationCode)
+	err := h.emailChangeService.VerifyNewEmail(c.Context(), req.RequestID, req.VerificationCode)
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -122,7 +121,7 @@ func (h *EmailChangeHandler) completeEmailChange(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	err := h.emailChangeService.CompleteEmailChange(context.Background(), req.RequestID)
+	err := h.emailChangeService.CompleteEmailChange(c.Context(), req.RequestID)
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -145,7 +144,7 @@ func (h *EmailChangeHandler) cancelEmailChange(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	err := h.emailChangeService.CancelEmailChange(context.Background(), req.RequestID)
+	err := h.emailChangeService.CancelEmailChange(c.Context(), req.RequestID)
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -168,7 +167,7 @@ func (h *EmailChangeHandler) resendVerificationCode(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	err := h.emailChangeService.ResendVerificationCode(context.Background(), req.RequestID)
+	err := h.emailChangeService.ResendVerificationCode(c.Context(), req.RequestID)
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -185,7 +184,7 @@ func (h *EmailChangeHandler) getEmailChangeStatus(c *fiber.Ctx) error {
 	userID := c.Locals("user_id").(string)
 	tenantID := c.Locals("tenant_id").(string)
 
-	request, err := h.emailChangeService.GetActiveEmailChangeRequest(context.Background(), userID, tenantID)
+	request, err := h.emailChangeService.GetActiveEmailChangeRequest(c.Context(), userID, tenantID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -230,7 +229,7 @@ func (h *EmailChangeHandler) getAuditLogs(c *fiber.Ctx) error {
 		}
 	}
 
-	logs, err := h.emailChangeService.GetEmailChangeAuditLogs(context.Background(), userID, tenantID, limit, offset)
+	logs, err := h.emailChangeService.GetEmailChangeAuditLogs(c.Context(), userID, tenantID, limit, offset)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}

@@ -479,6 +479,95 @@ func (s *DocumentService) GetDocument(ctx context.Context, id, tenantID string) 
 	}, nil
 }
 
+// GetDocumentsByIDs получает документы по списку ID (оптимизация для батчевой загрузки)
+func (s *DocumentService) GetDocumentsByIDs(ctx context.Context, ids []string, tenantID string) ([]dto.DocumentDTO, error) {
+	if len(ids) == 0 {
+		return []dto.DocumentDTO{}, nil
+	}
+
+	// Получаем документы батчем из репозитория
+	documents, err := s.documentRepo.GetDocumentsByIDs(ctx, ids, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get documents by IDs: %w", err)
+	}
+
+	// Получаем все теги для всех документов одним запросом
+	allTags, err := s.documentRepo.GetDocumentsTags(ctx, ids)
+	if err != nil {
+		// Логируем ошибку, но не прерываем выполнение
+		fmt.Printf("Warning: failed to get documents tags: %v\n", err)
+		allTags = make(map[string][]string)
+	}
+
+	// Получаем все связи для всех документов одним запросом
+	allLinks, err := s.documentRepo.GetDocumentsLinks(ctx, ids)
+	if err != nil {
+		// Логируем ошибку, но не прерываем выполнение
+		fmt.Printf("Warning: failed to get documents links: %v\n", err)
+		allLinks = make(map[string][]repo.DocumentLink)
+	}
+
+	// Получаем все OCR тексты для всех документов одним запросом
+	allOCRTexts, err := s.documentRepo.GetDocumentsOCRTexts(ctx, ids)
+	if err != nil {
+		// Логируем ошибку, но не прерываем выполнение
+		fmt.Printf("Warning: failed to get documents OCR texts: %v\n", err)
+		allOCRTexts = make(map[string]*string)
+	}
+
+	// Конвертируем в DTO
+	result := make([]dto.DocumentDTO, 0, len(documents))
+	for _, document := range documents {
+		// Получаем теги для этого документа
+		tags := allTags[document.ID]
+		if tags == nil {
+			tags = []string{}
+		}
+
+		// Получаем связи для этого документа
+		links := allLinks[document.ID]
+		if links == nil {
+			links = []repo.DocumentLink{}
+		}
+
+		var documentLinks []dto.DocumentLinkDTO
+		for _, link := range links {
+			documentLinks = append(documentLinks, dto.DocumentLinkDTO{
+				Module:   link.Module,
+				EntityID: link.EntityID,
+			})
+		}
+
+		// Получаем OCR текст для этого документа
+		ocrText := allOCRTexts[document.ID]
+
+		result = append(result, dto.DocumentDTO{
+			ID:           document.ID,
+			TenantID:     document.TenantID,
+			Title:        document.Title,
+			OriginalName: document.OriginalName,
+			Description:  document.Description,
+			FilePath:     document.FilePath,
+			FileSize:     document.FileSize,
+			MimeType:     document.MimeType,
+			FileHash:     document.FileHash,
+			FolderID:     document.FolderID,
+			OwnerID:      document.OwnerID,
+			CreatedBy:    document.CreatedBy,
+			CreatedAt:    document.CreatedAt,
+			UpdatedAt:    document.UpdatedAt,
+			IsActive:     document.IsActive,
+			Version:      document.Version,
+			Metadata:     document.Metadata,
+			Tags:         tags,
+			Links:        documentLinks,
+			OCRText:      ocrText,
+		})
+	}
+
+	return result, nil
+}
+
 // ListDocuments получает список документов
 func (s *DocumentService) ListDocuments(ctx context.Context, tenantID string, filters dto.FileDocumentFiltersDTO) ([]dto.DocumentDTO, error) {
 	filterMap := make(map[string]interface{})

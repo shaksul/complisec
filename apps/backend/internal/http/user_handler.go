@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"time"
@@ -65,7 +64,7 @@ func (h *UserHandler) listUsers(c *fiber.Ctx) error {
 
 	fmt.Printf("DEBUG: ListUsers called with tenantID: %s, page: %d, pageSize: %d\n", tenantID, page, pageSize)
 
-	users, total, err := h.userService.ListUsersPaginated(context.Background(), tenantID, page, pageSize)
+	users, total, err := h.userService.ListUsersPaginated(c.Context(), tenantID, page, pageSize)
 	if err != nil {
 		fmt.Printf("DEBUG: ListUsers error: %v\n", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -76,7 +75,7 @@ func (h *UserHandler) listUsers(c *fiber.Ctx) error {
 	// Преобразуем в DTO
 	var userResponses []dto.UserResponse
 	for _, user := range users {
-		roles, err := h.userService.GetUserRoles(context.Background(), user.ID)
+		roles, err := h.userService.GetUserRoles(c.Context(), user.ID)
 		var roleNames []string
 		if err == nil {
 			roleNames = roles
@@ -124,7 +123,7 @@ func (h *UserHandler) createUser(c *fiber.Ctx) error {
 	}
 
 	log.Printf("DEBUG: user_handler.createUser email=%s roles=%v", req.Email, req.RoleIDs)
-	user, err := h.userService.CreateUser(context.Background(), tenantID, req.Email, req.Password, req.FirstName, req.LastName, req.RoleIDs)
+	user, err := h.userService.CreateUser(c.Context(), tenantID, req.Email, req.Password, req.FirstName, req.LastName, req.RoleIDs)
 	if err != nil {
 		log.Printf("ERROR: user_handler.createUser service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -150,7 +149,7 @@ func (h *UserHandler) getUser(c *fiber.Ctx) error {
 	id := c.Params("id")
 	tenantID := c.Locals("tenant_id").(string)
 
-	user, err := h.userService.GetUserByTenant(context.Background(), id, tenantID)
+	user, err := h.userService.GetUserByTenant(c.Context(), id, tenantID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -193,7 +192,7 @@ func (h *UserHandler) updateUser(c *fiber.Ctx) error {
 }
 
 func (h *UserHandler) listPermissions(c *fiber.Ctx) error {
-	permissions, err := h.userService.GetPermissions(context.Background())
+	permissions, err := h.userService.GetPermissions(c.Context())
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -206,7 +205,7 @@ func (h *UserHandler) deleteUser(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(string)
 
 	// Проверяем, что пользователь существует в текущем тенанте
-	user, err := h.userService.GetUserByTenant(context.Background(), id, tenantID)
+	user, err := h.userService.GetUserByTenant(c.Context(), id, tenantID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -223,7 +222,7 @@ func (h *UserHandler) getUserRoles(c *fiber.Ctx) error {
 	id := c.Params("id")
 	tenantID := c.Locals("tenant_id").(string)
 
-	userWithRoles, err := h.userService.GetUserWithRolesByTenant(context.Background(), id, tenantID)
+	userWithRoles, err := h.userService.GetUserWithRolesByTenant(c.Context(), id, tenantID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -239,7 +238,7 @@ func (h *UserHandler) assignRoleToUser(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(string)
 
 	// Проверяем, что пользователь существует в текущем тенанте
-	user, err := h.userService.GetUserByTenant(context.Background(), userID, tenantID)
+	user, err := h.userService.GetUserByTenant(c.Context(), userID, tenantID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -270,7 +269,7 @@ func (h *UserHandler) removeRoleFromUser(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(string)
 
 	// Проверяем, что пользователь существует в текущем тенанте
-	user, err := h.userService.GetUserByTenant(context.Background(), userID, tenantID)
+	user, err := h.userService.GetUserByTenant(c.Context(), userID, tenantID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -309,7 +308,7 @@ func (h *UserHandler) getUserCatalog(c *fiber.Ctx) error {
 		pageSize = 20
 	}
 
-	users, total, err := h.userService.SearchUsers(context.Background(), tenantID, search, role, isActive, sortBy, sortDir, page, pageSize)
+	users, total, err := h.userService.SearchUsers(c.Context(), tenantID, search, role, isActive, sortBy, sortDir, page, pageSize)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -317,7 +316,7 @@ func (h *UserHandler) getUserCatalog(c *fiber.Ctx) error {
 	// Преобразуем в DTO
 	var catalogUsers []dto.UserCatalogResponse
 	for _, user := range users {
-		roles, err := h.userService.GetUserRoles(context.Background(), user.ID)
+		roles, err := h.userService.GetUserRoles(c.Context(), user.ID)
 		var roleNames []string
 		if err == nil {
 			roleNames = roles
@@ -347,7 +346,7 @@ func (h *UserHandler) getUserDetail(c *fiber.Ctx) error {
 	userID := c.Params("id")
 	tenantID := c.Locals("tenant_id").(string)
 
-	user, roles, stats, err := h.userService.GetUserDetailByTenant(context.Background(), userID, tenantID)
+	user, roles, stats, err := h.userService.GetUserDetailByTenant(c.Context(), userID, tenantID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -380,7 +379,7 @@ func (h *UserHandler) getUserActivity(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(string)
 
 	// Проверяем, что пользователь существует в текущем тенанте
-	user, err := h.userService.GetUserByTenant(context.Background(), userID, tenantID)
+	user, err := h.userService.GetUserByTenant(c.Context(), userID, tenantID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -400,7 +399,7 @@ func (h *UserHandler) getUserActivity(c *fiber.Ctx) error {
 		pageSize = 50
 	}
 
-	activities, total, err := h.userService.GetUserActivity(context.Background(), userID, page, pageSize)
+	activities, total, err := h.userService.GetUserActivity(c.Context(), userID, page, pageSize)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -433,7 +432,7 @@ func (h *UserHandler) getUserActivityStats(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(string)
 
 	// Проверяем, что пользователь существует в текущем тенанте
-	user, err := h.userService.GetUserByTenant(context.Background(), userID, tenantID)
+	user, err := h.userService.GetUserByTenant(c.Context(), userID, tenantID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -441,7 +440,7 @@ func (h *UserHandler) getUserActivityStats(c *fiber.Ctx) error {
 		return c.Status(404).JSON(fiber.Map{"error": "User not found"})
 	}
 
-	stats, err := h.userService.GetUserActivityStats(context.Background(), userID)
+	stats, err := h.userService.GetUserActivityStats(c.Context(), userID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}

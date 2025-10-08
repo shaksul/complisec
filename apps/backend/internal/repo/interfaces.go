@@ -103,6 +103,7 @@ type DocumentRepoInterface interface {
 	// Documents
 	CreateDocument(ctx context.Context, document Document) error
 	GetDocumentByID(ctx context.Context, id, tenantID string) (*Document, error)
+	GetDocumentsByIDs(ctx context.Context, ids []string, tenantID string) ([]Document, error)
 	ListDocuments(ctx context.Context, tenantID string, filters map[string]interface{}) ([]Document, error)
 	UpdateDocument(ctx context.Context, document Document) error
 	DeleteDocument(ctx context.Context, id, tenantID string) error
@@ -111,15 +112,18 @@ type DocumentRepoInterface interface {
 	AddDocumentTag(ctx context.Context, documentID, tag string) error
 	RemoveDocumentTag(ctx context.Context, documentID, tag string) error
 	GetDocumentTags(ctx context.Context, documentID string) ([]string, error)
+	GetDocumentsTags(ctx context.Context, documentIDs []string) (map[string][]string, error)
 
 	// Document Links
 	AddDocumentLink(ctx context.Context, link DocumentLink) error
 	GetDocumentLinks(ctx context.Context, documentID string) ([]DocumentLink, error)
+	GetDocumentsLinks(ctx context.Context, documentIDs []string) (map[string][]DocumentLink, error)
 	DeleteDocumentLink(ctx context.Context, documentID, module, entityID string) error
 
 	// OCR Text
 	CreateOCRText(ctx context.Context, ocrText OCRText) error
 	GetOCRText(ctx context.Context, documentID string) (*OCRText, error)
+	GetDocumentsOCRTexts(ctx context.Context, documentIDs []string) (map[string]*string, error)
 
 	// Document Permissions
 	CreateDocumentPermission(ctx context.Context, permission DocumentPermission) error

@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"risknexus/backend/internal/dto"
 	"risknexus/backend/internal/repo"
@@ -126,18 +129,129 @@ func (s *DocumentStorageService) ListFolders(ctx context.Context, tenantID strin
 
 // MigrateAssetDocument мигрирует документ из модуля активов в централизованное хранилище
 func (s *DocumentStorageService) MigrateAssetDocument(ctx context.Context, assetDoc *repo.AssetDocument, tenantID, migratedBy string) (*dto.DocumentDTO, error) {
-	// TODO: Здесь нужно прочитать файл из старого пути и загрузить в новое хранилище
-	// Это требует реализации чтения файла и создания multipart.File
-	// Пока возвращаем заглушку
-	return nil, fmt.Errorf("migration not implemented yet - requires file reading logic")
+	// Проверяем, что файл существует
+	if _, err := os.Stat(assetDoc.FilePath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("source file not found: %s", assetDoc.FilePath)
+	}
+
+	// Читаем файл
+	file, err := os.Open(assetDoc.FilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open source file: %w", err)
+	}
+	defer file.Close()
+
+	// Получаем информацию о файле
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file info: %w", err)
+	}
+
+	// Создаем заголовок файла для multipart
+	header := &multipart.FileHeader{
+		Filename: filepath.Base(assetDoc.FilePath),
+		Size:     fileInfo.Size(),
+	}
+
+	// Определяем MIME тип
+	mimeType := assetDoc.Mime
+	if mimeType == "" {
+		// Пытаемся определить MIME тип по расширению
+		ext := strings.ToLower(filepath.Ext(assetDoc.FilePath))
+		switch ext {
+		case ".pdf":
+			mimeType = "application/pdf"
+		case ".doc":
+			mimeType = "application/msword"
+		case ".docx":
+			mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+		case ".txt":
+			mimeType = "text/plain"
+		default:
+			mimeType = "application/octet-stream"
+		}
+	}
+
+	// Создаем DTO для загрузки
+	description := assetDoc.DocumentType
+	uploadDTO := dto.UploadDocumentDTO{
+		Name:        assetDoc.Title,
+		Description: &description, // Используем тип документа как описание
+		Tags:        []string{"#активы", "#миграция"},
+	}
+
+	// Создаем документ через сервис
+	document, err := s.documentService.UploadDocument(ctx, tenantID, file, header, uploadDTO, migratedBy)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create document in storage: %w", err)
+	}
+
+	return document, nil
 }
 
 // MigrateRiskAttachment мигрирует вложение из модуля рисков в централизованное хранилище
 func (s *DocumentStorageService) MigrateRiskAttachment(ctx context.Context, riskAttachment *repo.RiskAttachment, tenantID, migratedBy string) (*dto.DocumentDTO, error) {
-	// TODO: Здесь нужно прочитать файл из старого пути и загрузить в новое хранилище
-	// Это требует реализации чтения файла и создания multipart.File
-	// Пока возвращаем заглушку
-	return nil, fmt.Errorf("migration not implemented yet - requires file reading logic")
+	// Проверяем, что файл существует
+	if _, err := os.Stat(riskAttachment.FilePath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("source file not found: %s", riskAttachment.FilePath)
+	}
+
+	// Читаем файл
+	file, err := os.Open(riskAttachment.FilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open source file: %w", err)
+	}
+	defer file.Close()
+
+	// Получаем информацию о файле
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file info: %w", err)
+	}
+
+	// Создаем заголовок файла для multipart
+	header := &multipart.FileHeader{
+		Filename: riskAttachment.FileName,
+		Size:     fileInfo.Size(),
+	}
+
+	// Определяем MIME тип
+	mimeType := riskAttachment.MimeType
+	if mimeType == "" {
+		// Пытаемся определить MIME тип по расширению
+		ext := strings.ToLower(filepath.Ext(riskAttachment.FileName))
+		switch ext {
+		case ".pdf":
+			mimeType = "application/pdf"
+		case ".doc":
+			mimeType = "application/msword"
+		case ".docx":
+			mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+		case ".txt":
+			mimeType = "text/plain"
+		default:
+			mimeType = "application/octet-stream"
+		}
+	}
+
+	// Создаем заголовок с правильным MIME типом
+	header.Header = make(map[string][]string)
+	header.Header["Content-Type"] = []string{mimeType}
+
+	// Создаем DTO для загрузки
+	uploadDTO := dto.UploadDocumentDTO{
+		Name:        riskAttachment.FileName,
+		Description: riskAttachment.Description,
+		Tags:        []string{"#риски", "#миграция"},
+	}
+
+	// Создаем документ через сервис
+	document, err := s.documentService.UploadDocument(ctx, tenantID, file, header, uploadDTO, migratedBy)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create document in storage: %w", err)
+	}
+
+	return document, nil
 }
 
 // UpdateFolder обновляет папку
@@ -162,6 +276,8 @@ func (s *DocumentStorageService) UpdateDocument(ctx context.Context, id, tenantI
 	updateReq := dto.UpdateFileDocumentDTO{
 		Name:        req.Title,
 		Description: req.Description,
+		FolderID:    req.FolderID, // Исправлено: передаем FolderID
+		Metadata:    req.Metadata, // Исправлено: передаем Metadata
 		Tags:        req.Tags,
 	}
 
@@ -186,15 +302,20 @@ func (s *DocumentStorageService) SearchDocuments(ctx context.Context, tenantID s
 		return nil, err
 	}
 
-	// Конвертируем результаты поиска в DocumentDTO
-	documents := make([]dto.DocumentDTO, 0, len(results))
+	// Собираем ID документов для батчевой загрузки
+	documentIDs := make([]string, 0, len(results))
 	for _, result := range results {
-		// Получаем полную информацию о документе
-		doc, err := s.documentService.GetDocument(ctx, result.DocumentID, tenantID)
+		documentIDs = append(documentIDs, result.DocumentID)
+	}
+
+	// Оптимизация: получаем документы батчем вместо N+1 запросов
+	documents := make([]dto.DocumentDTO, 0, len(results))
+	if len(documentIDs) > 0 {
+		// Используем батчевую загрузку для оптимизации производительности
+		documents, err = s.documentService.GetDocumentsByIDs(ctx, documentIDs, tenantID)
 		if err != nil {
-			continue // Пропускаем документы с ошибками
+			return nil, fmt.Errorf("failed to get documents by IDs: %w", err)
 		}
-		documents = append(documents, *doc)
 	}
 
 	return documents, nil

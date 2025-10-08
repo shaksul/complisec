@@ -634,3 +634,195 @@ func (r *DocumentRepo) DeleteDocumentLink(ctx context.Context, documentID, modul
 	_, err := r.db.ExecContext(ctx, query, documentID, module, entityID)
 	return err
 }
+
+// GetDocumentsByIDs получает документы по списку ID (оптимизация для батчевой загрузки)
+func (r *DocumentRepo) GetDocumentsByIDs(ctx context.Context, ids []string, tenantID string) ([]Document, error) {
+	if len(ids) == 0 {
+		return []Document{}, nil
+	}
+
+	// Создаем плейсхолдеры для IN запроса
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids)+1)
+	args[0] = tenantID
+	
+	for i, id := range ids {
+		placeholders[i] = fmt.Sprintf("$%d", i+2)
+		args[i+1] = id
+	}
+
+
+	// Создаем базовый запрос
+	query := `
+		SELECT id, tenant_id, title, title as original_name, description, type, category, storage_uri as file_path, size_bytes as file_size, 
+		       mime_type, checksum_sha256 as file_hash, NULL as folder_id, owner_id, created_by, created_at, 
+		       updated_at, CASE WHEN deleted_at IS NULL THEN true ELSE false END as is_active, version, NULL as metadata
+		FROM documents 
+		WHERE tenant_id = $1 AND deleted_at IS NULL`
+
+	// Добавляем фильтр по ID
+	if len(ids) > 0 {
+		query += " AND id IN ("
+		for i, id := range ids {
+			if i > 0 {
+				query += ", "
+			}
+			query += fmt.Sprintf("$%d", i+2)
+			args = append(args, id)
+		}
+		query += ")"
+	}
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	documents := make([]Document, 0)
+	for rows.Next() {
+		var document Document
+		err := rows.Scan(&document.ID, &document.TenantID, &document.Title, &document.OriginalName,
+			&document.Description, &document.Type, &document.Category, &document.FilePath, &document.FileSize, &document.MimeType,
+			&document.FileHash, &document.FolderID, &document.OwnerID, &document.CreatedBy,
+			&document.CreatedAt, &document.UpdatedAt, &document.IsActive, &document.Version,
+			&document.Metadata)
+		if err != nil {
+			return nil, err
+		}
+		documents = append(documents, document)
+	}
+
+	return documents, nil
+}
+
+// GetDocumentsTags получает теги для нескольких документов одним запросом
+func (r *DocumentRepo) GetDocumentsTags(ctx context.Context, documentIDs []string) (map[string][]string, error) {
+	if len(documentIDs) == 0 {
+		return make(map[string][]string), nil
+	}
+
+	// Создаем плейсхолдеры для IN запроса
+	placeholders := make([]string, len(documentIDs))
+	args := make([]interface{}, len(documentIDs))
+	
+	for i, id := range documentIDs {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+
+
+	// Создаем запрос с IN условием
+	query := `
+		SELECT document_id, tag 
+		FROM document_tags 
+		WHERE document_id IN (`
+	
+	for i, id := range documentIDs {
+		if i > 0 {
+			query += ", "
+		}
+		query += fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	query += ") ORDER BY document_id, tag"
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string][]string)
+	for rows.Next() {
+		var documentID, tag string
+		if err := rows.Scan(&documentID, &tag); err != nil {
+			return nil, err
+		}
+		result[documentID] = append(result[documentID], tag)
+	}
+
+	return result, nil
+}
+
+// GetDocumentsLinks получает связи для нескольких документов одним запросом
+func (r *DocumentRepo) GetDocumentsLinks(ctx context.Context, documentIDs []string) (map[string][]DocumentLink, error) {
+	if len(documentIDs) == 0 {
+		return make(map[string][]DocumentLink), nil
+	}
+
+	// Создаем запрос с IN условием
+	query := `
+		SELECT id, document_id, module, entity_id, created_by, created_at 
+		FROM document_links 
+		WHERE document_id IN (`
+	
+	args := make([]interface{}, len(documentIDs))
+	for i, id := range documentIDs {
+		if i > 0 {
+			query += ", "
+		}
+		query += fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	query += ") ORDER BY document_id, created_at"
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string][]DocumentLink)
+	for rows.Next() {
+		var link DocumentLink
+		err := rows.Scan(&link.ID, &link.DocumentID, &link.Module, &link.EntityID, &link.CreatedBy, &link.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		result[link.DocumentID] = append(result[link.DocumentID], link)
+	}
+
+	return result, nil
+}
+
+// GetDocumentsOCRTexts получает OCR тексты для нескольких документов одним запросом
+func (r *DocumentRepo) GetDocumentsOCRTexts(ctx context.Context, documentIDs []string) (map[string]*string, error) {
+	if len(documentIDs) == 0 {
+		return make(map[string]*string), nil
+	}
+
+	// Создаем запрос с IN условием
+	query := `
+		SELECT document_id, content 
+		FROM ocr_text 
+		WHERE document_id IN (`
+	
+	args := make([]interface{}, len(documentIDs))
+	for i, id := range documentIDs {
+		if i > 0 {
+			query += ", "
+		}
+		query += fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	query += ")"
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]*string)
+	for rows.Next() {
+		var documentID string
+		var content string
+		if err := rows.Scan(&documentID, &content); err != nil {
+			return nil, err
+		}
+		result[documentID] = &content
+	}
+
+	return result, nil
+}

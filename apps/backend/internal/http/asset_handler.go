@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -102,7 +101,7 @@ func (h *AssetHandler) listAssets(c *fiber.Ctx) error {
 	log.Printf("DEBUG: AssetHandler.listAssets tenant=%s user=%s page=%d pageSize=%d filters=%v",
 		tenantID, userID, page, pageSize, filters)
 
-	assets, total, err := h.assetService.ListAssetsPaginated(context.Background(), tenantID, page, pageSize, filters)
+	assets, total, err := h.assetService.ListAssetsPaginated(c.Context(), tenantID, page, pageSize, filters)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.listAssets service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -137,7 +136,7 @@ func (h *AssetHandler) createAsset(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
 	}
 
-	asset, err := h.assetService.CreateAsset(context.Background(), tenantID, req, userID)
+	asset, err := h.assetService.CreateAsset(c.Context(), tenantID, req, userID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.createAsset service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -153,7 +152,7 @@ func (h *AssetHandler) getAsset(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: AssetHandler.getAsset id=%s user=%s", id, userID)
 
-	asset, err := h.assetService.GetAsset(context.Background(), id)
+	asset, err := h.assetService.GetAsset(c.Context(), id)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.getAsset service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -172,7 +171,7 @@ func (h *AssetHandler) getAssetDetails(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: AssetHandler.getAssetDetails id=%s user=%s", id, userID)
 
-	asset, err := h.assetService.GetAssetWithDetails(context.Background(), id)
+	asset, err := h.assetService.GetAssetWithDetails(c.Context(), id)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.getAssetDetails service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -202,7 +201,7 @@ func (h *AssetHandler) updateAsset(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
 	}
 
-	err := h.assetService.UpdateAsset(context.Background(), id, req, userID)
+	err := h.assetService.UpdateAsset(c.Context(), id, req, userID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.updateAsset service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -218,7 +217,7 @@ func (h *AssetHandler) deleteAsset(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: AssetHandler.deleteAsset id=%s user=%s", id, userID)
 
-	err := h.assetService.DeleteAsset(context.Background(), id, userID)
+	err := h.assetService.DeleteAsset(c.Context(), id, userID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.deleteAsset service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -235,7 +234,7 @@ func (h *AssetHandler) getAssetDocuments(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: AssetHandler.getAssetDocuments id=%s user=%s", id, userID)
 
-	documents, err := h.assetService.GetAssetDocumentsFromStorage(context.Background(), id, tenantID)
+	documents, err := h.assetService.GetAssetDocumentsFromStorage(c.Context(), id, tenantID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.getAssetDocuments service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -261,7 +260,7 @@ func (h *AssetHandler) addAssetDocument(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
 	}
 
-	err := h.assetService.AddDocument(context.Background(), id, req, userID)
+	err := h.assetService.AddDocument(c.Context(), id, req, userID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.addAssetDocument service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -359,7 +358,7 @@ func (h *AssetHandler) uploadAssetDocument(c *fiber.Ctx) error {
 	fileHeader.Seek(0, 0)
 
 	// Upload document to centralized storage
-	document, err := h.assetService.UploadAssetDocument(context.Background(), id, tenantID, fileHeader, file, dto.AssetDocumentUploadRequest{
+	document, err := h.assetService.UploadAssetDocument(c.Context(), id, tenantID, fileHeader, file, dto.AssetDocumentUploadRequest{
 		DocumentType: documentType,
 		Title:        title,
 	}, userID)
@@ -393,7 +392,7 @@ func (h *AssetHandler) linkAssetDocument(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
 	}
 
-	err := h.assetService.LinkExistingDocumentToAsset(context.Background(), id, req.DocumentID, tenantID, userID)
+	err := h.assetService.LinkExistingDocumentToAsset(c.Context(), id, req.DocumentID, tenantID, userID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.linkAssetDocument service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -409,7 +408,7 @@ func (h *AssetHandler) downloadAssetDocument(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: AssetHandler.downloadAssetDocument docID=%s user=%s", docID, userID)
 
-	filePath, fileName, err := h.assetService.GetDocumentDownloadPath(context.Background(), docID, userID)
+	filePath, fileName, err := h.assetService.GetDocumentDownloadPath(c.Context(), docID, userID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.downloadAssetDocument service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -437,7 +436,7 @@ func (h *AssetHandler) getDocumentStorage(c *fiber.Ctx) error {
 		PageSize: pageSize,
 	}
 
-	documents, total, err := h.assetService.GetDocumentStorage(context.Background(), tenantID, req)
+	documents, total, err := h.assetService.GetDocumentStorage(c.Context(), tenantID, req)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.getDocumentStorage service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -460,7 +459,7 @@ func (h *AssetHandler) getAssetSoftware(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: AssetHandler.getAssetSoftware id=%s user=%s", id, userID)
 
-	software, err := h.assetService.GetAssetSoftware(context.Background(), id)
+	software, err := h.assetService.GetAssetSoftware(c.Context(), id)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.getAssetSoftware service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -486,7 +485,7 @@ func (h *AssetHandler) addAssetSoftware(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
 	}
 
-	err := h.assetService.AddSoftware(context.Background(), id, req, userID)
+	err := h.assetService.AddSoftware(c.Context(), id, req, userID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.addAssetSoftware service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -502,7 +501,7 @@ func (h *AssetHandler) getAssetHistory(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: AssetHandler.getAssetHistory id=%s user=%s", id, userID)
 
-	history, err := h.assetService.GetAssetHistory(context.Background(), id)
+	history, err := h.assetService.GetAssetHistory(c.Context(), id)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.getAssetHistory service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -528,7 +527,7 @@ func (h *AssetHandler) performInventory(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
 	}
 
-	err := h.assetService.PerformInventory(context.Background(), tenantID, req, userID)
+	err := h.assetService.PerformInventory(c.Context(), tenantID, req, userID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.performInventory service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -550,7 +549,7 @@ func (h *AssetHandler) deleteAssetDocument(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "asset_id query parameter is required"})
 	}
 
-	err := h.assetService.DeleteAssetDocument(context.Background(), assetID, documentID, tenantID, userID)
+	err := h.assetService.DeleteAssetDocument(c.Context(), assetID, documentID, tenantID, userID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.deleteAssetDocument service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -566,7 +565,7 @@ func (h *AssetHandler) getAssetDocument(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: AssetHandler.getAssetDocument docID=%s user=%s", documentID, userID)
 
-	document, err := h.assetService.GetDocumentByID(context.Background(), documentID)
+	document, err := h.assetService.GetDocumentByID(c.Context(), documentID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.getAssetDocument service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -597,7 +596,7 @@ func (h *AssetHandler) getAssetHistoryWithFilters(c *fiber.Ctx) error {
 		filters["to_date"] = toDate
 	}
 
-	history, err := h.assetService.GetAssetHistoryWithFilters(context.Background(), assetID, filters)
+	history, err := h.assetService.GetAssetHistoryWithFilters(c.Context(), assetID, filters)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.getAssetHistoryWithFilters service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -612,7 +611,7 @@ func (h *AssetHandler) getAssetRisks(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: AssetHandler.getAssetRisks assetID=%s user=%s", assetID, userID)
 
-	risks, err := h.assetService.GetAssetRisks(context.Background(), assetID)
+	risks, err := h.assetService.GetAssetRisks(c.Context(), assetID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.getAssetRisks service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -627,7 +626,7 @@ func (h *AssetHandler) getAssetIncidents(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: AssetHandler.getAssetIncidents assetID=%s user=%s", assetID, userID)
 
-	incidents, err := h.assetService.GetAssetIncidents(context.Background(), assetID)
+	incidents, err := h.assetService.GetAssetIncidents(c.Context(), assetID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.getAssetIncidents service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -642,7 +641,7 @@ func (h *AssetHandler) canAddRisk(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: AssetHandler.canAddRisk assetID=%s user=%s", assetID, userID)
 
-	err := h.assetService.CanAddRisk(context.Background(), assetID)
+	err := h.assetService.CanAddRisk(c.Context(), assetID)
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error(), "can_add": false})
 	}
@@ -656,7 +655,7 @@ func (h *AssetHandler) canAddIncident(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: AssetHandler.canAddIncident assetID=%s user=%s", assetID, userID)
 
-	err := h.assetService.CanAddIncident(context.Background(), assetID)
+	err := h.assetService.CanAddIncident(c.Context(), assetID)
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error(), "can_add": false})
 	}
@@ -670,7 +669,7 @@ func (h *AssetHandler) getAssetsWithoutOwner(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: AssetHandler.getAssetsWithoutOwner tenant=%s user=%s", tenantID, userID)
 
-	assets, err := h.assetService.GetAssetsWithoutOwner(context.Background(), tenantID)
+	assets, err := h.assetService.GetAssetsWithoutOwner(c.Context(), tenantID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.getAssetsWithoutOwner service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -685,7 +684,7 @@ func (h *AssetHandler) getAssetsWithoutPassport(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: AssetHandler.getAssetsWithoutPassport tenant=%s user=%s", tenantID, userID)
 
-	assets, err := h.assetService.GetAssetsWithoutPassport(context.Background(), tenantID)
+	assets, err := h.assetService.GetAssetsWithoutPassport(c.Context(), tenantID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.getAssetsWithoutPassport service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -700,7 +699,7 @@ func (h *AssetHandler) getAssetsWithoutCriticality(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: AssetHandler.getAssetsWithoutCriticality tenant=%s user=%s", tenantID, userID)
 
-	assets, err := h.assetService.GetAssetsWithoutCriticality(context.Background(), tenantID)
+	assets, err := h.assetService.GetAssetsWithoutCriticality(c.Context(), tenantID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.getAssetsWithoutCriticality service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -726,7 +725,7 @@ func (h *AssetHandler) bulkUpdateStatus(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
 	}
 
-	err := h.assetService.BulkUpdateStatus(context.Background(), req.AssetIDs, req.Status, userID)
+	err := h.assetService.BulkUpdateStatus(c.Context(), req.AssetIDs, req.Status, userID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.bulkUpdateStatus service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -753,7 +752,7 @@ func (h *AssetHandler) bulkUpdateOwner(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
 	}
 
-	err := h.assetService.BulkUpdateOwner(context.Background(), req.AssetIDs, req.OwnerID, userID)
+	err := h.assetService.BulkUpdateOwner(c.Context(), req.AssetIDs, req.OwnerID, userID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.bulkUpdateOwner service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -791,7 +790,7 @@ func (h *AssetHandler) exportAssets(c *fiber.Ctx) error {
 	}
 
 	// Get all assets (no pagination for export)
-	assets, err := h.assetService.ListAssets(context.Background(), tenantID, filters)
+	assets, err := h.assetService.ListAssets(c.Context(), tenantID, filters)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.exportAssets service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -842,7 +841,7 @@ func (h *AssetHandler) unlinkAssetDocument(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
 	}
 
-	err := h.assetService.UnlinkDocumentFromAsset(context.Background(), id, req.DocumentID, tenantID, userID)
+	err := h.assetService.UnlinkDocumentFromAsset(c.Context(), id, req.DocumentID, tenantID, userID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.unlinkAssetDocument service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})

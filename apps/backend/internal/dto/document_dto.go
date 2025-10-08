@@ -27,6 +27,8 @@ type UpdateDocumentDTO struct {
 	Category    *string  `json:"category"`
 	Tags        []string `json:"tags"`
 	Status      string   `json:"status" validate:"oneof=draft in_review approved obsolete"`
+	FolderID    *string  `json:"folder_id"`
+	Metadata    *string  `json:"metadata"`
 }
 
 // CreateDocumentVersionDTO represents the request to create a document version

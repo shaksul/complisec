@@ -56,7 +56,7 @@ func (h *AuthHandler) login(c *fiber.Ctx) error {
 	ipAddress := c.IP()
 	userAgent := c.Get("User-Agent")
 
-	user, roles, err := h.authService.Login(context.Background(), req.Email, req.Password, req.TenantID)
+	user, roles, err := h.authService.Login(c.Context(), req.Email, req.Password, req.TenantID)
 	if err != nil {
 		log.Printf("WARN: AuthHandler.login failed: %v", err)
 
@@ -86,7 +86,7 @@ func (h *AuthHandler) login(c *fiber.Ctx) error {
 	}
 
 	// Get user permissions
-	permissions, err := h.authService.GetUserPermissions(context.Background(), user.ID)
+	permissions, err := h.authService.GetUserPermissions(c.Context(), user.ID)
 	if err != nil {
 		log.Printf("ERROR: AuthHandler.login failed to get permissions: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to get user permissions"})
@@ -139,14 +139,14 @@ func (h *AuthHandler) refresh(c *fiber.Ctx) error {
 	}
 
 	// Получаем полную информацию о пользователе
-	user, err := h.authService.GetUser(context.Background(), userID)
+	user, err := h.authService.GetUser(c.Context(), userID)
 	if err != nil {
 		log.Printf("ERROR: AuthHandler.refresh failed to get user: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to get user info"})
 	}
 
 	// Получаем разрешения пользователя
-	permissions, err := h.authService.GetUserPermissions(context.Background(), userID)
+	permissions, err := h.authService.GetUserPermissions(c.Context(), userID)
 	if err != nil {
 		log.Printf("ERROR: AuthHandler.refresh failed to get permissions: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to get user permissions"})
@@ -182,17 +182,17 @@ func (h *AuthHandler) me(c *fiber.Ctx) error {
 		return c.Status(401).JSON(fiber.Map{"error": "Invalid user context"})
 	}
 
-	user, err := h.authService.GetUser(context.Background(), userID)
+	user, err := h.authService.GetUser(c.Context(), userID)
 	if err != nil || user == nil {
 		return c.Status(404).JSON(fiber.Map{"error": "User not found"})
 	}
 
-	roles, err := h.authService.GetUserRoles(context.Background(), userID)
+	roles, err := h.authService.GetUserRoles(c.Context(), userID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to get user roles"})
 	}
 
-	permissions, err := h.authService.GetUserPermissions(context.Background(), userID)
+	permissions, err := h.authService.GetUserPermissions(c.Context(), userID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to get user permissions"})
 	}

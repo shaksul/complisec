@@ -1,8 +1,6 @@
 package http
 
 import (
-	"context"
-
 	"risknexus/backend/internal/domain"
 	"risknexus/backend/internal/dto"
 	"risknexus/backend/internal/repo"
@@ -40,7 +38,7 @@ func (h *ComplianceHandler) Register(r fiber.Router) {
 
 func (h *ComplianceHandler) listStandards(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(string)
-	items, err := h.service.ListStandards(context.Background(), tenantID)
+	items, err := h.service.ListStandards(c.Context(), tenantID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -63,7 +61,7 @@ func (h *ComplianceHandler) createStandard(c *fiber.Ctx) error {
 		IsActive:    true,
 	}
 
-	if err := h.service.CreateStandard(context.Background(), standard); err != nil {
+	if err := h.service.CreateStandard(c.Context(), standard); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"data": "ok"})
@@ -71,7 +69,7 @@ func (h *ComplianceHandler) createStandard(c *fiber.Ctx) error {
 
 func (h *ComplianceHandler) listRequirements(c *fiber.Ctx) error {
 	standardID := c.Params("id")
-	items, err := h.service.ListRequirements(context.Background(), standardID)
+	items, err := h.service.ListRequirements(c.Context(), standardID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -94,7 +92,7 @@ func (h *ComplianceHandler) createRequirement(c *fiber.Ctx) error {
 		IsMandatory: dto.IsMandatory,
 	}
 
-	if err := h.service.CreateRequirement(context.Background(), requirement); err != nil {
+	if err := h.service.CreateRequirement(c.Context(), requirement); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"data": "ok"})
@@ -102,7 +100,7 @@ func (h *ComplianceHandler) createRequirement(c *fiber.Ctx) error {
 
 func (h *ComplianceHandler) listAssessments(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(string)
-	items, err := h.service.ListAssessments(context.Background(), tenantID)
+	items, err := h.service.ListAssessments(c.Context(), tenantID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -127,7 +125,7 @@ func (h *ComplianceHandler) createAssessment(c *fiber.Ctx) error {
 		Notes:          dto.Notes,
 	}
 
-	if err := h.service.CreateAssessment(context.Background(), assessment); err != nil {
+	if err := h.service.CreateAssessment(c.Context(), assessment); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"data": "ok"})
@@ -149,7 +147,7 @@ func (h *ComplianceHandler) updateAssessment(c *fiber.Ctx) error {
 		Notes:          dto.Notes,
 	}
 
-	if err := h.service.UpdateAssessment(context.Background(), id, assessment); err != nil {
+	if err := h.service.UpdateAssessment(c.Context(), id, assessment); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"data": "ok"})
@@ -157,7 +155,7 @@ func (h *ComplianceHandler) updateAssessment(c *fiber.Ctx) error {
 
 func (h *ComplianceHandler) listGaps(c *fiber.Ctx) error {
 	assessmentID := c.Params("id")
-	items, err := h.service.ListGaps(context.Background(), assessmentID)
+	items, err := h.service.ListGaps(c.Context(), assessmentID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -181,7 +179,7 @@ func (h *ComplianceHandler) createGap(c *fiber.Ctx) error {
 		ResponsibleID:   dto.ResponsibleID,
 	}
 
-	if err := h.service.CreateGap(context.Background(), gap); err != nil {
+	if err := h.service.CreateGap(c.Context(), gap); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"data": "ok"})
@@ -201,7 +199,7 @@ func (h *ComplianceHandler) updateGap(c *fiber.Ctx) error {
 		ResponsibleID:   dto.ResponsibleID,
 	}
 
-	if err := h.service.UpdateGap(context.Background(), id, gap); err != nil {
+	if err := h.service.UpdateGap(c.Context(), id, gap); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"data": "ok"})

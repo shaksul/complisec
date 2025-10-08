@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"log"
 	"strconv"
 	"time"
@@ -163,7 +162,7 @@ func (h *RiskHandler) listRisks(c *fiber.Ctx) error {
 	log.Printf("DEBUG: RiskHandler.listRisks tenant=%s user=%s page=%d pageSize=%d filters=%v",
 		tenantID, userID, page, pageSize, filters)
 
-	risks, err := h.riskService.ListRisks(context.Background(), tenantID, filters, sortField, sortDirection)
+	risks, err := h.riskService.ListRisks(c.Context(), tenantID, filters, sortField, sortDirection)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.listRisks service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -231,7 +230,7 @@ func (h *RiskHandler) createRisk(c *fiber.Ctx) error {
 		dueDate = &parsed
 	}
 
-	risk, err := h.riskService.CreateRisk(context.Background(), tenantID, req.Title, req.Description, req.Category, req.Likelihood, req.Impact, req.OwnerUserID, req.AssetID, req.Methodology, req.Strategy, dueDate)
+	risk, err := h.riskService.CreateRisk(c.Context(), tenantID, req.Title, req.Description, req.Category, req.Likelihood, req.Impact, req.OwnerUserID, req.AssetID, req.Methodology, req.Strategy, dueDate)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.createRisk service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -248,7 +247,7 @@ func (h *RiskHandler) getRisk(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: RiskHandler.getRisk id=%s user=%s", id, userID)
 
-	risk, err := h.riskService.GetRisk(context.Background(), id)
+	risk, err := h.riskService.GetRisk(c.Context(), id)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.getRisk service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -280,7 +279,7 @@ func (h *RiskHandler) updateRisk(c *fiber.Ctx) error {
 	}
 
 	// Get current risk first
-	currentRisk, err := h.riskService.GetRisk(context.Background(), id)
+	currentRisk, err := h.riskService.GetRisk(c.Context(), id)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.updateRisk get current risk error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to get current risk"})
@@ -316,7 +315,7 @@ func (h *RiskHandler) updateRisk(c *fiber.Ctx) error {
 		dueDate = &parsed
 	}
 
-	err = h.riskService.UpdateRisk(context.Background(), id, title, req.Description, req.Category, likelihood, impact, req.OwnerUserID, req.AssetID, req.Methodology, req.Strategy, dueDate)
+	err = h.riskService.UpdateRisk(c.Context(), id, title, req.Description, req.Category, likelihood, impact, req.OwnerUserID, req.AssetID, req.Methodology, req.Strategy, dueDate)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.updateRisk service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -332,7 +331,7 @@ func (h *RiskHandler) deleteRisk(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: RiskHandler.deleteRisk id=%s user=%s", id, userID)
 
-	err := h.riskService.DeleteRisk(context.Background(), id)
+	err := h.riskService.DeleteRisk(c.Context(), id)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.deleteRisk service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -354,7 +353,7 @@ func (h *RiskHandler) getRisksByAsset(c *fiber.Ctx) error {
 		"asset_id": assetID,
 	}
 	
-	risks, err := h.riskService.ListRisks(context.Background(), tenantID, filters, "created_at", "desc")
+	risks, err := h.riskService.ListRisks(c.Context(), tenantID, filters, "created_at", "desc")
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.getRisksByAsset service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -378,7 +377,7 @@ func (h *RiskHandler) getRiskHistory(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: RiskHandler.getRiskHistory riskID=%s user=%s", riskID, userID)
 
-	history, err := h.riskService.GetHistory(context.Background(), riskID)
+	history, err := h.riskService.GetHistory(c.Context(), riskID)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.getRiskHistory service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -411,7 +410,7 @@ func (h *RiskHandler) getRiskComments(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: RiskHandler.getRiskComments riskID=%s user=%s includeInternal=%v", riskID, userID, includeInternal)
 
-	comments, err := h.riskService.GetComments(context.Background(), riskID, includeInternal)
+	comments, err := h.riskService.GetComments(c.Context(), riskID, includeInternal)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.getRiskComments service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -457,7 +456,7 @@ func (h *RiskHandler) addRiskComment(c *fiber.Ctx) error {
 		isInternal = *req.IsInternal
 	}
 
-	err := h.riskService.AddComment(context.Background(), riskID, userID, req.Comment, isInternal)
+	err := h.riskService.AddComment(c.Context(), riskID, userID, req.Comment, isInternal)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.addRiskComment service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -474,7 +473,7 @@ func (h *RiskHandler) getRiskAttachments(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: RiskHandler.getRiskAttachments riskID=%s user=%s", riskID, userID)
 
-	attachments, err := h.riskService.GetAttachments(context.Background(), riskID)
+	attachments, err := h.riskService.GetAttachments(c.Context(), riskID)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.getRiskAttachments service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -518,7 +517,7 @@ func (h *RiskHandler) addRiskAttachment(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
 	}
 
-	err := h.riskService.AddAttachment(context.Background(), riskID, req.FileName, req.FilePath, req.FileSize, req.MimeType, req.FileHash, req.Description, userID)
+	err := h.riskService.AddAttachment(c.Context(), riskID, req.FileName, req.FilePath, req.FileSize, req.MimeType, req.FileHash, req.Description, userID)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.addRiskAttachment service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -534,7 +533,7 @@ func (h *RiskHandler) deleteRiskAttachment(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: RiskHandler.deleteRiskAttachment attachmentID=%s user=%s", attachmentID, userID)
 
-	err := h.riskService.DeleteAttachment(context.Background(), attachmentID)
+	err := h.riskService.DeleteAttachment(c.Context(), attachmentID)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.deleteRiskAttachment service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -551,7 +550,7 @@ func (h *RiskHandler) getRiskControls(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: RiskHandler.getRiskControls riskID=%s user=%s", riskID, userID)
 
-	controls, err := h.riskService.GetControls(context.Background(), riskID)
+	controls, err := h.riskService.GetControls(c.Context(), riskID)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.getRiskControls service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -595,7 +594,7 @@ func (h *RiskHandler) addRiskControl(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
 	}
 
-	err := h.riskService.AddControl(context.Background(), riskID, req.ControlID, req.ControlName, req.ControlType, req.ImplementationStatus, req.Effectiveness, req.Description, userID)
+	err := h.riskService.AddControl(c.Context(), riskID, req.ControlID, req.ControlName, req.ControlType, req.ImplementationStatus, req.Effectiveness, req.Description, userID)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.addRiskControl service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -622,7 +621,7 @@ func (h *RiskHandler) updateRiskControl(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
 	}
 
-	err := h.riskService.UpdateControl(context.Background(), controlID, req.ControlName, req.ControlType, req.ImplementationStatus, req.Effectiveness, req.Description)
+	err := h.riskService.UpdateControl(c.Context(), controlID, req.ControlName, req.ControlType, req.ImplementationStatus, req.Effectiveness, req.Description)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.updateRiskControl service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -638,7 +637,7 @@ func (h *RiskHandler) deleteRiskControl(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: RiskHandler.deleteRiskControl controlID=%s user=%s", controlID, userID)
 
-	err := h.riskService.DeleteControl(context.Background(), controlID)
+	err := h.riskService.DeleteControl(c.Context(), controlID)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.deleteRiskControl service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -655,7 +654,7 @@ func (h *RiskHandler) getRiskTags(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: RiskHandler.getRiskTags riskID=%s user=%s", riskID, userID)
 
-	tags, err := h.riskService.GetTags(context.Background(), riskID)
+	tags, err := h.riskService.GetTags(c.Context(), riskID)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.getRiskTags service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -699,7 +698,7 @@ func (h *RiskHandler) addRiskTag(c *fiber.Ctx) error {
 		tagColor = *req.TagColor
 	}
 
-	err := h.riskService.AddTag(context.Background(), riskID, req.TagName, tagColor, &userID)
+	err := h.riskService.AddTag(c.Context(), riskID, req.TagName, tagColor, &userID)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.addRiskTag service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -716,7 +715,7 @@ func (h *RiskHandler) deleteRiskTag(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: RiskHandler.deleteRiskTag riskID=%s tagName=%s user=%s", riskID, tagName, userID)
 
-	err := h.riskService.DeleteTagByName(context.Background(), riskID, tagName)
+	err := h.riskService.DeleteTagByName(c.Context(), riskID, tagName)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.deleteRiskTag service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -745,7 +744,7 @@ func (h *RiskHandler) getRiskDocuments(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: RiskHandler.getRiskDocuments riskID=%s tenant=%s user=%s", riskID, tenantID, userID)
 
-	documents, err := h.riskService.GetRiskDocuments(context.Background(), riskID, tenantID)
+	documents, err := h.riskService.GetRiskDocuments(c.Context(), riskID, tenantID)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.getRiskDocuments service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -792,7 +791,7 @@ func (h *RiskHandler) uploadRiskDocument(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
 	}
 
-	document, err := h.riskService.UploadRiskDocument(context.Background(), riskID, tenantID, src, file, req, userID)
+	document, err := h.riskService.UploadRiskDocument(c.Context(), riskID, tenantID, src, file, req, userID)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.uploadRiskDocument service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -823,7 +822,7 @@ func (h *RiskHandler) linkRiskDocument(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
 	}
 
-	err := h.riskService.LinkExistingDocument(context.Background(), riskID, req.DocumentID, tenantID, userID)
+	err := h.riskService.LinkExistingDocument(c.Context(), riskID, req.DocumentID, tenantID, userID)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.linkRiskDocument service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -841,7 +840,7 @@ func (h *RiskHandler) deleteRiskDocument(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: RiskHandler.deleteRiskDocument riskID=%s documentID=%s tenant=%s user=%s", riskID, documentID, tenantID, userID)
 
-	err := h.riskService.DeleteRiskDocument(context.Background(), riskID, documentID, tenantID, userID)
+	err := h.riskService.DeleteRiskDocument(c.Context(), riskID, documentID, tenantID, userID)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.deleteRiskDocument service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -859,7 +858,7 @@ func (h *RiskHandler) unlinkRiskDocument(c *fiber.Ctx) error {
 
 	log.Printf("DEBUG: RiskHandler.unlinkRiskDocument riskID=%s documentID=%s tenant=%s user=%s", riskID, documentID, tenantID, userID)
 
-	err := h.riskService.UnlinkDocument(context.Background(), riskID, documentID, tenantID, userID)
+	err := h.riskService.UnlinkDocument(c.Context(), riskID, documentID, tenantID, userID)
 	if err != nil {
 		log.Printf("ERROR: RiskHandler.unlinkRiskDocument service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})

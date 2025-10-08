@@ -159,6 +159,7 @@ type DocumentServiceInterface interface {
 	CreateDocument(ctx context.Context, tenantID string, req dto.CreateDocumentDTO, createdBy string) (*dto.DocumentDTO, error)
 	UploadDocument(ctx context.Context, tenantID string, file multipart.File, header *multipart.FileHeader, req dto.UploadDocumentDTO, createdBy string) (*dto.DocumentDTO, error)
 	GetDocument(ctx context.Context, id, tenantID string) (*dto.DocumentDTO, error)
+	GetDocumentsByIDs(ctx context.Context, ids []string, tenantID string) ([]dto.DocumentDTO, error)
 	ListDocuments(ctx context.Context, tenantID string, filters dto.FileDocumentFiltersDTO) ([]dto.DocumentDTO, error)
 	UpdateDocument(ctx context.Context, id, tenantID string, req dto.UpdateFileDocumentDTO, updatedBy string) error
 	DeleteDocument(ctx context.Context, id, tenantID string, deletedBy string) error
