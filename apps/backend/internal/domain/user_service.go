@@ -128,7 +128,7 @@ func (s *UserService) UpdateUser(ctx context.Context, id string, firstName, last
 	return nil
 }
 
-func (s *UserService) UpdateUserByTenant(ctx context.Context, id, tenantID string, firstName, lastName *string, isActive *bool, roleIDs []string) error {
+func (s *UserService) UpdateUserByTenant(ctx context.Context, id, tenantID string, firstName, lastName *string, password *string, isActive *bool, roleIDs []string) error {
 	log.Printf("DEBUG: user_service.UpdateUserByTenant id=%s tenant=%s", id, tenantID)
 	user, err := s.userRepo.GetByIDAndTenant(ctx, id, tenantID)
 	if err != nil {
@@ -149,6 +149,12 @@ func (s *UserService) UpdateUserByTenant(ctx context.Context, id, tenantID strin
 	}
 	if isActive != nil {
 		user.IsActive = *isActive
+	}
+	
+	// Update password if provided (will be hashed in repo.Update)
+	if password != nil && *password != "" {
+		log.Printf("DEBUG: user_service.UpdateUserByTenant updating password for user=%s", id)
+		user.PasswordHash = *password // Repo will hash it
 	}
 
 	err = s.userRepo.Update(ctx, *user)

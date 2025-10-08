@@ -184,7 +184,7 @@ func (h *UserHandler) updateUser(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Validation failed", "details": err.Error()})
 	}
 
-	if err := h.userService.UpdateUserByTenant(c.Context(), id, tenantID, req.FirstName, req.LastName, req.IsActive, req.RoleIDs); err != nil {
+	if err := h.userService.UpdateUserByTenant(c.Context(), id, tenantID, req.FirstName, req.LastName, req.Password, req.IsActive, req.RoleIDs); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 

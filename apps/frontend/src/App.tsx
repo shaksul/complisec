@@ -14,7 +14,6 @@ import TrainingPage from './pages/TrainingPage'
 import CompliancePage from './pages/CompliancePage'
 import AIProvidersPage from './pages/AIProvidersPage'
 import AIQueryPage from './pages/AIQueryPage'
-import UsersManagementPage from './pages/UsersManagementPage'
 import RolesManagementPage from './pages/RolesManagementPage'
 import OrganizationsPage from './pages/OrganizationsPage'
 
@@ -32,7 +31,6 @@ function App() {
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/users" element={<UsersPage />} />
-                  <Route path="/admin/users" element={<UsersManagementPage />} />
                   <Route path="/admin/roles" element={<RolesManagementPage />} />
                   <Route path="/admin/organizations" element={<OrganizationsPage />} />
                   <Route path="/assets" element={<AssetsPage />} />

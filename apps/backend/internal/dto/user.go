@@ -13,6 +13,7 @@ type CreateUserRequest struct {
 type UpdateUserRequest struct {
 	FirstName *string  `json:"first_name,omitempty"`
 	LastName  *string  `json:"last_name,omitempty"`
+	Password  *string  `json:"password,omitempty"` // Опциональное поле для смены пароля администратором
 	IsActive  *bool    `json:"is_active,omitempty"`
 	RoleIDs   []string `json:"role_ids,omitempty"`
 }

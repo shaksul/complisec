@@ -1,5 +1,5 @@
 ﻿import type { ReactNode } from 'react'
-import { DashboardIcon, UsersIcon, AssetsIcon, RisksIcon, DocumentsIcon, IncidentsIcon, TrainingIcon, ComplianceIcon, AIProvidersIcon, AIQueryIcon, AdminUsersIcon, RolesIcon, OrganizationsIcon } from './icons'
+import { DashboardIcon, UsersIcon, AssetsIcon, RisksIcon, DocumentsIcon, IncidentsIcon, TrainingIcon, ComplianceIcon, AIProvidersIcon, AIQueryIcon, RolesIcon, OrganizationsIcon } from './icons'
 import { Folder } from '@mui/icons-material'
 
 export interface NavigationItem {
@@ -27,7 +27,6 @@ export const PRIMARY_NAVIGATION: NavigationItem[] = [
 ]
 
 export const ADMIN_NAVIGATION: NavigationItem[] = [
-  { label: 'Управление пользователями', to: '/admin/users', icon: <AdminUsersIcon />, permission: 'users.manage' },
   { label: 'Роли и полномочия', to: '/admin/roles', icon: <RolesIcon />, permission: 'roles.view' },
   { label: 'Организации', to: '/admin/organizations', icon: <OrganizationsIcon />, permission: 'organizations.manage' },
 ]
