@@ -800,7 +800,7 @@ func (s *AssetService) UploadAssetDocument(ctx context.Context, assetID, tenantI
 
 // GetAssetDocumentsFromStorage получает документы, связанные с активом из централизованного хранилища
 func (s *AssetService) GetAssetDocumentsFromStorage(ctx context.Context, assetID, tenantID string) ([]dto.DocumentDTO, error) {
-	log.Printf("DEBUG: asset_service.GetAssetDocuments assetID=%s", assetID)
+	log.Printf("DEBUG: asset_service.GetAssetDocumentsFromStorage assetID=%s tenantID=%s", assetID, tenantID)
 
 	// Проверяем, что актив существует
 	asset, err := s.assetRepo.GetByID(ctx, assetID)
@@ -814,11 +814,11 @@ func (s *AssetService) GetAssetDocumentsFromStorage(ctx context.Context, assetID
 	// Получаем документы из централизованного хранилища
 	documents, err := s.documentStorageService.GetModuleDocuments(ctx, "assets", assetID, tenantID)
 	if err != nil {
-		log.Printf("ERROR: asset_service.GetAssetDocuments GetModuleDocuments: %v", err)
+		log.Printf("ERROR: asset_service.GetAssetDocumentsFromStorage GetModuleDocuments: %v", err)
 		return nil, err
 	}
 
-	log.Printf("DEBUG: asset_service.GetAssetDocuments found %d documents", len(documents))
+	log.Printf("DEBUG: asset_service.GetAssetDocumentsFromStorage found %d documents for assetID=%s", len(documents), assetID)
 	return documents, nil
 }
 

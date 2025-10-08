@@ -258,34 +258,77 @@ func (r *DocumentRepo) GetDocumentByID(ctx context.Context, id, tenantID string)
 
 // ListDocuments получает список документов
 func (r *DocumentRepo) ListDocuments(ctx context.Context, tenantID string, filters map[string]interface{}) ([]Document, error) {
-	query := `
-		SELECT id, tenant_id, title, title as original_name, description, type, category, storage_uri as file_path, size_bytes as file_size, 
-		       mime_type, checksum_sha256 as file_hash, NULL as folder_id, owner_id, created_by, created_at, 
-		       updated_at, CASE WHEN deleted_at IS NULL THEN true ELSE false END as is_active, version, NULL as metadata
-		FROM documents 
-		WHERE tenant_id = $1 AND deleted_at IS NULL`
+	// Проверяем, нужен ли JOIN с document_links для фильтрации по модулю
+	needJoin := false
+	if _, ok := filters["module"]; ok {
+		needJoin = true
+	}
+	if _, ok := filters["entity_id"]; ok {
+		needJoin = true
+	}
+
+	var query string
+	if needJoin {
+		// Запрос с JOIN для фильтрации по модулю и entityID
+		query = `
+			SELECT DISTINCT d.id, d.tenant_id, d.title, d.title as original_name, d.description, d.type, d.category, d.storage_uri as file_path, d.size_bytes as file_size, 
+			       d.mime_type, d.checksum_sha256 as file_hash, NULL as folder_id, d.owner_id, d.created_by, d.created_at, 
+			       d.updated_at, CASE WHEN d.deleted_at IS NULL THEN true ELSE false END as is_active, d.version, NULL as metadata
+			FROM documents d
+			INNER JOIN document_links dl ON d.id = dl.document_id
+			WHERE d.tenant_id = $1 AND d.deleted_at IS NULL`
+	} else {
+		query = `
+			SELECT id, tenant_id, title, title as original_name, description, type, category, storage_uri as file_path, size_bytes as file_size, 
+			       mime_type, checksum_sha256 as file_hash, NULL as folder_id, owner_id, created_by, created_at, 
+			       updated_at, CASE WHEN deleted_at IS NULL THEN true ELSE false END as is_active, version, NULL as metadata
+			FROM documents 
+			WHERE tenant_id = $1 AND deleted_at IS NULL`
+	}
 
 	args := []interface{}{tenantID}
 	argIndex := 2
 
 	// Добавляем фильтры
-	// folder_id фильтр убран, так как в таблице documents нет колонки folder_id
+	if module, ok := filters["module"].(string); ok && module != "" {
+		query += fmt.Sprintf(" AND dl.module = $%d", argIndex)
+		args = append(args, module)
+		argIndex++
+	}
+
+	if entityID, ok := filters["entity_id"].(string); ok && entityID != "" {
+		query += fmt.Sprintf(" AND dl.entity_id = $%d", argIndex)
+		args = append(args, entityID)
+		argIndex++
+	}
 
 	if mimeType, ok := filters["mime_type"].(string); ok && mimeType != "" {
-		query += fmt.Sprintf(" AND mime_type = $%d", argIndex)
+		if needJoin {
+			query += fmt.Sprintf(" AND d.mime_type = $%d", argIndex)
+		} else {
+			query += fmt.Sprintf(" AND mime_type = $%d", argIndex)
+		}
 		args = append(args, mimeType)
 		argIndex++
 	}
 
 	if ownerID, ok := filters["owner_id"].(string); ok && ownerID != "" {
-		query += fmt.Sprintf(" AND owner_id = $%d", argIndex)
+		if needJoin {
+			query += fmt.Sprintf(" AND d.owner_id = $%d", argIndex)
+		} else {
+			query += fmt.Sprintf(" AND owner_id = $%d", argIndex)
+		}
 		args = append(args, ownerID)
 		argIndex++
 	}
 
 	if search, ok := filters["search"].(string); ok && search != "" {
-		query += fmt.Sprintf(" AND (title ILIKE $%d OR description ILIKE $%d)", argIndex, argIndex)
 		searchTerm := "%" + search + "%"
+		if needJoin {
+			query += fmt.Sprintf(" AND (d.title ILIKE $%d OR d.description ILIKE $%d)", argIndex, argIndex)
+		} else {
+			query += fmt.Sprintf(" AND (title ILIKE $%d OR description ILIKE $%d)", argIndex, argIndex)
+		}
 		args = append(args, searchTerm)
 		argIndex++
 	}
@@ -299,7 +342,11 @@ func (r *DocumentRepo) ListDocuments(ctx context.Context, tenantID string, filte
 	if so, ok := filters["sort_order"].(string); ok && so != "" {
 		sortOrder = so
 	}
-	query += fmt.Sprintf(" ORDER BY %s %s", sortBy, sortOrder)
+	if needJoin {
+		query += fmt.Sprintf(" ORDER BY d.%s %s", sortBy, sortOrder)
+	} else {
+		query += fmt.Sprintf(" ORDER BY %s %s", sortBy, sortOrder)
+	}
 
 	// Пагинация
 	if page, ok := filters["page"].(int); ok && page > 0 {

@@ -696,18 +696,18 @@ func (s *DocumentService) UpdateDocument(ctx context.Context, id, tenantID strin
 	return nil
 }
 
-// DeleteDocument удаляет документ
+// DeleteDocument удаляет документ (SOFT DELETE - только в БД, файл остается)
 func (s *DocumentService) DeleteDocument(ctx context.Context, id, tenantID string, deletedBy string) error {
 	document, err := s.documentRepo.GetDocumentByID(ctx, id, tenantID)
 	if err != nil {
 		return fmt.Errorf("failed to get document: %w", err)
 	}
 
-	// Удаляем файл с диска
-	if err := os.Remove(document.FilePath); err != nil {
-		fmt.Printf("Failed to remove file %s: %v\n", document.FilePath, err)
-	}
-
+	// ВАЖНО: НЕ удаляем физический файл, так как документ может быть связан с другими модулями
+	// Физическое удаление файлов должно выполняться отдельной задачей garbage collection
+	// после проверки, что файл не используется другими активными документами или связями
+	
+	// Выполняем SOFT DELETE - устанавливаем deleted_at в БД
 	if err := s.documentRepo.DeleteDocument(ctx, id, tenantID); err != nil {
 		return fmt.Errorf("failed to delete document: %w", err)
 	}
@@ -724,6 +724,7 @@ func (s *DocumentService) DeleteDocument(ctx context.Context, id, tenantID strin
 	}
 	s.documentRepo.CreateDocumentAuditLog(ctx, auditLog)
 
+	log.Printf("INFO: Document soft-deleted: id=%s, title=%s, file preserved at %s", id, document.Title, document.FilePath)
 	return nil
 }
 

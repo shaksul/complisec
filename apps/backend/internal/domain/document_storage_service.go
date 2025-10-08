@@ -106,11 +106,14 @@ func (s *DocumentStorageService) UnlinkDocumentFromModule(ctx context.Context, d
 
 // GetModuleDocuments получает документы, связанные с конкретным модулем
 func (s *DocumentStorageService) GetModuleDocuments(ctx context.Context, module, entityID, tenantID string) ([]dto.DocumentDTO, error) {
+	fmt.Printf("DEBUG: GetModuleDocuments called with module=%s entityID=%s tenantID=%s\n", module, entityID, tenantID)
 	filters := dto.FileDocumentFiltersDTO{
 		Module:   &module,
 		EntityID: &entityID,
 	}
-	return s.documentService.ListDocuments(ctx, tenantID, filters)
+	documents, err := s.documentService.ListDocuments(ctx, tenantID, filters)
+	fmt.Printf("DEBUG: GetModuleDocuments returned %d documents (err=%v)\n", len(documents), err)
+	return documents, err
 }
 
 // CreateFolder создает папку
