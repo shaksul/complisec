@@ -69,6 +69,7 @@ type UserDetailResponse struct {
 	Roles     []string  `json:"roles"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	LastLogin *string   `json:"last_login,omitempty"`
 	Stats     UserStats `json:"stats"`
 }
 

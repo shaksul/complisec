@@ -919,6 +919,49 @@ func (r *AssetRepo) LinkDocumentToAsset(ctx context.Context, assetID, documentID
 	return err
 }
 
+// GetUserResponsibleAssets returns assets for which the user is responsible
+func (r *AssetRepo) GetUserResponsibleAssets(ctx context.Context, tenantID, userID string) ([]Asset, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT a.id, a.tenant_id, a.inventory_number, a.name, a.type, a.class, a.owner_id, 
+		       COALESCE(u_owner.first_name || ' ' || u_owner.last_name, u_owner.email) as owner_name,
+		       a.responsible_user_id,
+		       COALESCE(u_resp.first_name || ' ' || u_resp.last_name, u_resp.email) as responsible_user_name,
+		       a.location, a.criticality, a.confidentiality, a.integrity, a.availability, 
+		       a.status, a.created_at, a.updated_at, a.deleted_at
+		FROM assets a
+		LEFT JOIN users u_owner ON a.owner_id = u_owner.id
+		LEFT JOIN users u_resp ON a.responsible_user_id = u_resp.id
+		WHERE a.tenant_id = $1 AND a.responsible_user_id = $2 AND a.deleted_at IS NULL
+		ORDER BY a.created_at DESC
+	`, tenantID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var assets []Asset
+	for rows.Next() {
+		var asset Asset
+		var ownerName, responsibleUserName sql.NullString
+		err := rows.Scan(&asset.ID, &asset.TenantID, &asset.InventoryNumber, &asset.Name,
+			&asset.Type, &asset.Class, &asset.OwnerID, &ownerName, &asset.ResponsibleUserID,
+			&responsibleUserName, &asset.Location, &asset.Criticality, &asset.Confidentiality,
+			&asset.Integrity, &asset.Availability, &asset.Status, &asset.CreatedAt,
+			&asset.UpdatedAt, &asset.DeletedAt)
+		if err != nil {
+			return nil, err
+		}
+		if ownerName.Valid {
+			asset.OwnerName = &ownerName.String
+		}
+		if responsibleUserName.Valid {
+			asset.ResponsibleUserName = &responsibleUserName.String
+		}
+		assets = append(assets, asset)
+	}
+	return assets, nil
+}
+
 // GetDocumentStorage returns documents from storage with pagination and filtering
 func (r *AssetRepo) GetDocumentStorage(ctx context.Context, tenantID string, req dto.DocumentStorageRequest) ([]dto.DocumentStorageResponse, int64, error) {
 	// Базовый запрос для получения документов из централизованного хранилища

@@ -42,7 +42,7 @@ import {
   Pie,
   Cell,
 } from 'recharts'
-import { UserCatalog, getUserDetail, UserDetail, getUserActivity, getUserActivityStats, UserActivity, UserActivityStats } from '../../shared/api/users'
+import { UserCatalog, getUserDetail, UserDetail, getUserActivity, getUserActivityStats, getUserAssets, UserActivity, UserActivityStats, UserAsset } from '../../shared/api/users'
 
 interface UserDetailModalProps {
   open: boolean
@@ -81,8 +81,10 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
   const [userDetail, setUserDetail] = useState<UserDetail | null>(null)
   const [userActivity, setUserActivity] = useState<UserActivity[]>([])
   const [activityStats, setActivityStats] = useState<UserActivityStats | null>(null)
+  const [userAssets, setUserAssets] = useState<UserAsset[]>([])
   const [loading, setLoading] = useState(false)
   const [activityLoading, setActivityLoading] = useState(false)
+  const [assetsLoading, setAssetsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -121,6 +123,18 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
     }
   }
 
+  const loadUserAssets = async () => {
+    try {
+      setAssetsLoading(true)
+      const assets = await getUserAssets(user.id)
+      setUserAssets(assets)
+    } catch (err) {
+      console.error('Error loading user assets:', err)
+    } finally {
+      setAssetsLoading(false)
+    }
+  }
+
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue)
     if (newValue === 1 && !activityStats) {
@@ -128,6 +142,9 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
     }
     if (newValue === 2 && userActivity.length === 0) {
       loadUserActivity()
+    }
+    if (newValue === 3 && userAssets.length === 0) {
+      loadUserAssets()
     }
   }
 
@@ -210,6 +227,7 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
                 <Tab label="Общая информация" />
                 <Tab label="Статистика" />
                 <Tab label="Активность" />
+                <Tab label="Активы" />
               </Tabs>
             </Box>
 
@@ -691,6 +709,78 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
                     </Card>
                   </Grid>
                 </Grid>
+              )}
+            </TabPanel>
+
+            <TabPanel value={tabValue} index={3}>
+              {assetsLoading ? (
+                <Box display="flex" justifyContent="center" p={4}>
+                  <CircularProgress />
+                </Box>
+              ) : (
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Активы под ответственностью ({userAssets.length})
+                    </Typography>
+                    {userAssets.length === 0 ? (
+                      <Typography variant="body2" color="textSecondary">
+                        Нет активов под ответственностью
+                      </Typography>
+                    ) : (
+                      <Box sx={{ mt: 2 }}>
+                        {userAssets.map((asset) => (
+                          <Box
+                            key={asset.id}
+                            sx={{
+                              mb: 2,
+                              p: 2,
+                              border: '1px solid',
+                              borderColor: 'divider',
+                              borderRadius: 1,
+                              '&:hover': {
+                                backgroundColor: 'action.hover',
+                              },
+                            }}
+                          >
+                            <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={1}>
+                              <Box flex={1}>
+                                <Typography variant="h6" gutterBottom>
+                                  {asset.name}
+                                </Typography>
+                                <Box display="flex" gap={1} flexWrap="wrap" mb={1}>
+                                  <Chip label={asset.inventory_number} size="small" variant="outlined" />
+                                  <Chip label={asset.type} size="small" color="primary" />
+                                  <Chip 
+                                    label={asset.criticality} 
+                                    size="small" 
+                                    color={
+                                      asset.criticality === 'Высокая' ? 'error' :
+                                      asset.criticality === 'Средняя' ? 'warning' :
+                                      'success'
+                                    }
+                                  />
+                                  <Chip 
+                                    label={asset.status} 
+                                    size="small" 
+                                    color={
+                                      asset.status === 'Активен' ? 'success' :
+                                      asset.status === 'В ремонте' ? 'warning' :
+                                      'default'
+                                    }
+                                  />
+                                </Box>
+                                <Typography variant="caption" color="textSecondary">
+                                  Создан: {formatDate(asset.created_at)}
+                                </Typography>
+                              </Box>
+                            </Box>
+                          </Box>
+                        ))}
+                      </Box>
+                    )}
+                  </CardContent>
+                </Card>
               )}
             </TabPanel>
           </>

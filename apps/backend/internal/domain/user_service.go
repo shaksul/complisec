@@ -13,14 +13,16 @@ import (
 )
 
 type UserService struct {
-	userRepo *repo.UserRepo
-	roleRepo *repo.RoleRepo
+	userRepo  *repo.UserRepo
+	roleRepo  *repo.RoleRepo
+	assetRepo *repo.AssetRepo
 }
 
-func NewUserService(userRepo *repo.UserRepo, roleRepo *repo.RoleRepo) *UserService {
+func NewUserService(userRepo *repo.UserRepo, roleRepo *repo.RoleRepo, assetRepo *repo.AssetRepo) *UserService {
 	return &UserService{
-		userRepo: userRepo,
-		roleRepo: roleRepo,
+		userRepo:  userRepo,
+		roleRepo:  roleRepo,
+		assetRepo: assetRepo,
 	}
 }
 
@@ -386,4 +388,9 @@ func (s *UserService) LogUserActivity(ctx context.Context, userID, action, descr
 // LogLoginAttempt logs a login attempt
 func (s *UserService) LogLoginAttempt(ctx context.Context, userID, tenantID, email, ipAddress, userAgent string, success bool, failureReason string) error {
 	return s.userRepo.LogLoginAttempt(ctx, userID, tenantID, email, ipAddress, userAgent, success, failureReason)
+}
+
+// GetUserResponsibleAssets retrieves assets for which the user is responsible
+func (s *UserService) GetUserResponsibleAssets(ctx context.Context, userID, tenantID string) ([]repo.Asset, error) {
+	return s.assetRepo.GetUserResponsibleAssets(ctx, tenantID, userID)
 }

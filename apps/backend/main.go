@@ -68,7 +68,7 @@ func main() {
 
 	// Initialize services
 	authService := domain.NewAuthService(userRepo, baseRoleRepo, permissionRepo, cfg.JWTSecret)
-	userService := domain.NewUserService(userRepo, baseRoleRepo)
+	userService := domain.NewUserService(userRepo, baseRoleRepo, assetRepo)
 	roleService := domain.NewRoleService(roleRepo, userRepo, auditRepo)
 	tenantService := domain.NewTenantService(tenantRepo, auditRepo)
 	documentService := domain.NewDocumentService(documentRepo, ".")

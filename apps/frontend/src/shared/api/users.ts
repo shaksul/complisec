@@ -152,6 +152,21 @@ export const getUserActivityStats = async (id: string): Promise<UserActivityStat
   return response.data.data
 }
 
+export interface UserAsset {
+  id: string
+  inventory_number: string
+  name: string
+  type: string
+  criticality: string
+  status: string
+  created_at: string
+}
+
+export const getUserAssets = async (id: string): Promise<UserAsset[]> => {
+  const response = await apiClient.get(`/users/${id}/assets`)
+  return response.data.data || []
+}
+
 export const createUser = async (userData: {
   email: string
   password: string
@@ -185,6 +200,7 @@ export const usersApi = {
   getUserCatalog,
   getUser,
   getUserDetail,
+  getUserAssets,
   getUserActivity,
   getUserActivityStats,
   createUser,

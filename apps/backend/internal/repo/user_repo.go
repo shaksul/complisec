@@ -19,6 +19,7 @@ type User struct {
 	FirstName    *string
 	LastName     *string
 	IsActive     bool
+	LastLogin    *time.Time // Последний успешный вход в систему
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -82,6 +83,21 @@ func (r *UserRepo) GetByID(ctx context.Context, id string) (*User, error) {
 		}
 		return nil, err
 	}
+
+	// Get last successful login from login_attempts table
+	var lastLogin time.Time
+	err = r.db.QueryRowContext(ctx, `
+		SELECT created_at FROM login_attempts 
+		WHERE user_id = $1 AND success = true 
+		ORDER BY created_at DESC 
+		LIMIT 1
+	`, id).Scan(&lastLogin)
+	if err == nil {
+		u.LastLogin = &lastLogin
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		log.Printf("WARN: Failed to get last_login for user %s: %v", id, err)
+	}
+
 	return &u, nil
 }
 

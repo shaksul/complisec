@@ -33,6 +33,7 @@ func (h *UserHandler) Register(r fiber.Router) {
 	users.Post("/", RequirePermission("users.create"), h.createUser)
 	users.Get("/:id", RequirePermission("users.view"), h.getUser)
 	users.Get("/:id/detail", RequirePermission("users.view"), h.getUserDetail)
+	users.Get("/:id/assets", RequirePermission("users.view"), h.getUserAssets)
 	users.Get("/:id/activity", RequirePermission("users.view"), h.getUserActivity)
 	users.Get("/:id/activity/stats", RequirePermission("users.view"), h.getUserActivityStats)
 	users.Put("/:id", RequirePermission("users.edit"), h.updateUser)
@@ -351,6 +352,12 @@ func (h *UserHandler) getUserDetail(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	var lastLogin *string
+	if user.LastLogin != nil {
+		formatted := user.LastLogin.Format(time.RFC3339)
+		lastLogin = &formatted
+	}
+
 	response := dto.UserDetailResponse{
 		ID:        user.ID,
 		Email:     user.Email,
@@ -360,6 +367,7 @@ func (h *UserHandler) getUserDetail(c *fiber.Ctx) error {
 		Roles:     roles,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
+		LastLogin: lastLogin,
 		Stats: dto.UserStats{
 			DocumentsCount: stats["documents_count"],
 			RisksCount:     stats["risks_count"],
@@ -425,6 +433,27 @@ func (h *UserHandler) getUserActivity(c *fiber.Ctx) error {
 		Data:       activityResponses,
 		Pagination: pagination,
 	})
+}
+
+func (h *UserHandler) getUserAssets(c *fiber.Ctx) error {
+	userID := c.Params("id")
+	tenantID := c.Locals("tenant_id").(string)
+
+	// Проверяем, что пользователь существует в текущем тенанте
+	user, err := h.userService.GetUserByTenant(c.Context(), userID, tenantID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	if user == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "User not found"})
+	}
+
+	assets, err := h.userService.GetUserResponsibleAssets(c.Context(), userID, tenantID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"data": assets})
 }
 
 func (h *UserHandler) getUserActivityStats(c *fiber.Ctx) error {
