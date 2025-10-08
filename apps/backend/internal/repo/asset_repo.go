@@ -864,7 +864,66 @@ func (r *AssetRepo) LinkDocumentToAsset(ctx context.Context, assetID, documentID
 
 // GetDocumentStorage returns documents from storage with pagination and filtering
 func (r *AssetRepo) GetDocumentStorage(ctx context.Context, tenantID string, req dto.DocumentStorageRequest) ([]dto.DocumentStorageResponse, int64, error) {
-	// This is a placeholder implementation
-	// In a real implementation, this would query a document storage system
-	return []dto.DocumentStorageResponse{}, 0, nil
+	// Базовый запрос для получения документов из централизованного хранилища
+	query := `
+		SELECT d.id, COALESCE(d.title, '') as title, d.category as document_type, 
+		       d.version, d.size_bytes, d.mime_type as mime, d.created_by, d.created_at
+		FROM documents d
+		WHERE d.tenant_id = $1 AND d.deleted_at IS NULL`
+	
+	args := []interface{}{tenantID}
+	argIndex := 2
+
+	// Фильтр по типу
+	if req.Type != "" {
+		query += fmt.Sprintf(" AND d.type = $%d", argIndex)
+		args = append(args, req.Type)
+		argIndex++
+	}
+
+	// Фильтр по поисковому запросу
+	if req.Query != "" {
+		query += fmt.Sprintf(" AND (d.title ILIKE $%d OR d.description ILIKE $%d)", argIndex, argIndex)
+		searchTerm := "%" + req.Query + "%"
+		args = append(args, searchTerm)
+		argIndex++
+	}
+
+	// Подсчет общего количества
+	countQuery := "SELECT COUNT(*) FROM (" + query + ") as count_query"
+	var total int64
+	err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Пагинация
+	if req.Page < 1 {
+		req.Page = 1
+	}
+	if req.PageSize < 1 {
+		req.PageSize = 25
+	}
+	offset := (req.Page - 1) * req.PageSize
+	query += fmt.Sprintf(" ORDER BY d.created_at DESC LIMIT $%d OFFSET $%d", argIndex, argIndex+1)
+	args = append(args, req.PageSize, offset)
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var documents []dto.DocumentStorageResponse
+	for rows.Next() {
+		var doc dto.DocumentStorageResponse
+		err := rows.Scan(&doc.ID, &doc.Title, &doc.DocumentType, 
+			&doc.Version, &doc.SizeBytes, &doc.Mime, &doc.CreatedBy, &doc.CreatedAt)
+		if err != nil {
+			return nil, 0, err
+		}
+		documents = append(documents, doc)
+	}
+
+	return documents, total, nil
 }

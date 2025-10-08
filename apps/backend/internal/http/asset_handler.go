@@ -39,11 +39,11 @@ func (h *AssetHandler) Register(r fiber.Router) {
 	assets.Post("/:id/documents", RequirePermission("assets.documents:create"), h.addAssetDocument)
 	assets.Post("/:id/documents/upload", RequirePermission("assets.documents:create"), h.uploadAssetDocument)
 	assets.Post("/:id/documents/link", RequirePermission("assets.documents:link"), h.linkAssetDocument)
+	// Document storage endpoints (должен быть ПЕРЕД /documents/:docId)
+	assets.Get("/documents/storage", RequirePermission("assets.view"), h.getDocumentStorage)
 	assets.Delete("/documents/:docId", RequirePermission("assets.edit"), h.deleteAssetDocument)
 	assets.Get("/documents/:docId", RequirePermission("assets.view"), h.getAssetDocument)
 	assets.Get("/documents/:docId/download", RequirePermission("assets.view"), h.downloadAssetDocument)
-	// Document storage endpoints
-	assets.Get("/documents/storage", RequirePermission("assets.view"), h.getDocumentStorage)
 	// New centralized document endpoints
 	assets.Post("/:id/documents/unlink", RequirePermission("assets.edit"), h.unlinkAssetDocument)
 	assets.Get("/:id/software", RequirePermission("assets.view"), h.getAssetSoftware)

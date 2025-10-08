@@ -209,4 +209,5 @@ type CreateDocumentLinkDTO struct {
 	EntityID    string  `json:"entity_id" validate:"required"`
 	LinkType    string  `json:"link_type" validate:"required,oneof=attachment reference evidence"`
 	Description *string `json:"description"`
+	LinkedBy    string  `json:"linked_by"` // ID пользователя, который создал связь
 }

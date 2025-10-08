@@ -1032,12 +1032,18 @@ func (s *DocumentService) GetDocumentStats(ctx context.Context, tenantID string)
 
 // AddDocumentLink добавляет связь документа с другим модулем
 func (s *DocumentService) AddDocumentLink(ctx context.Context, documentID string, link dto.CreateDocumentLinkDTO) error {
+	// Используем LinkedBy из DTO, если передан, иначе используем DocumentID как fallback
+	createdBy := link.LinkedBy
+	if createdBy == "" {
+		createdBy = documentID // Временное решение
+	}
+
 	documentLink := repo.DocumentLink{
 		ID:         uuid.New().String(),
 		DocumentID: documentID,
 		Module:     link.Module,
 		EntityID:   link.EntityID,
-		CreatedBy:  "system", // TODO: получать из контекста
+		CreatedBy:  createdBy,
 		CreatedAt:  time.Now(),
 	}
 

@@ -94,6 +94,7 @@ func (s *DocumentStorageService) LinkDocumentToModule(ctx context.Context, docum
 		EntityID:    entityID,
 		LinkType:    linkType,
 		Description: &description,
+		LinkedBy:    linkedBy, // Передаем ID пользователя
 	}
 	return s.documentService.AddDocumentLink(ctx, documentID, link)
 }
