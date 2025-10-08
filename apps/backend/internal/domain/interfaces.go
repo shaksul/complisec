@@ -49,6 +49,7 @@ type AssetServiceInterface interface {
 	UnlinkDocumentFromAsset(ctx context.Context, assetID, documentID, tenantID, unlinkedBy string) error
 	DeleteAssetDocument(ctx context.Context, assetID, documentID, tenantID, deletedBy string) error
 	DeleteDocumentLink(ctx context.Context, documentID, tenantID, deletedBy string) error
+	DownloadDocumentFromStorage(ctx context.Context, documentID, tenantID string) (*dto.DocumentDownloadDTO, error)
 }
 
 // RiskServiceInterface - интерфейс для RiskService

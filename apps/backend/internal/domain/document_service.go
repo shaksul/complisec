@@ -712,7 +712,7 @@ func (s *DocumentService) DeleteDocument(ctx context.Context, id, tenantID strin
 	if hasLinks {
 		// Документ связан с другими модулями - НЕ удаляем его, только убираем тег #documents
 		log.Printf("INFO: Document has module links, removing #documents tag only: id=%s, title=%s", id, document.Title)
-		
+
 		// Удаляем теги, связанные с модулем "Документы"
 		tags, _ := s.documentRepo.GetDocumentTags(ctx, id)
 		for _, tag := range tags {
@@ -732,16 +732,16 @@ func (s *DocumentService) DeleteDocument(ctx context.Context, id, tenantID strin
 			CreatedAt:  time.Now(),
 		}
 		s.documentRepo.CreateDocumentAuditLog(ctx, auditLog)
-		
+
 		return nil
 	}
 
 	// Документ не связан с другими модулями - выполняем SOFT DELETE
 	log.Printf("INFO: Document has no module links, performing soft delete: id=%s, title=%s", id, document.Title)
-	
+
 	// ВАЖНО: НЕ удаляем физический файл, так как могут быть версии или другие ссылки
 	// Физическое удаление файлов должно выполняться отдельной задачей garbage collection
-	
+
 	// Выполняем SOFT DELETE - устанавливаем deleted_at в БД
 	if err := s.documentRepo.DeleteDocument(ctx, id, tenantID); err != nil {
 		return fmt.Errorf("failed to delete document: %w", err)
@@ -770,13 +770,34 @@ func (s *DocumentService) DownloadDocument(ctx context.Context, id, tenantID str
 		return nil, fmt.Errorf("failed to get document: %w", err)
 	}
 
+	// Получаем абсолютный путь к файлу
+	// БД хранит относительный путь от рабочей директории, добавляем префикс если нужно
+	filePath := document.FilePath
+
+	// Проверяем, начинается ли путь с "/" (абсолютный в Linux)
+	if !strings.HasPrefix(filePath, "/") {
+		// Путь относительный, проверяем существование
+		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			// Файл не найден по относительному пути, пробуем с префиксом storagePath
+			// Но сначала убираем дублирование если есть
+			if strings.HasPrefix(filePath, "storage/documents/") {
+				// Путь уже содержит storage/documents/, просто добавляем "./"
+				filePath = "./" + filePath
+			} else {
+				// Путь не содержит storage/documents/, добавляем полный путь
+				filePath = filepath.Join(s.storagePath, filePath)
+			}
+			log.Printf("DEBUG: DownloadDocument converted relative path %s to %s", document.FilePath, filePath)
+		}
+	}
+
 	// Проверяем существование файла
-	if _, err := os.Stat(document.FilePath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("file not found: %s", document.FilePath)
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("file not found: %s", filePath)
 	}
 
 	// Читаем файл
-	file, err := os.Open(document.FilePath)
+	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
@@ -1181,20 +1202,20 @@ func (s *DocumentService) buildStoragePath(tenantID, module, category, fileName 
 
 	// Создаем итоговый путь
 	finalPath := filepath.Join(basePath, cleanFileName)
-	
+
 	// Дополнительная проверка: убеждаемся, что итоговый путь находится внутри storagePath
 	absStoragePath, err := filepath.Abs(s.storagePath)
 	if err != nil {
 		log.Printf("ERROR: Failed to get absolute storage path: %v", err)
 		return filepath.Join(s.storagePath, tenantID, "secure", uuid.New().String())
 	}
-	
+
 	absFinalPath, err := filepath.Abs(finalPath)
 	if err != nil {
 		log.Printf("ERROR: Failed to get absolute final path: %v", err)
 		return filepath.Join(s.storagePath, tenantID, "secure", uuid.New().String())
 	}
-	
+
 	// Проверяем, что итоговый путь начинается с storagePath
 	if !strings.HasPrefix(absFinalPath, absStoragePath) {
 		log.Printf("WARNING: Path traversal attempt detected. Original path: %s, Final path: %s", finalPath, absFinalPath)
@@ -1209,20 +1230,20 @@ func (s *DocumentService) sanitizePathComponent(component string) string {
 	// Убираем все символы, кроме букв, цифр, дефисов и подчеркиваний
 	cleaned := ""
 	for _, r := range component {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || 
-		   (r >= '0' && r <= '9') || r == '-' || r == '_' {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '-' || r == '_' {
 			cleaned += string(r)
 		}
 	}
-	
+
 	// Ограничиваем длину
 	if len(cleaned) > 50 {
 		cleaned = cleaned[:50]
 	}
-	
+
 	// Убираем точки в начале и конце
 	cleaned = strings.Trim(cleaned, ".")
-	
+
 	return cleaned
 }
 
@@ -1231,20 +1252,20 @@ func (s *DocumentService) sanitizeFileName(fileName string) string {
 	// Убираем все символы, кроме букв, цифр, дефисов, подчеркиваний и точки
 	cleaned := ""
 	for _, r := range fileName {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || 
-		   (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
 			cleaned += string(r)
 		}
 	}
-	
+
 	// Ограничиваем длину
 	if len(cleaned) > 100 {
 		cleaned = cleaned[:100]
 	}
-	
+
 	// Убираем точки в начале и конце (кроме расширения)
 	cleaned = strings.Trim(cleaned, ".")
-	
+
 	return cleaned
 }
 

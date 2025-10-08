@@ -332,7 +332,7 @@ func (h *AssetHandler) uploadAssetDocument(c *fiber.Ctx) error {
 		"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
 		"application/vnd.ms-excel": true,
 		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": true,
-		"text/plain": true, // Add support for TXT files
+		"text/plain":      true, // Add support for TXT files
 		"application/zip": true, // DOCX/XLSX are ZIP archives
 	}
 
@@ -355,11 +355,11 @@ func (h *AssetHandler) uploadAssetDocument(c *fiber.Ctx) error {
 	}
 
 	contentType := http.DetectContentType(buffer)
-	
+
 	// Check file extension
 	fileName := file.Filename
 	ext := strings.ToLower(filepath.Ext(fileName))
-	
+
 	isValidExtension := false
 	for _, allowed := range allowedExtensions {
 		if ext == allowed {
@@ -367,7 +367,7 @@ func (h *AssetHandler) uploadAssetDocument(c *fiber.Ctx) error {
 			break
 		}
 	}
-	
+
 	// Allow file if EITHER extension is valid OR MIME type is valid
 	// (since some formats like DOCX may be detected as application/zip or text/plain)
 	if !isValidExtension && !allowedTypes[contentType] {
@@ -426,16 +426,22 @@ func (h *AssetHandler) linkAssetDocument(c *fiber.Ctx) error {
 func (h *AssetHandler) downloadAssetDocument(c *fiber.Ctx) error {
 	docID := c.Params("docId")
 	userID := c.Locals("user_id").(string)
+	tenantID := c.Locals("tenant_id").(string)
 
 	log.Printf("DEBUG: AssetHandler.downloadAssetDocument docID=%s user=%s", docID, userID)
 
-	filePath, fileName, err := h.assetService.GetDocumentDownloadPath(c.Context(), docID, userID)
+	// Используем централизованный сервис документов для скачивания
+	downloadData, err := h.assetService.DownloadDocumentFromStorage(c.Context(), docID, tenantID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.downloadAssetDocument service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	return c.Download(filePath, fileName)
+	// Устанавливаем заголовки для скачивания файла
+	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", downloadData.FileName))
+	c.Set("Content-Type", downloadData.MimeType)
+
+	return c.Send(downloadData.Content)
 }
 
 func (h *AssetHandler) getDocumentStorage(c *fiber.Ctx) error {

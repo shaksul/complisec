@@ -952,6 +952,14 @@ func (s *AssetService) DeleteDocumentLink(ctx context.Context, documentID, tenan
 	return nil
 }
 
+// DownloadDocumentFromStorage скачивает документ из централизованного хранилища
+func (s *AssetService) DownloadDocumentFromStorage(ctx context.Context, documentID, tenantID string) (*dto.DocumentDownloadDTO, error) {
+	log.Printf("DEBUG: asset_service.DownloadDocumentFromStorage documentID=%s", documentID)
+
+	// Делегируем скачивание централизованному сервису документов
+	return s.documentStorageService.DownloadDocument(ctx, documentID, tenantID)
+}
+
 // Helper function to create string pointer
 func assetStringPtr(s string) *string {
 	return &s

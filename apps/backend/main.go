@@ -71,7 +71,7 @@ func main() {
 	userService := domain.NewUserService(userRepo, baseRoleRepo)
 	roleService := domain.NewRoleService(roleRepo, userRepo, auditRepo)
 	tenantService := domain.NewTenantService(tenantRepo, auditRepo)
-	documentService := domain.NewDocumentService(documentRepo, "./storage/documents")
+	documentService := domain.NewDocumentService(documentRepo, ".")
 	documentStorageService := domain.NewDocumentStorageService(documentService)
 	assetService := domain.NewAssetService(assetRepo, userRepo, documentStorageService)
 	riskService := domain.NewRiskService(riskRepo, auditRepo, documentStorageService)
