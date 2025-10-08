@@ -696,16 +696,51 @@ func (s *DocumentService) UpdateDocument(ctx context.Context, id, tenantID strin
 	return nil
 }
 
-// DeleteDocument удаляет документ (SOFT DELETE - только в БД, файл остается)
+// DeleteDocument удаляет документ с проверкой наличия связей с модулями
 func (s *DocumentService) DeleteDocument(ctx context.Context, id, tenantID string, deletedBy string) error {
 	document, err := s.documentRepo.GetDocumentByID(ctx, id, tenantID)
 	if err != nil {
 		return fmt.Errorf("failed to get document: %w", err)
 	}
 
-	// ВАЖНО: НЕ удаляем физический файл, так как документ может быть связан с другими модулями
+	// Проверяем, есть ли у документа связи с модулями (assets, risks, incidents, training, compliance)
+	hasLinks, err := s.documentRepo.HasModuleLinks(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to check module links: %w", err)
+	}
+
+	if hasLinks {
+		// Документ связан с другими модулями - НЕ удаляем его, только убираем тег #documents
+		log.Printf("INFO: Document has module links, removing #documents tag only: id=%s, title=%s", id, document.Title)
+		
+		// Удаляем теги, связанные с модулем "Документы"
+		tags, _ := s.documentRepo.GetDocumentTags(ctx, id)
+		for _, tag := range tags {
+			if tag == "#documents" || tag == "documents" {
+				s.documentRepo.RemoveDocumentTag(ctx, id, tag)
+			}
+		}
+
+		// Создаем аудит запись
+		auditLog := repo.DocumentAuditLog{
+			ID:         uuid.New().String(),
+			TenantID:   tenantID,
+			DocumentID: &id,
+			UserID:     deletedBy,
+			Action:     "unlinked_from_documents_module",
+			Details:    &document.Title,
+			CreatedAt:  time.Now(),
+		}
+		s.documentRepo.CreateDocumentAuditLog(ctx, auditLog)
+		
+		return nil
+	}
+
+	// Документ не связан с другими модулями - выполняем SOFT DELETE
+	log.Printf("INFO: Document has no module links, performing soft delete: id=%s, title=%s", id, document.Title)
+	
+	// ВАЖНО: НЕ удаляем физический файл, так как могут быть версии или другие ссылки
 	// Физическое удаление файлов должно выполняться отдельной задачей garbage collection
-	// после проверки, что файл не используется другими активными документами или связями
 	
 	// Выполняем SOFT DELETE - устанавливаем deleted_at в БД
 	if err := s.documentRepo.DeleteDocument(ctx, id, tenantID); err != nil {

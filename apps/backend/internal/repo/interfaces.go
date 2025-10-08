@@ -119,6 +119,7 @@ type DocumentRepoInterface interface {
 	GetDocumentLinks(ctx context.Context, documentID string) ([]DocumentLink, error)
 	GetDocumentsLinks(ctx context.Context, documentIDs []string) (map[string][]DocumentLink, error)
 	DeleteDocumentLink(ctx context.Context, documentID, module, entityID string) error
+	HasModuleLinks(ctx context.Context, documentID string) (bool, error) // Проверяет, есть ли у документа связи с модулями
 
 	// OCR Text
 	CreateOCRText(ctx context.Context, ocrText OCRText) error

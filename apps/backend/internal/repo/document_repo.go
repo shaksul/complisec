@@ -278,12 +278,19 @@ func (r *DocumentRepo) ListDocuments(ctx context.Context, tenantID string, filte
 			INNER JOIN document_links dl ON d.id = dl.document_id
 			WHERE d.tenant_id = $1 AND d.deleted_at IS NULL`
 	} else {
+		// Для модуля "Документы" - показываем только документы БЕЗ связей с другими модулями
+		// Это позволяет изолировать удаление документов в модуле "Документы" от других модулей
 		query = `
 			SELECT id, tenant_id, title, title as original_name, description, type, category, storage_uri as file_path, size_bytes as file_size, 
 			       mime_type, checksum_sha256 as file_hash, NULL as folder_id, owner_id, created_by, created_at, 
 			       updated_at, CASE WHEN deleted_at IS NULL THEN true ELSE false END as is_active, version, NULL as metadata
 			FROM documents 
-			WHERE tenant_id = $1 AND deleted_at IS NULL`
+			WHERE tenant_id = $1 AND deleted_at IS NULL
+			  AND NOT EXISTS (
+			      SELECT 1 FROM document_links dl 
+			      WHERE dl.document_id = documents.id 
+			        AND dl.module IN ('assets', 'risks', 'incidents', 'training', 'compliance', 'audits')
+			  )`
 	}
 
 	args := []interface{}{tenantID}
@@ -680,6 +687,25 @@ func (r *DocumentRepo) DeleteDocumentLink(ctx context.Context, documentID, modul
 	query := `DELETE FROM document_links WHERE document_id = $1 AND module = $2 AND entity_id = $3`
 	_, err := r.db.ExecContext(ctx, query, documentID, module, entityID)
 	return err
+}
+
+// HasModuleLinks проверяет, есть ли у документа связи с модулями (assets, risks, incidents, training, compliance)
+func (r *DocumentRepo) HasModuleLinks(ctx context.Context, documentID string) (bool, error) {
+	query := `
+		SELECT EXISTS(
+			SELECT 1 FROM document_links 
+			WHERE document_id = $1 
+			  AND module IN ('assets', 'risks', 'incidents', 'training', 'compliance', 'audits')
+		)`
+	
+	var exists bool
+	err := r.db.QueryRowContext(ctx, query, documentID).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	
+	fmt.Printf("DEBUG: HasModuleLinks documentID=%s exists=%v\n", documentID, exists)
+	return exists, nil
 }
 
 // GetDocumentsByIDs получает документы по списку ID (оптимизация для батчевой загрузки)
