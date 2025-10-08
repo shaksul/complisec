@@ -1,0 +1,171 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main, develop ]
+  schedule:
+    # Запуск каждый день в 3:00 UTC
+    - cron: '0 3 * * *'
+
+jobs:
+  e2e-tests:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and start services
+        run: |
+          docker-compose up -d --build
+          echo "Waiting for services to be ready..."
+          
+          # Ждем готовности бэкенда
+          for i in {1..60}; do
+            if curl -f http://localhost:3001/health 2>/dev/null; then
+              echo "Backend is ready!"
+              break
+            fi
+            echo "Waiting for backend... ($i/60)"
+            sleep 2
+          done
+          
+          # Ждем готовности фронтенда
+          for i in {1..30}; do
+            if curl -f http://localhost:3000 2>/dev/null; then
+              echo "Frontend is ready!"
+              break
+            fi
+            echo "Waiting for frontend... ($i/30)"
+            sleep 2
+          done
+
+      - name: Set up Node.js for Playwright
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Playwright
+        run: |
+          npm install -D @playwright/test
+          npx playwright install --with-deps chromium
+
+      - name: Create test directory
+        run: mkdir -p e2e-tests
+
+      - name: Create Playwright config
+        run: |
+          cat > e2e-tests/playwright.config.ts << 'EOF'
+          import { defineConfig, devices } from '@playwright/test';
+
+          export default defineConfig({
+            testDir: './tests',
+            fullyParallel: true,
+            forbidOnly: !!process.env.CI,
+            retries: process.env.CI ? 2 : 0,
+            workers: process.env.CI ? 1 : undefined,
+            reporter: [
+              ['html'],
+              ['junit', { outputFile: 'test-results/junit.xml' }]
+            ],
+            use: {
+              baseURL: 'http://localhost:3000',
+              trace: 'on-first-retry',
+              screenshot: 'only-on-failure',
+              video: 'retain-on-failure',
+            },
+            projects: [
+              {
+                name: 'chromium',
+                use: { ...devices['Desktop Chrome'] },
+              },
+            ],
+          });
+          EOF
+
+      - name: Create E2E test suite
+        run: |
+          mkdir -p e2e-tests/tests
+          cat > e2e-tests/tests/smoke.spec.ts << 'EOF'
+          import { test, expect } from '@playwright/test';
+
+          test.describe('Smoke Tests', () => {
+            test('should load home page', async ({ page }) => {
+              await page.goto('/');
+              await expect(page).toHaveTitle(/RiskNexus/);
+            });
+
+            test('should navigate to documents page', async ({ page }) => {
+              await page.goto('/');
+              await page.waitForLoadState('networkidle');
+              
+              // Клик по меню "Документы"
+              await page.click('text=Документы');
+              await expect(page).toHaveURL(/\/documents/);
+              
+              // Проверяем заголовок
+              await expect(page.locator('h4')).toContainText('Управление документами');
+            });
+
+            test('should navigate to assets page', async ({ page }) => {
+              await page.goto('/');
+              await page.waitForLoadState('networkidle');
+              
+              await page.click('text=Активы');
+              await expect(page).toHaveURL(/\/assets/);
+              await expect(page.locator('h4')).toContainText('Активы');
+            });
+
+            test('should navigate to risks page', async ({ page }) => {
+              await page.goto('/');
+              await page.waitForLoadState('networkidle');
+              
+              await page.click('text=Риски');
+              await expect(page).toHaveURL(/\/risks/);
+              await expect(page.locator('h4')).toContainText('Реестр рисков');
+            });
+          });
+          EOF
+
+      - name: Run Playwright tests
+        working-directory: e2e-tests
+        run: npx playwright test
+        continue-on-error: true
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: e2e-tests/playwright-report/
+          retention-days: 30
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: e2e-tests/test-results/
+          retention-days: 30
+
+      - name: Show service logs on failure
+        if: failure()
+        run: |
+          echo "=== Backend logs ==="
+          docker-compose logs backend --tail=100
+          echo "=== Frontend logs ==="
+          docker-compose logs frontend --tail=100
+          echo "=== Postgres logs ==="
+          docker-compose logs postgres --tail=50
+
+      - name: Cleanup
+        if: always()
+        run: docker-compose down -v
+

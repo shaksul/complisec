@@ -129,9 +129,35 @@ func main() {
 	// UTF-8 encoding middleware
 	app.Use(http.UTF8Middleware())
 
-	// Simple test endpoint (no auth)
+	// Health check endpoints (no auth)
 	app.Get("/health", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"status": "OK", "message": "Backend is healthy"})
+		return c.JSON(fiber.Map{
+			"status":  "OK",
+			"message": "Backend is healthy",
+			"version": "1.0.0",
+		})
+	})
+
+	// Detailed health check with DB connection test
+	app.Get("/health/detailed", func(c *fiber.Ctx) error {
+		// Check database connection
+		dbStatus := "healthy"
+		if err := db.Ping(); err != nil {
+			dbStatus = "unhealthy"
+			log.Printf("Health check: database ping failed: %v", err)
+		}
+
+		status := "OK"
+		if dbStatus != "healthy" {
+			status = "DEGRADED"
+		}
+
+		return c.JSON(fiber.Map{
+			"status":   status,
+			"version":  "1.0.0",
+			"database": dbStatus,
+			"uptime":   time.Since(time.Now()).String(),
+		})
 	})
 
 	// Routes
