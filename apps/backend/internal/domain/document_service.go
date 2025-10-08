@@ -1092,6 +1092,36 @@ func (s *DocumentService) AddDocumentLink(ctx context.Context, documentID string
 
 // RemoveDocumentLink удаляет связь документа с другим модулем
 func (s *DocumentService) RemoveDocumentLink(ctx context.Context, documentID, module, entityID string) error {
+	// Если entityID пустой, удаляем ВСЕ связи документа с этим модулем
+	if entityID == "" {
+		// Получаем все связи документа
+		links, err := s.documentRepo.GetDocumentLinks(ctx, documentID)
+		if err != nil {
+			return fmt.Errorf("failed to get document links: %w", err)
+		}
+
+		// Удаляем все связи с указанным модулем
+		deletedCount := 0
+		for _, link := range links {
+			if link.Module == module {
+				if err := s.documentRepo.DeleteDocumentLink(ctx, documentID, module, link.EntityID); err != nil {
+					log.Printf("WARN: Failed to delete link %s: %v", link.ID, err)
+				} else {
+					deletedCount++
+				}
+			}
+		}
+
+		if deletedCount == 0 {
+			log.Printf("WARN: No links found for documentID=%s module=%s", documentID, module)
+		} else {
+			log.Printf("INFO: Deleted %d links for documentID=%s module=%s", deletedCount, documentID, module)
+		}
+
+		return nil
+	}
+
+	// Если entityID указан, удаляем конкретную связь
 	// Получаем все связи документа
 	links, err := s.documentRepo.GetDocumentLinks(ctx, documentID)
 	if err != nil {

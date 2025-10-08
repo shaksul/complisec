@@ -930,6 +930,28 @@ func (s *AssetService) DeleteAssetDocument(ctx context.Context, assetID, documen
 	return nil
 }
 
+// DeleteDocumentLink удаляет ВСЕ связи документа с модулем "assets"
+func (s *AssetService) DeleteDocumentLink(ctx context.Context, documentID, tenantID, deletedBy string) error {
+	log.Printf("DEBUG: asset_service.DeleteDocumentLink documentID=%s", documentID)
+
+	// Получаем информацию о документе
+	document, err := s.documentStorageService.GetDocument(ctx, documentID, tenantID)
+	if err != nil {
+		return err
+	}
+
+	// Удаляем ВСЕ связи этого документа с модулем "assets"
+	// Это удалит связь с ЛЮБЫМ активом, к которому привязан этот документ
+	err = s.documentStorageService.UnlinkDocumentFromModule(ctx, documentID, "assets", "", deletedBy)
+	if err != nil {
+		log.Printf("ERROR: asset_service.DeleteDocumentLink UnlinkDocumentFromModule: %v", err)
+		return err
+	}
+
+	log.Printf("DEBUG: asset_service.DeleteDocumentLink success - unlinked document '%s' from all assets", document.Title)
+	return nil
+}
+
 // Helper function to create string pointer
 func assetStringPtr(s string) *string {
 	return &s

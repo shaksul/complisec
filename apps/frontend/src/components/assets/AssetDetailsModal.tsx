@@ -3,6 +3,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
   Tabs,
   Tab,
   Box,
@@ -56,6 +57,8 @@ const AssetDetailsModal: React.FC<AssetDetailsModalProps> = ({ assetId, onClose 
   const [tabValue, setTabValue] = useState(0);
   const [documentUploadModalOpen, setDocumentUploadModalOpen] = useState(false);
   const [softwareModalOpen, setSoftwareModalOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState<AssetDocument | null>(null);
 
   useEffect(() => {
     loadAssetDetails();
@@ -90,6 +93,48 @@ const AssetDetailsModal: React.FC<AssetDetailsModalProps> = ({ assetId, onClose 
 
   const handleSoftwareAdded = () => {
     loadAssetDetails();
+  };
+
+  const handleDownloadDocument = async (doc: AssetDocument) => {
+    try {
+      const blob = await assetsApi.downloadDocument(doc.id);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = doc.title || 'document';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error downloading document:', err);
+      setError('Ошибка скачивания документа');
+    }
+  };
+
+  const handleDeleteDocument = (doc: AssetDocument) => {
+    setDocumentToDelete(doc);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteDocument = async () => {
+    if (!documentToDelete) return;
+    
+    try {
+      await assetsApi.deleteDocument(documentToDelete.id);
+      setDeleteConfirmOpen(false);
+      setDocumentToDelete(null);
+      await loadAssetDetails();
+    } catch (err) {
+      console.error('Error deleting document:', err);
+      setError('Ошибка удаления документа');
+      setDeleteConfirmOpen(false);
+    }
+  };
+
+  const cancelDeleteDocument = () => {
+    setDeleteConfirmOpen(false);
+    setDocumentToDelete(null);
   };
 
   const getCriticalityColor = (criticality: string) => {
@@ -359,10 +404,18 @@ const AssetDetailsModal: React.FC<AssetDetailsModalProps> = ({ assetId, onClose 
                       </Box>
                     </Box>
                     <Box display="flex" gap={1}>
-                      <Button size="small" color="primary">
+                      <Button 
+                        size="small" 
+                        color="primary"
+                        onClick={() => handleDownloadDocument(doc)}
+                      >
                         Скачать
                       </Button>
-                      <Button size="small" color="error">
+                      <Button 
+                        size="small" 
+                        color="error"
+                        onClick={() => handleDeleteDocument(doc)}
+                      >
                         Удалить
                       </Button>
                     </Box>
@@ -478,6 +531,32 @@ const AssetDetailsModal: React.FC<AssetDetailsModalProps> = ({ assetId, onClose 
         assetId={assetId}
         onSuccess={handleSoftwareAdded}
       />
+
+      {/* Диалог подтверждения удаления документа */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={cancelDeleteDocument}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Подтверждение удаления</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Вы уверены, что хотите удалить документ "{documentToDelete ? getDocumentTypeLabel(documentToDelete.document_type) : ''}"?
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+            Это действие удалит только связь документа с активом. Сам документ останется в хранилище.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={cancelDeleteDocument} color="inherit">
+            Отмена
+          </Button>
+          <Button onClick={confirmDeleteDocument} color="error" variant="contained">
+            Удалить
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 };

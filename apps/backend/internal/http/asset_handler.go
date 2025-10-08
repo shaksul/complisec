@@ -560,24 +560,21 @@ func (h *AssetHandler) performInventory(c *fiber.Ctx) error {
 
 func (h *AssetHandler) deleteAssetDocument(c *fiber.Ctx) error {
 	documentID := c.Params("docId")
-	assetID := c.Query("asset_id") // Получаем asset_id из query параметров
 	userID := c.Locals("user_id").(string)
 	tenantID := c.Locals("tenant_id").(string)
 
-	log.Printf("DEBUG: AssetHandler.deleteAssetDocument docID=%s assetID=%s user=%s", documentID, assetID, userID)
+	log.Printf("DEBUG: AssetHandler.deleteAssetDocument docID=%s user=%s", documentID, userID)
 
-	if assetID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "asset_id query parameter is required"})
-	}
-
-	err := h.assetService.DeleteAssetDocument(c.Context(), assetID, documentID, tenantID, userID)
+	// Удаляем связь документа с модулем "assets" через document_links
+	// Сервис должен найти все связи этого документа с активами и удалить их
+	err := h.assetService.DeleteDocumentLink(c.Context(), documentID, tenantID, userID)
 	if err != nil {
 		log.Printf("ERROR: AssetHandler.deleteAssetDocument service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	log.Printf("DEBUG: AssetHandler.deleteAssetDocument success docID=%s", documentID)
-	return c.Status(200).JSON(fiber.Map{"message": "Document deleted successfully"})
+	return c.Status(200).JSON(fiber.Map{"message": "Document link deleted successfully"})
 }
 
 func (h *AssetHandler) getAssetDocument(c *fiber.Ctx) error {
