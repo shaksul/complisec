@@ -69,10 +69,10 @@ type AssetSoftware struct {
 
 type AssetWithDetails struct {
 	Asset
-	OwnerName *string
-	Documents []AssetDocument
-	Software  []AssetSoftware
-	History   []AssetHistory
+	OwnerName *string         `json:"owner_name,omitempty"`
+	Documents []AssetDocument `json:"documents"`
+	Software  []AssetSoftware `json:"software"`
+	History   []AssetHistory  `json:"history"`
 }
 
 // AssetRisk represents a risk associated with an asset
@@ -443,17 +443,29 @@ func (r *AssetRepo) GetWithDetails(ctx context.Context, id string) (*AssetWithDe
 	if err != nil {
 		return nil, err
 	}
+	// Убеждаемся, что documents не nil
+	if documents == nil {
+		documents = []AssetDocument{}
+	}
 
 	// Get software
 	software, err := r.GetAssetSoftware(ctx, id)
 	if err != nil {
 		return nil, err
 	}
+	// Убеждаемся, что software не nil
+	if software == nil {
+		software = []AssetSoftware{}
+	}
 
 	// Get history
 	history, err := r.GetAssetHistory(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	// Убеждаемся, что history не nil
+	if history == nil {
+		history = []AssetHistory{}
 	}
 
 	return &AssetWithDetails{
@@ -475,7 +487,7 @@ func (r *AssetRepo) AddDocument(ctx context.Context, assetID, documentType, file
 
 func (r *AssetRepo) GetAssetDocuments(ctx context.Context, assetID string) ([]AssetDocument, error) {
 	// Используем document_links для получения документов, связанных с активом
-	rows, err := r.db.Query(`
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT d.id, dl.entity_id as asset_id, 
 		       COALESCE(d.category, 'other') as document_type,
 		       d.storage_uri as file_path,
@@ -492,6 +504,7 @@ func (r *AssetRepo) GetAssetDocuments(ctx context.Context, assetID string) ([]As
 		ORDER BY d.created_at DESC
 	`, assetID)
 	if err != nil {
+		log.Printf("ERROR: GetAssetDocuments query failed for assetID=%s: %v", assetID, err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -501,10 +514,13 @@ func (r *AssetRepo) GetAssetDocuments(ctx context.Context, assetID string) ([]As
 		var doc AssetDocument
 		err := rows.Scan(&doc.ID, &doc.AssetID, &doc.DocumentType, &doc.FilePath, &doc.Title, &doc.Mime, &doc.SizeBytes, &doc.CreatedBy, &doc.CreatedAt)
 		if err != nil {
+			log.Printf("ERROR: GetAssetDocuments scan failed: %v", err)
 			return nil, err
 		}
 		documents = append(documents, doc)
 	}
+	
+	log.Printf("DEBUG: GetAssetDocuments assetID=%s returned %d documents", assetID, len(documents))
 	return documents, nil
 }
 
