@@ -22,6 +22,13 @@ import {
   TableSortLabel,
   CircularProgress,
   Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Checkbox,
+  FormControlLabel,
+  FormGroup,
 } from '@mui/material'
 import { 
   Add, 
@@ -30,7 +37,8 @@ import {
   Edit, 
   Refresh
 } from '@mui/icons-material'
-import { getUserCatalog, UserCatalog, UserCatalogParams, PaginatedResponse } from '../shared/api/users'
+import { getUserCatalog, UserCatalog, UserCatalogParams, PaginatedResponse, usersApi } from '../shared/api/users'
+import { rolesApi, Role } from '../shared/api/roles'
 import Pagination from '../components/Pagination'
 import { UserDetailModal } from '../components/users/UserDetailModal'
 
@@ -60,6 +68,8 @@ export const UsersPage: React.FC = () => {
   
   const [selectedUser, setSelectedUser] = useState<UserCatalog | null>(null)
   const [detailModalOpen, setDetailModalOpen] = useState(false)
+  const [editModalOpen, setEditModalOpen] = useState(false)
+  const [roles, setRoles] = useState<Role[]>([])
 
   const loadUsers = async () => {
     try {
@@ -78,7 +88,17 @@ export const UsersPage: React.FC = () => {
 
   useEffect(() => {
     loadUsers()
+    loadRoles()
   }, [filters])
+
+  const loadRoles = async () => {
+    try {
+      const rolesData = await rolesApi.getRoles()
+      setRoles(rolesData)
+    } catch (err) {
+      console.error('Error loading roles:', err)
+    }
+  }
 
   const handleSearch = (value: string) => {
     setFilters(prev => ({ ...prev, search: value, page: 1 }))
@@ -105,6 +125,23 @@ export const UsersPage: React.FC = () => {
   const handleViewUser = (user: UserCatalog) => {
     setSelectedUser(user)
     setDetailModalOpen(true)
+  }
+
+  const handleEditUser = (user: UserCatalog) => {
+    setSelectedUser(user)
+    setEditModalOpen(true)
+  }
+
+  const handleUpdateUser = async (id: string, userData: any) => {
+    try {
+      await usersApi.updateUser(id, userData)
+      await loadUsers()
+      setEditModalOpen(false)
+      setSelectedUser(null)
+    } catch (err) {
+      console.error('Error updating user:', err)
+      throw err
+    }
   }
 
   const handleRefresh = () => {
@@ -279,6 +316,7 @@ export const UsersPage: React.FC = () => {
                         </IconButton>
                         <IconButton
                           size="small"
+                          onClick={() => handleEditUser(user)}
                           title="Редактировать"
                         >
                           <Edit />
@@ -312,6 +350,187 @@ export const UsersPage: React.FC = () => {
           user={selectedUser}
         />
       )}
+
+      {editModalOpen && selectedUser && (
+        <EditUserModal
+          user={selectedUser}
+          roles={roles}
+          onClose={() => {
+            setEditModalOpen(false)
+            setSelectedUser(null)
+          }}
+          onSubmit={handleUpdateUser}
+        />
+      )}
     </Container>
+  )
+}
+
+// Компонент модального окна редактирования пользователя
+const EditUserModal: React.FC<{
+  user: UserCatalog
+  roles: Role[]
+  onClose: () => void
+  onSubmit: (id: string, data: any) => void
+}> = ({ user, roles, onClose, onSubmit }) => {
+  const [formData, setFormData] = useState({
+    first_name: user.first_name || '',
+    last_name: user.last_name || '',
+    is_active: user.is_active,
+    role_ids: [] as string[]
+  })
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    const loadUserRoles = async () => {
+      try {
+        const userRoles = await rolesApi.getUserRoles(user.id)
+        setFormData(prev => ({ ...prev, role_ids: userRoles }))
+      } catch (error) {
+        console.error('Ошибка загрузки ролей пользователя:', error)
+      }
+    }
+    loadUserRoles()
+  }, [user.id])
+
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {}
+
+    if (!formData.first_name.trim()) {
+      errors.first_name = 'Имя обязательно'
+    }
+
+    if (!formData.last_name.trim()) {
+      errors.last_name = 'Фамилия обязательна'
+    }
+
+    const filteredRoleIds = formData.role_ids.filter(id => id !== null && id !== undefined && id !== '')
+    if (filteredRoleIds.length === 0) {
+      errors.roles = 'Выберите хотя бы одну роль'
+    }
+
+    setFormErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!validateForm()) return
+
+    try {
+      setSubmitting(true)
+      const filteredRoleIds = formData.role_ids.filter(id => id !== null && id !== undefined && id !== '')
+      
+      await onSubmit(user.id, {
+        ...formData,
+        role_ids: filteredRoleIds
+      })
+    } catch (error) {
+      console.error('Ошибка сохранения:', error)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Редактировать пользователя</DialogTitle>
+      <form onSubmit={handleSubmit}>
+        <DialogContent>
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Email
+            </Typography>
+            <TextField
+              fullWidth
+              value={user.email}
+              disabled
+              variant="outlined"
+              size="small"
+            />
+          </Box>
+          <TextField
+            margin="dense"
+            label="Имя"
+            fullWidth
+            variant="outlined"
+            value={formData.first_name}
+            onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+            error={!!formErrors.first_name}
+            helperText={formErrors.first_name}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            margin="dense"
+            label="Фамилия"
+            fullWidth
+            variant="outlined"
+            value={formData.last_name}
+            onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+            error={!!formErrors.last_name}
+            helperText={formErrors.last_name}
+            sx={{ mb: 2 }}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={formData.is_active}
+                onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+              />
+            }
+            label="Активен"
+            sx={{ mb: 2 }}
+          />
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Роли
+            </Typography>
+            {formErrors.roles && (
+              <Typography variant="caption" color="error">
+                {formErrors.roles}
+              </Typography>
+            )}
+            <FormGroup>
+              {roles.map((role) => (
+                <FormControlLabel
+                  key={role.id}
+                  control={
+                    <Checkbox
+                      checked={formData.role_ids.includes(role.id)}
+                      onChange={(e) => {
+                        if (e.target.checked && role.id) {
+                          setFormData({
+                            ...formData,
+                            role_ids: [...formData.role_ids, role.id]
+                          })
+                        } else if (role.id) {
+                          setFormData({
+                            ...formData,
+                            role_ids: formData.role_ids.filter(id => id !== role.id)
+                          })
+                        }
+                      }}
+                    />
+                  }
+                  label={role.name}
+                />
+              ))}
+            </FormGroup>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose}>Отмена</Button>
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={submitting}
+          >
+            {submitting ? <CircularProgress size={20} /> : 'Сохранить'}
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
   )
 }
