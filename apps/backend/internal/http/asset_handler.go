@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path/filepath"
+	"strings"
 
 	"risknexus/backend/internal/domain"
 	"risknexus/backend/internal/dto"
@@ -321,7 +323,7 @@ func (h *AssetHandler) uploadAssetDocument(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "File size exceeds 50MB limit"})
 	}
 
-	// Validate file type
+	// Validate file type by extension and MIME type
 	allowedTypes := map[string]bool{
 		"application/pdf":    true,
 		"image/jpeg":         true,
@@ -331,7 +333,10 @@ func (h *AssetHandler) uploadAssetDocument(c *fiber.Ctx) error {
 		"application/vnd.ms-excel": true,
 		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": true,
 		"text/plain": true, // Add support for TXT files
+		"application/zip": true, // DOCX/XLSX are ZIP archives
 	}
+
+	allowedExtensions := []string{".pdf", ".jpg", ".jpeg", ".png", ".doc", ".docx", ".xls", ".xlsx", ".txt"}
 
 	// Get content type from file header
 	fileHeader, err := file.Open()
@@ -350,7 +355,23 @@ func (h *AssetHandler) uploadAssetDocument(c *fiber.Ctx) error {
 	}
 
 	contentType := http.DetectContentType(buffer)
-	if !allowedTypes[contentType] {
+	
+	// Check file extension
+	fileName := file.Filename
+	ext := strings.ToLower(filepath.Ext(fileName))
+	
+	isValidExtension := false
+	for _, allowed := range allowedExtensions {
+		if ext == allowed {
+			isValidExtension = true
+			break
+		}
+	}
+	
+	// Allow file if EITHER extension is valid OR MIME type is valid
+	// (since some formats like DOCX may be detected as application/zip or text/plain)
+	if !isValidExtension && !allowedTypes[contentType] {
+		log.Printf("WARN: AssetHandler.uploadAssetDocument invalid file type: ext=%s contentType=%s", ext, contentType)
 		return c.Status(400).JSON(fiber.Map{"error": "Unsupported file type"})
 	}
 

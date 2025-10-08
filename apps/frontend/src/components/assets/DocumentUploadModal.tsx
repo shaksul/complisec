@@ -118,8 +118,13 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = useCallback((file: File) => {
-    // Validate file type
-    if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+    // Validate file type by MIME type OR file extension
+    const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
+    const allowedExtensions = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx', 'xls', 'xlsx'];
+    
+    const isValidType = ALLOWED_FILE_TYPES.includes(file.type) || allowedExtensions.includes(fileExtension);
+    
+    if (!isValidType) {
       setError('Неподдерживаемый тип файла. Разрешены: PDF, JPG, PNG, DOC, DOCX, XLS, XLSX');
       return;
     }
