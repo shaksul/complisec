@@ -456,10 +456,11 @@ func (r *UserRepo) GetUserStats(ctx context.Context, userID string) (map[string]
 
 	stats := make(map[string]int)
 
-	// Count documents
+	// Count documents (только активные, не удаленные)
 	var docCount int
 	err = r.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM documents WHERE created_by = $1 AND tenant_id = $2
+		SELECT COUNT(*) FROM documents 
+		WHERE created_by = $1 AND tenant_id = $2 AND deleted_at IS NULL
 	`, userID, user.TenantID).Scan(&docCount)
 	if err != nil {
 		// Если таблица не существует, возвращаем 0
@@ -490,10 +491,11 @@ func (r *UserRepo) GetUserStats(ctx context.Context, userID string) (map[string]
 		stats["incidents_count"] = incidentCount
 	}
 
-	// Count assets
+	// Count assets (только активные, не удаленные)
 	var assetCount int
 	err = r.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM assets WHERE responsible_user_id = $1 AND tenant_id = $2
+		SELECT COUNT(*) FROM assets 
+		WHERE responsible_user_id = $1 AND tenant_id = $2 AND deleted_at IS NULL
 	`, userID, user.TenantID).Scan(&assetCount)
 	if err != nil {
 		stats["assets_count"] = 0
