@@ -33,12 +33,10 @@ BEGIN
             ad.asset_id,
             ad.document_type,
             ad.file_path,
-            ad.title,
-            ad.mime,
-            ad.size_bytes,
             ad.created_by,
             ad.created_at,
-            a.tenant_id
+            a.tenant_id,
+            a.name as asset_name
         FROM asset_documents ad
         JOIN assets a ON ad.asset_id = a.id
         WHERE ad.id NOT IN (
@@ -57,6 +55,7 @@ BEGIN
             file_path,
             file_size,
             mime_type,
+            file_hash,
             folder_id,
             owner_id,
             created_by,
@@ -68,25 +67,21 @@ BEGIN
         ) VALUES (
             uuid_generate_v4(),
             asset_doc.tenant_id,
-            asset_doc.title,
-            asset_doc.title,
+            asset_doc.asset_name || ' - ' || asset_doc.document_type,
+            asset_doc.asset_name || ' - ' || asset_doc.document_type,
             'Migrated from asset documents',
             asset_doc.file_path,
-            asset_doc.size_bytes,
-            asset_doc.mime,
-            NULL, -- Можно создать специальную папку для мигрированных документов
+            0, -- Размер неизвестен
+            'application/octet-stream', -- MIME type по умолчанию
+            '', -- Hash пустой (файл не проверялся)
+            NULL,
             asset_doc.created_by,
             asset_doc.created_by,
             asset_doc.created_at,
             asset_doc.created_at,
             true,
-            '1',
-            json_build_object(
-                'original_asset_document_id', asset_doc.id,
-                'original_asset_id', asset_doc.asset_id,
-                'document_type', asset_doc.document_type,
-                'migration_date', NOW()
-            )::text
+            1,
+            ('{"migrated_from":"asset_documents","original_asset_id":"' || asset_doc.asset_id || '","original_document_id":"' || asset_doc.id || '","document_type":"' || asset_doc.document_type || '"}')::jsonb
         ) RETURNING id INTO new_doc_id;
 
         -- Создаем связь с активом
@@ -95,8 +90,6 @@ BEGIN
             document_id,
             module,
             entity_id,
-            link_type,
-            description,
             created_by,
             created_at
         ) VALUES (
@@ -104,8 +97,6 @@ BEGIN
             new_doc_id,
             'assets',
             asset_doc.asset_id,
-            'attachment',
-            'Migrated from asset documents',
             asset_doc.created_by,
             asset_doc.created_at
         );
@@ -178,6 +169,7 @@ BEGIN
             file_path,
             file_size,
             mime_type,
+            file_hash,
             folder_id,
             owner_id,
             created_by,
@@ -195,18 +187,15 @@ BEGIN
             risk_attachment.file_path,
             risk_attachment.file_size,
             risk_attachment.mime_type,
+            COALESCE(risk_attachment.file_hash, ''), -- Используем существующий hash или пустую строку
             NULL,
             risk_attachment.uploaded_by,
             risk_attachment.uploaded_by,
             risk_attachment.uploaded_at,
             risk_attachment.uploaded_at,
             true,
-            '1',
-            json_build_object(
-                'original_risk_attachment_id', risk_attachment.id,
-                'original_risk_id', risk_attachment.risk_id,
-                'migration_date', NOW()
-            )::text
+            1,
+            ('{"migrated_from":"risk_attachments","original_risk_id":"' || risk_attachment.risk_id || '","original_attachment_id":"' || risk_attachment.id || '"}')::jsonb
         ) RETURNING id INTO new_doc_id;
 
         -- Создаем связь с риском
@@ -215,8 +204,6 @@ BEGIN
             document_id,
             module,
             entity_id,
-            link_type,
-            description,
             created_by,
             created_at
         ) VALUES (
@@ -224,8 +211,6 @@ BEGIN
             new_doc_id,
             'risks',
             risk_attachment.risk_id,
-            'attachment',
-            'Migrated from risk attachments',
             risk_attachment.uploaded_by,
             risk_attachment.uploaded_at
         );
@@ -266,16 +251,18 @@ SELECT
     'Активы',
     'Документы активов',
     NULL,
-    'system',
-    'system',
+    (SELECT id FROM users WHERE tenant_id = t.id ORDER BY created_at LIMIT 1),
+    (SELECT id FROM users WHERE tenant_id = t.id ORDER BY created_at LIMIT 1),
     NOW(),
     NOW(),
     true,
-    '{"module": "assets", "created_by_migration": true}'::text
+    '{"module": "assets", "created_by_migration": true}'::jsonb
 FROM tenants t
 WHERE NOT EXISTS (
     SELECT 1 FROM folders 
     WHERE name = 'Активы' AND tenant_id = t.id
+) AND EXISTS (
+    SELECT 1 FROM users WHERE tenant_id = t.id
 );
 
 INSERT INTO folders (id, tenant_id, name, description, parent_id, owner_id, created_by, created_at, updated_at, is_active, metadata)
@@ -285,16 +272,18 @@ SELECT
     'Риски',
     'Документы рисков',
     NULL,
-    'system',
-    'system',
+    (SELECT id FROM users WHERE tenant_id = t.id ORDER BY created_at LIMIT 1),
+    (SELECT id FROM users WHERE tenant_id = t.id ORDER BY created_at LIMIT 1),
     NOW(),
     NOW(),
     true,
-    '{"module": "risks", "created_by_migration": true}'::text
+    '{"module": "risks", "created_by_migration": true}'::jsonb
 FROM tenants t
 WHERE NOT EXISTS (
     SELECT 1 FROM folders 
     WHERE name = 'Риски' AND tenant_id = t.id
+) AND EXISTS (
+    SELECT 1 FROM users WHERE tenant_id = t.id
 );
 
 INSERT INTO folders (id, tenant_id, name, description, parent_id, owner_id, created_by, created_at, updated_at, is_active, metadata)
@@ -304,16 +293,18 @@ SELECT
     'Инциденты',
     'Документы инцидентов',
     NULL,
-    'system',
-    'system',
+    (SELECT id FROM users WHERE tenant_id = t.id ORDER BY created_at LIMIT 1),
+    (SELECT id FROM users WHERE tenant_id = t.id ORDER BY created_at LIMIT 1),
     NOW(),
     NOW(),
     true,
-    '{"module": "incidents", "created_by_migration": true}'::text
+    '{"module": "incidents", "created_by_migration": true}'::jsonb
 FROM tenants t
 WHERE NOT EXISTS (
     SELECT 1 FROM folders 
     WHERE name = 'Инциденты' AND tenant_id = t.id
+) AND EXISTS (
+    SELECT 1 FROM users WHERE tenant_id = t.id
 );
 
 INSERT INTO folders (id, tenant_id, name, description, parent_id, owner_id, created_by, created_at, updated_at, is_active, metadata)
@@ -323,16 +314,18 @@ SELECT
     'Обучение',
     'Документы обучения',
     NULL,
-    'system',
-    'system',
+    (SELECT id FROM users WHERE tenant_id = t.id ORDER BY created_at LIMIT 1),
+    (SELECT id FROM users WHERE tenant_id = t.id ORDER BY created_at LIMIT 1),
     NOW(),
     NOW(),
     true,
-    '{"module": "training", "created_by_migration": true}'::text
+    '{"module": "training", "created_by_migration": true}'::jsonb
 FROM tenants t
 WHERE NOT EXISTS (
     SELECT 1 FROM folders 
     WHERE name = 'Обучение' AND tenant_id = t.id
+) AND EXISTS (
+    SELECT 1 FROM users WHERE tenant_id = t.id
 );
 
 -- Создаем папку для мигрированных документов
@@ -343,16 +336,18 @@ SELECT
     'Мигрированные документы',
     'Документы, перенесенные из старых модулей',
     NULL,
-    'system',
-    'system',
+    (SELECT id FROM users WHERE tenant_id = t.id ORDER BY created_at LIMIT 1),
+    (SELECT id FROM users WHERE tenant_id = t.id ORDER BY created_at LIMIT 1),
     NOW(),
     NOW(),
     true,
-    '{"migration_folder": true, "created_by_migration": true}'::text
+    '{"migration_folder": true, "created_by_migration": true}'::jsonb
 FROM tenants t
 WHERE NOT EXISTS (
     SELECT 1 FROM folders 
     WHERE name = 'Мигрированные документы' AND tenant_id = t.id
+) AND EXISTS (
+    SELECT 1 FROM users WHERE tenant_id = t.id
 );
 
 -- Выполняем миграцию документов активов

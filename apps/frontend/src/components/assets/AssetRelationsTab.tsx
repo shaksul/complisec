@@ -17,22 +17,42 @@ import {
 import { Add as AddIcon } from '@mui/icons-material';
 import { risksApi, Risk, RISK_STATUSES } from '../../shared/api/risks';
 import { incidentsApi, Incident, INCIDENT_CRITICALITY, INCIDENT_STATUS } from '../../shared/api/incidents';
+import { assetsApi } from '../../shared/api/assets';
 
 interface AssetRelationsTabProps {
   assetId: string;
   assetName: string;
+  assetStatus?: string;
 }
 
-const AssetRelationsTab: React.FC<AssetRelationsTabProps> = ({ assetId, assetName }) => {
+const AssetRelationsTab: React.FC<AssetRelationsTabProps> = ({ assetId, assetName, assetStatus }) => {
   const [risks, setRisks] = useState<Risk[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'risks' | 'incidents'>('risks');
+  const [canAddRisk, setCanAddRisk] = useState(true);
+  const [canAddIncident, setCanAddIncident] = useState(true);
 
   useEffect(() => {
     loadRelations();
+    checkPermissions();
   }, [assetId]);
+
+  const checkPermissions = async () => {
+    try {
+      const [canRisk, canIncident] = await Promise.all([
+        assetsApi.canAddRisk(assetId).catch(() => false),
+        assetsApi.canAddIncident(assetId).catch(() => false)
+      ]);
+      setCanAddRisk(canRisk);
+      setCanAddIncident(canIncident);
+    } catch (err) {
+      console.error('Error checking permissions:', err);
+      setCanAddRisk(false);
+      setCanAddIncident(false);
+    }
+  };
 
   const loadRelations = async () => {
     try {
@@ -139,6 +159,11 @@ const AssetRelationsTab: React.FC<AssetRelationsTabProps> = ({ assetId, assetNam
       {/* Risks Tab */}
       {activeTab === 'risks' && (
         <Box sx={{ mt: 3 }}>
+          {assetStatus === 'decommissioned' && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Актив списан. Невозможно добавить новые риски к списанному активу.
+            </Alert>
+          )}
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
             <Typography variant="h6" component="h3">
               Риски для актива "{assetName}"
@@ -147,6 +172,8 @@ const AssetRelationsTab: React.FC<AssetRelationsTabProps> = ({ assetId, assetNam
               variant="contained"
               startIcon={<AddIcon />}
               size="small"
+              disabled={!canAddRisk || assetStatus === 'decommissioned'}
+              title={!canAddRisk ? 'Невозможно добавить риск к списанному активу' : ''}
             >
               Добавить риск
             </Button>
@@ -215,6 +242,11 @@ const AssetRelationsTab: React.FC<AssetRelationsTabProps> = ({ assetId, assetNam
       {/* Incidents Tab */}
       {activeTab === 'incidents' && (
         <Box sx={{ mt: 3 }}>
+          {assetStatus === 'decommissioned' && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Актив списан. Невозможно добавить новые инциденты к списанному активу.
+            </Alert>
+          )}
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
             <Typography variant="h6" component="h3">
               Инциденты для актива "{assetName}"
@@ -223,6 +255,8 @@ const AssetRelationsTab: React.FC<AssetRelationsTabProps> = ({ assetId, assetNam
               variant="contained"
               startIcon={<AddIcon />}
               size="small"
+              disabled={!canAddIncident || assetStatus === 'decommissioned'}
+              title={!canAddIncident ? 'Невозможно добавить инцидент к списанному активу' : ''}
             >
               Добавить инцидент
             </Button>

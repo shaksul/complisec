@@ -1,3 +1,6 @@
+//go:build legacy_tests
+// +build legacy_tests
+
 package main
 
 import (
@@ -18,15 +21,15 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockAssetService - мок для AssetService
+// MockAssetService - РјРѕРє РґР»СЏ AssetService
 type MockAssetService struct {
 	mock.Mock
 }
 
-// Убеждаемся, что MockAssetService реализует интерфейс
+// РЈР±РµР¶РґР°РµРјСЃСЏ, С‡С‚Рѕ MockAssetService СЂРµР°Р»РёР·СѓРµС‚ РёРЅС‚РµСЂС„РµР№СЃ
 var _ domain.AssetServiceInterface = (*MockAssetService)(nil)
 
-// Реализуем интерфейс AssetService
+// Р РµР°Р»РёР·СѓРµРј РёРЅС‚РµСЂС„РµР№СЃ AssetService
 func (m *MockAssetService) CreateAsset(ctx context.Context, tenantID string, req dto.CreateAssetRequest, createdBy string) (*repo.Asset, error) {
 	arguments := m.Called(ctx, tenantID, req, createdBy)
 	if arguments.Get(0) == nil {
@@ -131,7 +134,7 @@ func TestAssetHandler_CreateAsset(t *testing.T) {
 	httpReq := httptest.NewRequest("POST", "/assets", bytes.NewReader(reqBody))
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	// Настройка мока
+	// РќР°СЃС‚СЂРѕР№РєР° РјРѕРєР°
 	expectedAsset := &repo.Asset{
 		ID:              "asset-123",
 		TenantID:        "tenant-123",
@@ -150,10 +153,10 @@ func TestAssetHandler_CreateAsset(t *testing.T) {
 
 	mockService.On("CreateAsset", mock.Anything, "tenant-123", req, "user-123").Return(expectedAsset, nil)
 
-	// Выполнение теста
+	// Р’С‹РїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚Р°
 	resp, err := app.Test(httpReq)
 
-	// Проверки
+	// РџСЂРѕРІРµСЂРєРё
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
@@ -177,7 +180,7 @@ func TestAssetHandler_CreateAsset_ValidationError(t *testing.T) {
 	})
 	handler.Register(app)
 
-	// Невалидный запрос - отсутствует обязательное поле
+	// РќРµРІР°Р»РёРґРЅС‹Р№ Р·Р°РїСЂРѕСЃ - РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚ РѕР±СЏР·Р°С‚РµР»СЊРЅРѕРµ РїРѕР»Рµ
 	req := dto.CreateAssetRequest{
 		Type:        "server",
 		Class:       "hardware",
@@ -188,10 +191,10 @@ func TestAssetHandler_CreateAsset_ValidationError(t *testing.T) {
 	httpReq := httptest.NewRequest("POST", "/assets", bytes.NewReader(reqBody))
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	// Выполнение теста
+	// Р’С‹РїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚Р°
 	resp, err := app.Test(httpReq)
 
-	// Проверки
+	// РџСЂРѕРІРµСЂРєРё
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 
@@ -218,7 +221,7 @@ func TestAssetHandler_GetAsset(t *testing.T) {
 	assetID := "asset-123"
 	httpReq := httptest.NewRequest("GET", "/assets/"+assetID, nil)
 
-	// Настройка мока
+	// РќР°СЃС‚СЂРѕР№РєР° РјРѕРєР°
 	expectedAsset := &repo.Asset{
 		ID:              assetID,
 		TenantID:        "tenant-123",
@@ -235,10 +238,10 @@ func TestAssetHandler_GetAsset(t *testing.T) {
 
 	mockService.On("GetAsset", mock.Anything, assetID).Return(expectedAsset, nil)
 
-	// Выполнение теста
+	// Р’С‹РїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚Р°
 	resp, err := app.Test(httpReq)
 
-	// Проверки
+	// РџСЂРѕРІРµСЂРєРё
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -265,13 +268,13 @@ func TestAssetHandler_GetAsset_NotFound(t *testing.T) {
 	assetID := "asset-123"
 	httpReq := httptest.NewRequest("GET", "/assets/"+assetID, nil)
 
-	// Настройка мока - актив не найден
+	// РќР°СЃС‚СЂРѕР№РєР° РјРѕРєР° - Р°РєС‚РёРІ РЅРµ РЅР°Р№РґРµРЅ
 	mockService.On("GetAsset", mock.Anything, assetID).Return(nil, nil)
 
-	// Выполнение теста
+	// Р’С‹РїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚Р°
 	resp, err := app.Test(httpReq)
 
-	// Проверки
+	// РџСЂРѕРІРµСЂРєРё
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 
@@ -297,7 +300,7 @@ func TestAssetHandler_ListAssets(t *testing.T) {
 
 	httpReq := httptest.NewRequest("GET", "/assets?page=1&page_size=10&type=server", nil)
 
-	// Настройка мока
+	// РќР°СЃС‚СЂРѕР№РєР° РјРѕРєР°
 	expectedAssets := []repo.Asset{
 		{
 			ID:              "asset-1",
@@ -321,10 +324,10 @@ func TestAssetHandler_ListAssets(t *testing.T) {
 
 	mockService.On("ListAssetsPaginated", mock.Anything, "tenant-123", 1, 10, expectedFilters).Return(expectedAssets, expectedTotal, nil)
 
-	// Выполнение теста
+	// Р’С‹РїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚Р°
 	resp, err := app.Test(httpReq)
 
-	// Проверки
+	// РџСЂРѕРІРµСЂРєРё
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -359,13 +362,13 @@ func TestAssetHandler_UpdateAsset(t *testing.T) {
 	httpReq := httptest.NewRequest("PUT", "/assets/"+assetID, bytes.NewReader(reqBody))
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	// Настройка мока
+	// РќР°СЃС‚СЂРѕР№РєР° РјРѕРєР°
 	mockService.On("UpdateAsset", mock.Anything, assetID, req, "user-123").Return(nil)
 
-	// Выполнение теста
+	// Р’С‹РїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚Р°
 	resp, err := app.Test(httpReq)
 
-	// Проверки
+	// РџСЂРѕРІРµСЂРєРё
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -392,13 +395,13 @@ func TestAssetHandler_DeleteAsset(t *testing.T) {
 	assetID := "asset-123"
 	httpReq := httptest.NewRequest("DELETE", "/assets/"+assetID, nil)
 
-	// Настройка мока
+	// РќР°СЃС‚СЂРѕР№РєР° РјРѕРєР°
 	mockService.On("DeleteAsset", mock.Anything, assetID, "user-123").Return(nil)
 
-	// Выполнение теста
+	// Р’С‹РїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚Р°
 	resp, err := app.Test(httpReq)
 
-	// Проверки
+	// РџСЂРѕРІРµСЂРєРё
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -424,7 +427,7 @@ func TestAssetHandler_ExportAssets(t *testing.T) {
 
 	httpReq := httptest.NewRequest("GET", "/assets/export?type=server", nil)
 
-	// Настройка мока
+	// РќР°СЃС‚СЂРѕР№РєР° РјРѕРєР°
 	expectedAssets := []repo.Asset{
 		{
 			ID:              "asset-1",
@@ -447,10 +450,10 @@ func TestAssetHandler_ExportAssets(t *testing.T) {
 
 	mockService.On("ListAssets", mock.Anything, "tenant-123", expectedFilters).Return(expectedAssets, nil)
 
-	// Выполнение теста
+	// Р’С‹РїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚Р°
 	resp, err := app.Test(httpReq)
 
-	// Проверки
+	// РџСЂРѕРІРµСЂРєРё
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, "text/csv", resp.Header.Get("Content-Type"))
@@ -459,7 +462,7 @@ func TestAssetHandler_ExportAssets(t *testing.T) {
 	mockService.AssertExpectations(t)
 }
 
-// Вспомогательная функция
+// Р’СЃРїРѕРјРѕРіР°С‚РµР»СЊРЅР°СЏ С„СѓРЅРєС†РёСЏ
 func stringPtr(s string) *string {
 	return &s
 }

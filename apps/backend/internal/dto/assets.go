@@ -58,6 +58,20 @@ type CreateAssetRequest struct {
 	Integrity         string `json:"integrity" validate:"required,oneof=low medium high"`
 	Availability      string `json:"availability" validate:"required,oneof=low medium high"`
 	Status            string `json:"status,omitempty" validate:"omitempty,oneof=active in_repair storage decommissioned"`
+	// Passport fields
+	SerialNumber  *string `json:"serial_number,omitempty" validate:"omitempty,max=255"`
+	PCNumber      *string `json:"pc_number,omitempty" validate:"omitempty,max=100"`
+	Model         *string `json:"model,omitempty" validate:"omitempty,max=255"`
+	CPU           *string `json:"cpu,omitempty" validate:"omitempty,max=255"`
+	RAM           *string `json:"ram,omitempty" validate:"omitempty,max=100"`
+	HDDInfo       *string `json:"hdd_info,omitempty"`
+	NetworkCard   *string `json:"network_card,omitempty" validate:"omitempty,max=255"`
+	OpticalDrive  *string `json:"optical_drive,omitempty" validate:"omitempty,max=255"`
+	IPAddress     *string `json:"ip_address,omitempty"`
+	MACAddress    *string `json:"mac_address,omitempty"`
+	Manufacturer  *string `json:"manufacturer,omitempty" validate:"omitempty,max=255"`
+	PurchaseYear  *int    `json:"purchase_year,omitempty" validate:"omitempty,gte=1900,lte=2100"`
+	WarrantyUntil *string `json:"warranty_until,omitempty"` // Date string
 }
 
 // UpdateAssetRequest represents the request to update an existing asset
@@ -73,6 +87,20 @@ type UpdateAssetRequest struct {
 	Integrity         *string `json:"integrity,omitempty" validate:"omitempty,oneof=low medium high"`
 	Availability      *string `json:"availability,omitempty" validate:"omitempty,oneof=low medium high"`
 	Status            *string `json:"status,omitempty" validate:"omitempty,oneof=active in_repair storage decommissioned"`
+	// Passport fields
+	SerialNumber  *string `json:"serial_number,omitempty" validate:"omitempty,max=255"`
+	PCNumber      *string `json:"pc_number,omitempty" validate:"omitempty,max=100"`
+	Model         *string `json:"model,omitempty" validate:"omitempty,max=255"`
+	CPU           *string `json:"cpu,omitempty" validate:"omitempty,max=255"`
+	RAM           *string `json:"ram,omitempty" validate:"omitempty,max=100"`
+	HDDInfo       *string `json:"hdd_info,omitempty"`
+	NetworkCard   *string `json:"network_card,omitempty" validate:"omitempty,max=255"`
+	OpticalDrive  *string `json:"optical_drive,omitempty" validate:"omitempty,max=255"`
+	IPAddress     *string `json:"ip_address,omitempty"`
+	MACAddress    *string `json:"mac_address,omitempty"`
+	Manufacturer  *string `json:"manufacturer,omitempty" validate:"omitempty,max=255"`
+	PurchaseYear  *int    `json:"purchase_year,omitempty" validate:"omitempty,gte=1900,lte=2100"`
+	WarrantyUntil *string `json:"warranty_until,omitempty"` // Date string
 }
 
 // AssetResponse represents the response for asset data
@@ -92,8 +120,22 @@ type AssetResponse struct {
 	Integrity           string    `json:"integrity"`
 	Availability        string    `json:"availability"`
 	Status              string    `json:"status"`
-	CreatedAt           time.Time `json:"created_at"`
-	UpdatedAt           time.Time `json:"updated_at"`
+	// Passport fields
+	SerialNumber  *string `json:"serial_number,omitempty"`
+	PCNumber      *string `json:"pc_number,omitempty"`
+	Model         *string `json:"model,omitempty"`
+	CPU           *string `json:"cpu,omitempty"`
+	RAM           *string `json:"ram,omitempty"`
+	HDDInfo       *string `json:"hdd_info,omitempty"`
+	NetworkCard   *string `json:"network_card,omitempty"`
+	OpticalDrive  *string `json:"optical_drive,omitempty"`
+	IPAddress     *string `json:"ip_address,omitempty"`
+	MACAddress    *string `json:"mac_address,omitempty"`
+	Manufacturer  *string `json:"manufacturer,omitempty"`
+	PurchaseYear  *int    `json:"purchase_year,omitempty"`
+	WarrantyUntil *string `json:"warranty_until,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // AssetDocumentRequest represents the request to add a document to an asset
@@ -202,7 +244,6 @@ type AssetHistoryFiltersRequest struct {
 	FromDate  *string `json:"from_date,omitempty" validate:"omitempty,datetime=2006-01-02"`
 	ToDate    *string `json:"to_date,omitempty" validate:"omitempty,datetime=2006-01-02"`
 }
-
 
 // BulkUpdateStatusRequest represents the request to update status for multiple assets
 type BulkUpdateStatusRequest struct {

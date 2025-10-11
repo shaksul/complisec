@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Паспорт съемного носителя</title>
+    <style>
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 12pt;
+            line-height: 1.5;
+            max-width: 210mm;
+            margin: 0 auto;
+            padding: 20mm;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .title {
+            font-size: 14pt;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        .asset-info {
+            margin-bottom: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        table, th, td {
+            border: 1px solid black;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+        }
+        .section-title {
+            font-weight: bold;
+            font-size: 13pt;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        .field-label {
+            font-weight: bold;
+        }
+        .warning {
+            background-color: #fffacd;
+            padding: 10px;
+            margin: 15px 0;
+            border-left: 4px solid #f0ad4e;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="title">ПАСПОРТ СЪЕМНОГО НОСИТЕЛЯ ИНФОРМАЦИИ</div>
+    </div>
+
+    <div class="asset-info">
+        <p><span class="field-label">Серийный номер (S/N):</span> {{serial_number}}</p>
+        <p><span class="field-label">Инвентарный номер:</span> {{inventory_number}}</p>
+        <p><span class="field-label">Название:</span> {{asset_name}}</p>
+    </div>
+
+    <div class="section-title">Характеристики носителя</div>
+    <table>
+        <tr>
+            <th style="width: 40%;">Параметр</th>
+            <th>Характеристика</th>
+        </tr>
+        <tr>
+            <td>Тип носителя</td>
+            <td>{{asset_class}}</td>
+        </tr>
+        <tr>
+            <td>Модель</td>
+            <td>{{model}}</td>
+        </tr>
+        <tr>
+            <td>Производитель</td>
+            <td>{{manufacturer}}</td>
+        </tr>
+        <tr>
+            <td>Объем</td>
+            <td>{{hdd_info}}</td>
+        </tr>
+    </table>
+
+    <div class="section-title">Информация о безопасности</div>
+    <table>
+        <tr>
+            <th style="width: 40%;">Параметр</th>
+            <th>Значение</th>
+        </tr>
+        <tr>
+            <td>Конфиденциальность</td>
+            <td>{{confidentiality}}</td>
+        </tr>
+        <tr>
+            <td>Целостность</td>
+            <td>{{integrity}}</td>
+        </tr>
+        <tr>
+            <td>Критичность</td>
+            <td>{{criticality}}</td>
+        </tr>
+        <tr>
+            <td>Статус</td>
+            <td>{{status}}</td>
+        </tr>
+    </table>
+
+    <div class="warning">
+        <strong>ВНИМАНИЕ:</strong> Использование съемных носителей информации должно осуществляться в соответствии с политикой информационной безопасности организации.
+    </div>
+
+    <div class="section-title">Производственно-экономические параметры</div>
+    <table>
+        <tr>
+            <th style="width: 40%;">Параметр</th>
+            <th>Значение</th>
+        </tr>
+        <tr>
+            <td>Год приобретения</td>
+            <td>{{purchase_year}}</td>
+        </tr>
+        <tr>
+            <td>Гарантийный срок</td>
+            <td>{{warranty_until}}</td>
+        </tr>
+    </table>
+
+    <div class="section-title">Ответственность и местонахождение</div>
+    <table>
+        <tr>
+            <th style="width: 40%;">Параметр</th>
+            <th>Значение</th>
+        </tr>
+        <tr>
+            <td>Местоположение</td>
+            <td>{{location}}</td>
+        </tr>
+        <tr>
+            <td>Владелец</td>
+            <td>{{owner_name}}</td>
+        </tr>
+        <tr>
+            <td>Ответственный пользователь</td>
+            <td>{{responsible_user_name}}</td>
+        </tr>
+    </table>
+
+    <div class="section-title">Движение носителя</div>
+    <table>
+        <tr>
+            <th style="width: 25%;">Дата</th>
+            <th style="width: 35%;">От кого</th>
+            <th style="width: 35%;">Кому</th>
+            <th style="width: 15%;">Подпись</th>
+        </tr>
+        <tr>
+            <td>&nbsp;<br>&nbsp;</td>
+            <td>&nbsp;<br>&nbsp;</td>
+            <td>&nbsp;<br>&nbsp;</td>
+            <td>&nbsp;<br>&nbsp;</td>
+        </tr>
+        <tr>
+            <td>&nbsp;<br>&nbsp;</td>
+            <td>&nbsp;<br>&nbsp;</td>
+            <td>&nbsp;<br>&nbsp;</td>
+            <td>&nbsp;<br>&nbsp;</td>
+        </tr>
+        <tr>
+            <td>&nbsp;<br>&nbsp;</td>
+            <td>&nbsp;<br>&nbsp;</td>
+            <td>&nbsp;<br>&nbsp;</td>
+            <td>&nbsp;<br>&nbsp;</td>
+        </tr>
+    </table>
+
+    <div style="margin-top: 30px; text-align: right;">
+        <p>Дата составления: {{current_date}}</p>
+    </div>
+</body>
+</html>
+
+

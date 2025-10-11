@@ -8,17 +8,17 @@ import (
 	"github.com/google/uuid"
 )
 
-// DocumentRepo - репозиторий для работы с документами
+// DocumentRepo - СЂРµРїРѕР·РёС‚РѕСЂРёР№ РґР»СЏ СЂР°Р±РѕС‚С‹ СЃ РґРѕРєСѓРјРµРЅС‚Р°РјРё
 type DocumentRepo struct {
 	db DBInterface
 }
 
-// NewDocumentRepo создает новый экземпляр DocumentRepo
+// NewDocumentRepo СЃРѕР·РґР°РµС‚ РЅРѕРІС‹Р№ СЌРєР·РµРјРїР»СЏСЂ DocumentRepo
 func NewDocumentRepo(db DBInterface) *DocumentRepo {
 	return &DocumentRepo{db: db}
 }
 
-// Folder структура папки
+// Folder СЃС‚СЂСѓРєС‚СѓСЂР° РїР°РїРєРё
 type Folder struct {
 	ID          string    `json:"id"`
 	TenantID    string    `json:"tenant_id"`
@@ -33,7 +33,7 @@ type Folder struct {
 	Metadata    *string   `json:"metadata"`
 }
 
-// Document структура документа
+// Document СЃС‚СЂСѓРєС‚СѓСЂР° РґРѕРєСѓРјРµРЅС‚Р°
 type Document struct {
 	ID           string    `json:"id"`
 	TenantID     string    `json:"tenant_id"`
@@ -59,7 +59,7 @@ type Document struct {
 	ControlIDs   []string  `json:"control_ids"`
 }
 
-// DocumentTag структура тега документа
+// DocumentTag СЃС‚СЂСѓРєС‚СѓСЂР° С‚РµРіР° РґРѕРєСѓРјРµРЅС‚Р°
 type DocumentTag struct {
 	ID         string    `json:"id"`
 	DocumentID string    `json:"document_id"`
@@ -67,7 +67,7 @@ type DocumentTag struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-// DocumentLink структура связи документа с другими модулями
+// DocumentLink СЃС‚СЂСѓРєС‚СѓСЂР° СЃРІСЏР·Рё РґРѕРєСѓРјРµРЅС‚Р° СЃ РґСЂСѓРіРёРјРё РјРѕРґСѓР»СЏРјРё
 type DocumentLink struct {
 	ID         string    `json:"id"`
 	DocumentID string    `json:"document_id"`
@@ -77,7 +77,7 @@ type DocumentLink struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-// OCRText структура OCR текста
+// OCRText СЃС‚СЂСѓРєС‚СѓСЂР° OCR С‚РµРєСЃС‚Р°
 type OCRText struct {
 	ID         string    `json:"id"`
 	DocumentID string    `json:"document_id"`
@@ -88,7 +88,7 @@ type OCRText struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
-// DocumentPermission структура разрешения документа
+// DocumentPermission СЃС‚СЂСѓРєС‚СѓСЂР° СЂР°Р·СЂРµС€РµРЅРёСЏ РґРѕРєСѓРјРµРЅС‚Р°
 type DocumentPermission struct {
 	ID          string     `json:"id"`
 	TenantID    string     `json:"tenant_id"`
@@ -103,20 +103,21 @@ type DocumentPermission struct {
 	IsActive    bool       `json:"is_active"`
 }
 
-// DocumentVersion структура версии документа
+// DocumentVersion СЃС‚СЂСѓРєС‚СѓСЂР° РІРµСЂСЃРёРё РґРѕРєСѓРјРµРЅС‚Р°
 type DocumentVersion struct {
 	ID                string    `json:"id"`
 	DocumentID        string    `json:"document_id"`
 	VersionNumber     int       `json:"version_number"`
-	FilePath          string    `json:"file_path"`
-	FileSize          int64     `json:"file_size"`
-	FileHash          string    `json:"file_hash"`
+	FilePath          string    `json:"file_path"` // maps to storage_key
+	MimeType          string    `json:"mime_type"`
+	FileSize          int64     `json:"file_size"` // maps to size_bytes
+	FileHash          string    `json:"file_hash"` // maps to checksum_sha256
 	CreatedBy         string    `json:"created_by"`
 	CreatedAt         time.Time `json:"created_at"`
 	ChangeDescription *string   `json:"change_description"`
 }
 
-// DocumentAuditLog структура аудита документа
+// DocumentAuditLog СЃС‚СЂСѓРєС‚СѓСЂР° Р°СѓРґРёС‚Р° РґРѕРєСѓРјРµРЅС‚Р°
 type DocumentAuditLog struct {
 	ID         string    `json:"id"`
 	TenantID   string    `json:"tenant_id"`
@@ -130,7 +131,7 @@ type DocumentAuditLog struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-// CreateFolder создает новую папку
+// CreateFolder СЃРѕР·РґР°РµС‚ РЅРѕРІСѓСЋ РїР°РїРєСѓ
 func (r *DocumentRepo) CreateFolder(ctx context.Context, folder Folder) error {
 	query := `
 		INSERT INTO folders (id, tenant_id, name, description, parent_id, owner_id, created_by, metadata)
@@ -141,7 +142,7 @@ func (r *DocumentRepo) CreateFolder(ctx context.Context, folder Folder) error {
 	return err
 }
 
-// GetFolderByID получает папку по ID
+// GetFolderByID РїРѕР»СѓС‡Р°РµС‚ РїР°РїРєСѓ РїРѕ ID
 func (r *DocumentRepo) GetFolderByID(ctx context.Context, id, tenantID string) (*Folder, error) {
 	query := `
 		SELECT id, tenant_id, name, description, parent_id, owner_id, created_by, 
@@ -161,7 +162,7 @@ func (r *DocumentRepo) GetFolderByID(ctx context.Context, id, tenantID string) (
 	return &folder, nil
 }
 
-// ListFolders получает список папок
+// ListFolders РїРѕР»СѓС‡Р°РµС‚ СЃРїРёСЃРѕРє РїР°РїРѕРє
 func (r *DocumentRepo) ListFolders(ctx context.Context, tenantID string, parentID *string) ([]Folder, error) {
 	query := `
 		SELECT id, tenant_id, name, description, parent_id, owner_id, created_by, 
@@ -200,7 +201,7 @@ func (r *DocumentRepo) ListFolders(ctx context.Context, tenantID string, parentI
 	return folders, nil
 }
 
-// UpdateFolder обновляет папку
+// UpdateFolder РѕР±РЅРѕРІР»СЏРµС‚ РїР°РїРєСѓ
 func (r *DocumentRepo) UpdateFolder(ctx context.Context, folder Folder) error {
 	query := `
 		UPDATE folders 
@@ -212,14 +213,14 @@ func (r *DocumentRepo) UpdateFolder(ctx context.Context, folder Folder) error {
 	return err
 }
 
-// DeleteFolder удаляет папку
+// DeleteFolder СѓРґР°Р»СЏРµС‚ РїР°РїРєСѓ
 func (r *DocumentRepo) DeleteFolder(ctx context.Context, id, tenantID string) error {
 	query := `UPDATE folders SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND tenant_id = $2`
 	_, err := r.db.ExecContext(ctx, query, id, tenantID)
 	return err
 }
 
-// CreateDocument создает новый документ
+// CreateDocument СЃРѕР·РґР°РµС‚ РЅРѕРІС‹Р№ РґРѕРєСѓРјРµРЅС‚
 func (r *DocumentRepo) CreateDocument(ctx context.Context, document Document) error {
 	query := `
 		INSERT INTO documents (id, tenant_id, title, description, type, category, storage_uri, 
@@ -233,7 +234,7 @@ func (r *DocumentRepo) CreateDocument(ctx context.Context, document Document) er
 	return err
 }
 
-// GetDocumentByID получает документ по ID
+// GetDocumentByID РїРѕР»СѓС‡Р°РµС‚ РґРѕРєСѓРјРµРЅС‚ РїРѕ ID
 func (r *DocumentRepo) GetDocumentByID(ctx context.Context, id, tenantID string) (*Document, error) {
 	query := `
 		SELECT id, tenant_id, title, title as original_name, description, type, category, storage_uri as file_path, size_bytes as file_size, 
@@ -256,9 +257,9 @@ func (r *DocumentRepo) GetDocumentByID(ctx context.Context, id, tenantID string)
 	return &document, nil
 }
 
-// ListDocuments получает список документов
+// ListDocuments РїРѕР»СѓС‡Р°РµС‚ СЃРїРёСЃРѕРє РґРѕРєСѓРјРµРЅС‚РѕРІ
 func (r *DocumentRepo) ListDocuments(ctx context.Context, tenantID string, filters map[string]interface{}) ([]Document, error) {
-	// Проверяем, нужен ли JOIN с document_links для фильтрации по модулю
+	// РџСЂРѕРІРµСЂСЏРµРј, РЅСѓР¶РµРЅ Р»Рё JOIN СЃ document_links РґР»СЏ С„РёР»СЊС‚СЂР°С†РёРё РїРѕ РјРѕРґСѓР»СЋ
 	needJoin := false
 	if _, ok := filters["module"]; ok {
 		needJoin = true
@@ -269,7 +270,7 @@ func (r *DocumentRepo) ListDocuments(ctx context.Context, tenantID string, filte
 
 	var query string
 	if needJoin {
-		// Запрос с JOIN для фильтрации по модулю и entityID
+		// Р—Р°РїСЂРѕСЃ СЃ JOIN РґР»СЏ С„РёР»СЊС‚СЂР°С†РёРё РїРѕ РјРѕРґСѓР»СЋ Рё entityID
 		query = `
 			SELECT DISTINCT d.id, d.tenant_id, d.title, d.title as original_name, d.description, d.type, d.category, d.storage_uri as file_path, d.size_bytes as file_size, 
 			       d.mime_type, d.checksum_sha256 as file_hash, NULL as folder_id, d.owner_id, d.created_by, d.created_at, 
@@ -278,8 +279,8 @@ func (r *DocumentRepo) ListDocuments(ctx context.Context, tenantID string, filte
 			INNER JOIN document_links dl ON d.id = dl.document_id
 			WHERE d.tenant_id = $1 AND d.deleted_at IS NULL`
 	} else {
-		// Для модуля "Документы" - показываем только документы БЕЗ связей с другими модулями
-		// Это позволяет изолировать удаление документов в модуле "Документы" от других модулей
+		// Р”Р»СЏ РјРѕРґСѓР»СЏ "Р”РѕРєСѓРјРµРЅС‚С‹" - РїРѕРєР°Р·С‹РІР°РµРј С‚РѕР»СЊРєРѕ РґРѕРєСѓРјРµРЅС‚С‹ Р‘Р•Р— СЃРІСЏР·РµР№ СЃ РґСЂСѓРіРёРјРё РјРѕРґСѓР»СЏРјРё
+		// Р­С‚Рѕ РїРѕР·РІРѕР»СЏРµС‚ РёР·РѕР»РёСЂРѕРІР°С‚СЊ СѓРґР°Р»РµРЅРёРµ РґРѕРєСѓРјРµРЅС‚РѕРІ РІ РјРѕРґСѓР»Рµ "Р”РѕРєСѓРјРµРЅС‚С‹" РѕС‚ РґСЂСѓРіРёС… РјРѕРґСѓР»РµР№
 		query = `
 			SELECT id, tenant_id, title, title as original_name, description, type, category, storage_uri as file_path, size_bytes as file_size, 
 			       mime_type, checksum_sha256 as file_hash, NULL as folder_id, owner_id, created_by, created_at, 
@@ -289,14 +290,14 @@ func (r *DocumentRepo) ListDocuments(ctx context.Context, tenantID string, filte
 			  AND NOT EXISTS (
 			      SELECT 1 FROM document_links dl 
 			      WHERE dl.document_id = documents.id 
-			        AND dl.module IN ('assets', 'risks', 'incidents', 'training', 'compliance', 'audits')
+			        AND dl.module IN ('asset', 'assets', 'risk', 'risks', 'incident', 'incidents', 'training', 'compliance', 'audit', 'audits')
 			  )`
 	}
 
 	args := []interface{}{tenantID}
 	argIndex := 2
 
-	// Добавляем фильтры
+	// Р”РѕР±Р°РІР»СЏРµРј С„РёР»СЊС‚СЂС‹
 	if module, ok := filters["module"].(string); ok && module != "" {
 		query += fmt.Sprintf(" AND dl.module = $%d", argIndex)
 		args = append(args, module)
@@ -340,7 +341,7 @@ func (r *DocumentRepo) ListDocuments(ctx context.Context, tenantID string, filte
 		argIndex++
 	}
 
-	// Сортировка
+	// РЎРѕСЂС‚РёСЂРѕРІРєР°
 	sortBy := "created_at"
 	if sb, ok := filters["sort_by"].(string); ok && sb != "" {
 		sortBy = sb
@@ -355,7 +356,7 @@ func (r *DocumentRepo) ListDocuments(ctx context.Context, tenantID string, filte
 		query += fmt.Sprintf(" ORDER BY %s %s", sortBy, sortOrder)
 	}
 
-	// Пагинация
+	// РџР°РіРёРЅР°С†РёСЏ
 	if page, ok := filters["page"].(int); ok && page > 0 {
 		limit := 20
 		if l, ok := filters["limit"].(int); ok && l > 0 {
@@ -392,40 +393,40 @@ func (r *DocumentRepo) ListDocuments(ctx context.Context, tenantID string, filte
 	return documents, nil
 }
 
-// UpdateDocument обновляет документ
+// UpdateDocument РѕР±РЅРѕРІР»СЏРµС‚ РґРѕРєСѓРјРµРЅС‚
 func (r *DocumentRepo) UpdateDocument(ctx context.Context, document Document) error {
 	query := `
 		UPDATE documents 
-		SET name = $1, description = $2, folder_id = $3, metadata = $4, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $5 AND tenant_id = $6`
+		SET title = $1, description = $2, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $3 AND tenant_id = $4`
 
 	_, err := r.db.ExecContext(ctx, query, document.Title, document.Description,
-		document.FolderID, document.Metadata, document.ID, document.TenantID)
+		document.ID, document.TenantID)
 	return err
 }
 
-// DeleteDocument удаляет документ
+// DeleteDocument СѓРґР°Р»СЏРµС‚ РґРѕРєСѓРјРµРЅС‚
 func (r *DocumentRepo) DeleteDocument(ctx context.Context, id, tenantID string) error {
 	query := `UPDATE documents SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND tenant_id = $2`
 	_, err := r.db.ExecContext(ctx, query, id, tenantID)
 	return err
 }
 
-// AddDocumentTag добавляет тег к документу
+// AddDocumentTag РґРѕР±Р°РІР»СЏРµС‚ С‚РµРі Рє РґРѕРєСѓРјРµРЅС‚Сѓ
 func (r *DocumentRepo) AddDocumentTag(ctx context.Context, documentID, tag string) error {
 	query := `INSERT INTO document_tags (id, document_id, tag) VALUES ($1, $2, $3) ON CONFLICT (document_id, tag) DO NOTHING`
 	_, err := r.db.ExecContext(ctx, query, uuid.New().String(), documentID, tag)
 	return err
 }
 
-// RemoveDocumentTag удаляет тег у документа
+// RemoveDocumentTag СѓРґР°Р»СЏРµС‚ С‚РµРі Сѓ РґРѕРєСѓРјРµРЅС‚Р°
 func (r *DocumentRepo) RemoveDocumentTag(ctx context.Context, documentID, tag string) error {
 	query := `DELETE FROM document_tags WHERE document_id = $1 AND tag = $2`
 	_, err := r.db.ExecContext(ctx, query, documentID, tag)
 	return err
 }
 
-// GetDocumentTags получает теги документа
+// GetDocumentTags РїРѕР»СѓС‡Р°РµС‚ С‚РµРіРё РґРѕРєСѓРјРµРЅС‚Р°
 func (r *DocumentRepo) GetDocumentTags(ctx context.Context, documentID string) ([]string, error) {
 	query := `SELECT tag FROM document_tags WHERE document_id = $1 ORDER BY tag`
 	rows, err := r.db.QueryContext(ctx, query, documentID)
@@ -445,7 +446,7 @@ func (r *DocumentRepo) GetDocumentTags(ctx context.Context, documentID string) (
 	return tags, nil
 }
 
-// AddDocumentLink добавляет связь документа с другим модулем
+// AddDocumentLink РґРѕР±Р°РІР»СЏРµС‚ СЃРІСЏР·СЊ РґРѕРєСѓРјРµРЅС‚Р° СЃ РґСЂСѓРіРёРј РјРѕРґСѓР»РµРј
 func (r *DocumentRepo) AddDocumentLink(ctx context.Context, link DocumentLink) error {
 	query := `
 		INSERT INTO document_links (id, document_id, module, entity_id, created_by)
@@ -454,7 +455,7 @@ func (r *DocumentRepo) AddDocumentLink(ctx context.Context, link DocumentLink) e
 	return err
 }
 
-// GetDocumentLinks получает связи документа
+// GetDocumentLinks РїРѕР»СѓС‡Р°РµС‚ СЃРІСЏР·Рё РґРѕРєСѓРјРµРЅС‚Р°
 func (r *DocumentRepo) GetDocumentLinks(ctx context.Context, documentID string) ([]DocumentLink, error) {
 	query := `SELECT id, document_id, module, entity_id, created_by, created_at FROM document_links WHERE document_id = $1`
 	rows, err := r.db.QueryContext(ctx, query, documentID)
@@ -475,7 +476,7 @@ func (r *DocumentRepo) GetDocumentLinks(ctx context.Context, documentID string) 
 	return links, nil
 }
 
-// CreateOCRText создает OCR текст для документа
+// CreateOCRText СЃРѕР·РґР°РµС‚ OCR С‚РµРєСЃС‚ РґР»СЏ РґРѕРєСѓРјРµРЅС‚Р°
 func (r *DocumentRepo) CreateOCRText(ctx context.Context, ocrText OCRText) error {
 	query := `
 		INSERT INTO ocr_text (id, document_id, content, language, confidence)
@@ -486,7 +487,7 @@ func (r *DocumentRepo) CreateOCRText(ctx context.Context, ocrText OCRText) error
 	return err
 }
 
-// GetOCRText получает OCR текст документа
+// GetOCRText РїРѕР»СѓС‡Р°РµС‚ OCR С‚РµРєСЃС‚ РґРѕРєСѓРјРµРЅС‚Р°
 func (r *DocumentRepo) GetOCRText(ctx context.Context, documentID string) (*OCRText, error) {
 	query := `SELECT id, document_id, content, language, confidence, created_at, updated_at FROM ocr_text WHERE document_id = $1`
 	var ocrText OCRText
@@ -499,7 +500,7 @@ func (r *DocumentRepo) GetOCRText(ctx context.Context, documentID string) (*OCRT
 	return &ocrText, nil
 }
 
-// CreateDocumentPermission создает разрешение для документа
+// CreateDocumentPermission СЃРѕР·РґР°РµС‚ СЂР°Р·СЂРµС€РµРЅРёРµ РґР»СЏ РґРѕРєСѓРјРµРЅС‚Р°
 func (r *DocumentRepo) CreateDocumentPermission(ctx context.Context, permission DocumentPermission) error {
 	query := `
 		INSERT INTO document_permissions (id, tenant_id, subject_type, subject_id, object_type, object_id, permission, granted_by, expires_at)
@@ -510,7 +511,7 @@ func (r *DocumentRepo) CreateDocumentPermission(ctx context.Context, permission 
 	return err
 }
 
-// GetDocumentPermissions получает разрешения документа
+// GetDocumentPermissions РїРѕР»СѓС‡Р°РµС‚ СЂР°Р·СЂРµС€РµРЅРёСЏ РґРѕРєСѓРјРµРЅС‚Р°
 func (r *DocumentRepo) GetDocumentPermissions(ctx context.Context, objectType, objectID, tenantID string) ([]DocumentPermission, error) {
 	query := `
 		SELECT id, tenant_id, subject_type, subject_id, object_type, object_id, permission, 
@@ -539,7 +540,7 @@ func (r *DocumentRepo) GetDocumentPermissions(ctx context.Context, objectType, o
 	return permissions, nil
 }
 
-// CreateDocumentVersion создает версию документа
+// CreateDocumentVersion СЃРѕР·РґР°РµС‚ РІРµСЂСЃРёСЋ РґРѕРєСѓРјРµРЅС‚Р°
 func (r *DocumentRepo) CreateDocumentVersion(ctx context.Context, version DocumentVersion) error {
 	query := `
 		INSERT INTO document_versions (id, document_id, version_number, storage_key, size_bytes, checksum_sha256, created_by)
@@ -549,7 +550,7 @@ func (r *DocumentRepo) CreateDocumentVersion(ctx context.Context, version Docume
 	return err
 }
 
-// GetDocumentVersions получает версии документа
+// GetDocumentVersions РїРѕР»СѓС‡Р°РµС‚ РІРµСЂСЃРёРё РґРѕРєСѓРјРµРЅС‚Р°
 func (r *DocumentRepo) GetDocumentVersions(ctx context.Context, documentID string) ([]DocumentVersion, error) {
 	query := `
 		SELECT id, document_id, version_number, storage_key, size_bytes, checksum_sha256, created_by, created_at
@@ -577,7 +578,27 @@ func (r *DocumentRepo) GetDocumentVersions(ctx context.Context, documentID strin
 	return versions, nil
 }
 
-// CreateDocumentAuditLog создает запись аудита
+// GetDocumentVersion получает версию документа по ID
+func (r *DocumentRepo) GetDocumentVersion(ctx context.Context, versionID, tenantID string) (DocumentVersion, error) {
+	var version DocumentVersion
+	query := `
+		SELECT dv.id, dv.document_id, dv.version_number, dv.storage_key, dv.mime_type,
+		       dv.size_bytes, dv.checksum_sha256, dv.created_by, dv.created_at
+		FROM document_versions dv
+		JOIN documents d ON dv.document_id = d.id
+		WHERE dv.id = $1 AND d.tenant_id = $2`
+
+	err := r.db.QueryRowContext(ctx, query, versionID, tenantID).Scan(
+		&version.ID, &version.DocumentID, &version.VersionNumber,
+		&version.FilePath, &version.MimeType, &version.FileSize,
+		&version.FileHash, &version.CreatedBy, &version.CreatedAt)
+	if err != nil {
+		return version, err
+	}
+	return version, nil
+}
+
+// CreateDocumentAuditLog СЃРѕР·РґР°РµС‚ Р·Р°РїРёСЃСЊ Р°СѓРґРёС‚Р°
 func (r *DocumentRepo) CreateDocumentAuditLog(ctx context.Context, log DocumentAuditLog) error {
 	query := `
 		INSERT INTO document_audit_log (id, tenant_id, document_id, folder_id, user_id, action, details, ip_address, user_agent)
@@ -587,7 +608,7 @@ func (r *DocumentRepo) CreateDocumentAuditLog(ctx context.Context, log DocumentA
 	return err
 }
 
-// GetDocumentAuditLog получает аудит документов
+// GetDocumentAuditLog РїРѕР»СѓС‡Р°РµС‚ Р°СѓРґРёС‚ РґРѕРєСѓРјРµРЅС‚РѕРІ
 func (r *DocumentRepo) GetDocumentAuditLog(ctx context.Context, tenantID string, filters map[string]interface{}) ([]DocumentAuditLog, error) {
 	query := `
 		SELECT id, tenant_id, document_id, folder_id, user_id, action, details, ip_address, user_agent, created_at
@@ -617,7 +638,7 @@ func (r *DocumentRepo) GetDocumentAuditLog(ctx context.Context, tenantID string,
 
 	query += " ORDER BY created_at DESC"
 
-	// Пагинация
+	// РџР°РіРёРЅР°С†РёСЏ
 	if page, ok := filters["page"].(int); ok && page > 0 {
 		limit := 50
 		if l, ok := filters["limit"].(int); ok && l > 0 {
@@ -646,7 +667,7 @@ func (r *DocumentRepo) GetDocumentAuditLog(ctx context.Context, tenantID string,
 	return logs, nil
 }
 
-// SearchDocuments выполняет поиск документов
+// SearchDocuments РІС‹РїРѕР»РЅСЏРµС‚ РїРѕРёСЃРє РґРѕРєСѓРјРµРЅС‚РѕРІ
 func (r *DocumentRepo) SearchDocuments(ctx context.Context, tenantID, searchTerm string) ([]Document, error) {
 	query := `
 		SELECT DISTINCT d.id, d.tenant_id, d.title as name, d.title as original_name, d.description, d.type, d.storage_uri as file_path, 
@@ -682,50 +703,49 @@ func (r *DocumentRepo) SearchDocuments(ctx context.Context, tenantID, searchTerm
 	return documents, nil
 }
 
-// DeleteDocumentLink удаляет связь документа с другим модулем
+// DeleteDocumentLink СѓРґР°Р»СЏРµС‚ СЃРІСЏР·СЊ РґРѕРєСѓРјРµРЅС‚Р° СЃ РґСЂСѓРіРёРј РјРѕРґСѓР»РµРј
 func (r *DocumentRepo) DeleteDocumentLink(ctx context.Context, documentID, module, entityID string) error {
 	query := `DELETE FROM document_links WHERE document_id = $1 AND module = $2 AND entity_id = $3`
 	_, err := r.db.ExecContext(ctx, query, documentID, module, entityID)
 	return err
 }
 
-// HasModuleLinks проверяет, есть ли у документа связи с модулями (assets, risks, incidents, training, compliance)
+// HasModuleLinks РїСЂРѕРІРµСЂСЏРµС‚, РµСЃС‚СЊ Р»Рё Сѓ РґРѕРєСѓРјРµРЅС‚Р° СЃРІСЏР·Рё СЃ РјРѕРґСѓР»СЏРјРё (assets, risks, incidents, training, compliance)
 func (r *DocumentRepo) HasModuleLinks(ctx context.Context, documentID string) (bool, error) {
 	query := `
 		SELECT EXISTS(
 			SELECT 1 FROM document_links 
 			WHERE document_id = $1 
-			  AND module IN ('assets', 'risks', 'incidents', 'training', 'compliance', 'audits')
+			  AND module IN ('asset', 'assets', 'risk', 'risks', 'incident', 'incidents', 'training', 'compliance', 'audit', 'audits')
 		)`
-	
+
 	var exists bool
 	err := r.db.QueryRowContext(ctx, query, documentID).Scan(&exists)
 	if err != nil {
 		return false, err
 	}
-	
+
 	fmt.Printf("DEBUG: HasModuleLinks documentID=%s exists=%v\n", documentID, exists)
 	return exists, nil
 }
 
-// GetDocumentsByIDs получает документы по списку ID (оптимизация для батчевой загрузки)
+// GetDocumentsByIDs РїРѕР»СѓС‡Р°РµС‚ РґРѕРєСѓРјРµРЅС‚С‹ РїРѕ СЃРїРёСЃРєСѓ ID (РѕРїС‚РёРјРёР·Р°С†РёСЏ РґР»СЏ Р±Р°С‚С‡РµРІРѕР№ Р·Р°РіСЂСѓР·РєРё)
 func (r *DocumentRepo) GetDocumentsByIDs(ctx context.Context, ids []string, tenantID string) ([]Document, error) {
 	if len(ids) == 0 {
 		return []Document{}, nil
 	}
 
-	// Создаем плейсхолдеры для IN запроса
+	// РЎРѕР·РґР°РµРј РїР»РµР№СЃС…РѕР»РґРµСЂС‹ РґР»СЏ IN Р·Р°РїСЂРѕСЃР°
 	placeholders := make([]string, len(ids))
 	args := make([]interface{}, len(ids)+1)
 	args[0] = tenantID
-	
+
 	for i, id := range ids {
 		placeholders[i] = fmt.Sprintf("$%d", i+2)
 		args[i+1] = id
 	}
 
-
-	// Создаем базовый запрос
+	// РЎРѕР·РґР°РµРј Р±Р°Р·РѕРІС‹Р№ Р·Р°РїСЂРѕСЃ
 	query := `
 		SELECT id, tenant_id, title, title as original_name, description, type, category, storage_uri as file_path, size_bytes as file_size, 
 		       mime_type, checksum_sha256 as file_hash, NULL as folder_id, owner_id, created_by, created_at, 
@@ -733,7 +753,7 @@ func (r *DocumentRepo) GetDocumentsByIDs(ctx context.Context, ids []string, tena
 		FROM documents 
 		WHERE tenant_id = $1 AND deleted_at IS NULL`
 
-	// Добавляем фильтр по ID
+	// Р”РѕР±Р°РІР»СЏРµРј С„РёР»СЊС‚СЂ РїРѕ ID
 	if len(ids) > 0 {
 		query += " AND id IN ("
 		for i, id := range ids {
@@ -769,28 +789,27 @@ func (r *DocumentRepo) GetDocumentsByIDs(ctx context.Context, ids []string, tena
 	return documents, nil
 }
 
-// GetDocumentsTags получает теги для нескольких документов одним запросом
+// GetDocumentsTags РїРѕР»СѓС‡Р°РµС‚ С‚РµРіРё РґР»СЏ РЅРµСЃРєРѕР»СЊРєРёС… РґРѕРєСѓРјРµРЅС‚РѕРІ РѕРґРЅРёРј Р·Р°РїСЂРѕСЃРѕРј
 func (r *DocumentRepo) GetDocumentsTags(ctx context.Context, documentIDs []string) (map[string][]string, error) {
 	if len(documentIDs) == 0 {
 		return make(map[string][]string), nil
 	}
 
-	// Создаем плейсхолдеры для IN запроса
+	// РЎРѕР·РґР°РµРј РїР»РµР№СЃС…РѕР»РґРµСЂС‹ РґР»СЏ IN Р·Р°РїСЂРѕСЃР°
 	placeholders := make([]string, len(documentIDs))
 	args := make([]interface{}, len(documentIDs))
-	
+
 	for i, id := range documentIDs {
 		placeholders[i] = fmt.Sprintf("$%d", i+1)
 		args[i] = id
 	}
 
-
-	// Создаем запрос с IN условием
+	// РЎРѕР·РґР°РµРј Р·Р°РїСЂРѕСЃ СЃ IN СѓСЃР»РѕРІРёРµРј
 	query := `
 		SELECT document_id, tag 
 		FROM document_tags 
 		WHERE document_id IN (`
-	
+
 	for i, id := range documentIDs {
 		if i > 0 {
 			query += ", "
@@ -818,18 +837,18 @@ func (r *DocumentRepo) GetDocumentsTags(ctx context.Context, documentIDs []strin
 	return result, nil
 }
 
-// GetDocumentsLinks получает связи для нескольких документов одним запросом
+// GetDocumentsLinks РїРѕР»СѓС‡Р°РµС‚ СЃРІСЏР·Рё РґР»СЏ РЅРµСЃРєРѕР»СЊРєРёС… РґРѕРєСѓРјРµРЅС‚РѕРІ РѕРґРЅРёРј Р·Р°РїСЂРѕСЃРѕРј
 func (r *DocumentRepo) GetDocumentsLinks(ctx context.Context, documentIDs []string) (map[string][]DocumentLink, error) {
 	if len(documentIDs) == 0 {
 		return make(map[string][]DocumentLink), nil
 	}
 
-	// Создаем запрос с IN условием
+	// РЎРѕР·РґР°РµРј Р·Р°РїСЂРѕСЃ СЃ IN СѓСЃР»РѕРІРёРµРј
 	query := `
 		SELECT id, document_id, module, entity_id, created_by, created_at 
 		FROM document_links 
 		WHERE document_id IN (`
-	
+
 	args := make([]interface{}, len(documentIDs))
 	for i, id := range documentIDs {
 		if i > 0 {
@@ -859,18 +878,18 @@ func (r *DocumentRepo) GetDocumentsLinks(ctx context.Context, documentIDs []stri
 	return result, nil
 }
 
-// GetDocumentsOCRTexts получает OCR тексты для нескольких документов одним запросом
+// GetDocumentsOCRTexts РїРѕР»СѓС‡Р°РµС‚ OCR С‚РµРєСЃС‚С‹ РґР»СЏ РЅРµСЃРєРѕР»СЊРєРёС… РґРѕРєСѓРјРµРЅС‚РѕРІ РѕРґРЅРёРј Р·Р°РїСЂРѕСЃРѕРј
 func (r *DocumentRepo) GetDocumentsOCRTexts(ctx context.Context, documentIDs []string) (map[string]*string, error) {
 	if len(documentIDs) == 0 {
 		return make(map[string]*string), nil
 	}
 
-	// Создаем запрос с IN условием
+	// РЎРѕР·РґР°РµРј Р·Р°РїСЂРѕСЃ СЃ IN СѓСЃР»РѕРІРёРµРј
 	query := `
 		SELECT document_id, content 
 		FROM ocr_text 
 		WHERE document_id IN (`
-	
+
 	args := make([]interface{}, len(documentIDs))
 	for i, id := range documentIDs {
 		if i > 0 {
@@ -898,4 +917,29 @@ func (r *DocumentRepo) GetDocumentsOCRTexts(ctx context.Context, documentIDs []s
 	}
 
 	return result, nil
+}
+
+// ListAllDocuments получает все документы для tenant (для RAG индексации)
+func (r *DocumentRepo) ListAllDocuments(ctx context.Context, tenantID string, filters map[string]interface{}) ([]Document, error) {
+	query := `SELECT id, tenant_id, title, description, type, category, storage_uri, size_bytes, mime_type, owner_id, created_at, updated_at
+		FROM documents
+		WHERE tenant_id = $1 AND deleted_at IS NULL
+		ORDER BY created_at DESC`
+
+	rows, err := r.db.QueryContext(ctx, query, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var docs []Document
+	for rows.Next() {
+		var doc Document
+		err := rows.Scan(&doc.ID, &doc.TenantID, &doc.Title, &doc.Description, &doc.Type, &doc.Category, &doc.FilePath, &doc.FileSize, &doc.MimeType, &doc.OwnerID, &doc.CreatedAt, &doc.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		docs = append(docs, doc)
+	}
+	return docs, nil
 }

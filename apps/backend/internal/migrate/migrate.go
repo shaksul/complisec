@@ -125,18 +125,28 @@ func applyMigration(db *sql.DB, migration Migration) error {
 		return err
 	}
 
-	// Split by semicolon and execute each statement
-	statements := strings.Split(string(content), ";")
-	for _, statement := range statements {
-		statement = strings.TrimSpace(statement)
-		if statement == "" {
-			continue
-		}
+	// Execute the entire migration file as a single transaction
+	// This is important for PL/pgSQL functions with dollar-quoted strings
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
 
-		_, err := db.Exec(statement)
-		if err != nil {
-			return fmt.Errorf("failed to execute statement: %s\nError: %w", statement, err)
-		}
+	sqlContent := string(content)
+	sqlContent = strings.TrimSpace(sqlContent)
+
+	if sqlContent == "" {
+		return nil
+	}
+
+	_, err = tx.Exec(sqlContent)
+	if err != nil {
+		return fmt.Errorf("failed to execute migration: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil

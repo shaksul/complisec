@@ -31,6 +31,21 @@ export interface Asset {
   integrity: string
   availability: string
   status: string
+  // Passport fields
+  serial_number?: string | null
+  pc_number?: string | null
+  model?: string | null
+  cpu?: string | null
+  ram?: string | null
+  hdd_info?: string | null
+  network_card?: string | null
+  optical_drive?: string | null
+  ip_address?: string | null
+  mac_address?: string | null
+  manufacturer?: string | null
+  purchase_year?: number | null
+  warranty_until?: string | null
+  metadata?: string | null
   created_at: string
   updated_at: string
   deleted_at?: string | null
@@ -100,6 +115,21 @@ export interface CreateAssetRequest {
   integrity: string
   availability: string
   status?: string
+  // Passport fields
+  serial_number?: string
+  pc_number?: string
+  model?: string
+  cpu?: string
+  ram?: string
+  hdd_info?: string
+  network_card?: string
+  optical_drive?: string
+  ip_address?: string
+  mac_address?: string
+  manufacturer?: string
+  purchase_year?: number
+  warranty_until?: string
+  metadata?: Record<string, any>
 }
 
 export interface UpdateAssetRequest {
@@ -114,6 +144,21 @@ export interface UpdateAssetRequest {
   integrity?: string
   availability?: string
   status?: string
+  // Passport fields
+  serial_number?: string
+  pc_number?: string
+  model?: string
+  cpu?: string
+  ram?: string
+  hdd_info?: string
+  network_card?: string
+  optical_drive?: string
+  ip_address?: string
+  mac_address?: string
+  manufacturer?: string
+  purchase_year?: number
+  warranty_until?: string
+  metadata?: Record<string, any>
 }
 
 export interface AssetListParams {

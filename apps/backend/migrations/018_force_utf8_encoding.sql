@@ -20,14 +20,13 @@ SELECT
     'Client encoding check:' as status,
     current_setting('client_encoding') as client_encoding;
 
--- Проверяем, что все таблицы с русским текстом используют правильную кодировку
+-- Проверяем, что все таблицы с русским текстом существуют
 SELECT 
-    'Table encoding check:' as status,
-    schemaname,
-    tablename,
-    pg_encoding_to_char(encoding) as table_encoding
+    'Table check:' as status,
+    n.nspname as schemaname,
+    c.relname as tablename
 FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE n.nspname = 'public' 
   AND c.relkind = 'r'
-  AND tablename IN ('permissions', 'roles', 'users');
+  AND c.relname IN ('permissions', 'roles', 'users');

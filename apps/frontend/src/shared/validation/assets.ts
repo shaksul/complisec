@@ -6,9 +6,15 @@ export const createAssetSchema = z.object({
     .min(1, 'Название обязательно')
     .max(255, 'Название не должно превышать 255 символов')
     .trim(),
+  inventory_number: z.string()
+    .min(1, 'Инвентарный номер обязателен')
+    .max(100, 'Инвентарный номер не должен превышать 100 символов')
+    .trim()
+    .optional()
+    .or(z.literal('')),
   type: z.string()
     .min(1, 'Тип обязателен')
-    .refine(val => ['server', 'workstation', 'application', 'database', 'document', 'network_device', 'other'].includes(val), {
+    .refine(val => ['server', 'workstation', 'computer', 'monitor', 'application', 'database', 'document', 'network_device', 'other'].includes(val), {
       message: 'Выберите корректный тип актива'
     }),
   class: z.string()
@@ -54,7 +60,36 @@ export const createAssetSchema = z.object({
     .optional()
     .refine(val => !val || ['active', 'in_repair', 'storage', 'decommissioned'].includes(val), {
       message: 'Выберите корректный статус'
+    }),
+  // Passport fields
+  serial_number: z.string().max(255).optional().or(z.literal('')),
+  pc_number: z.string().max(100).optional().or(z.literal('')),
+  model: z.string().max(255).optional().or(z.literal('')),
+  cpu: z.string().max(255).optional().or(z.literal('')),
+  ram: z.string().max(100).optional().or(z.literal('')),
+  hdd_info: z.string().optional().or(z.literal('')),
+  network_card: z.string().max(255).optional().or(z.literal('')),
+  optical_drive: z.string().max(255).optional().or(z.literal('')),
+  ip_address: z.string()
+    .optional()
+    .refine(val => !val || val === '' || /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(val), {
+      message: 'Некорректный формат IP адреса'
     })
+    .or(z.literal('')),
+  mac_address: z.string()
+    .optional()
+    .refine(val => !val || val === '' || /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(val), {
+      message: 'Некорректный формат MAC адреса'
+    })
+    .or(z.literal('')),
+  manufacturer: z.string().max(255).optional().or(z.literal('')),
+  purchase_year: z.number()
+    .min(1900, 'Год не может быть раньше 1900')
+    .max(2100, 'Год не может быть позже 2100')
+    .optional()
+    .nullable(),
+  warranty_until: z.string().optional().or(z.literal('')),
+  template_id: z.string().optional().or(z.literal('')),
 });
 
 // Схема валидации для обновления актива
@@ -64,8 +99,13 @@ export const updateAssetSchema = z.object({
     .max(255, 'Название не должно превышать 255 символов')
     .trim()
     .optional(),
+  inventory_number: z.string()
+    .max(100, 'Инвентарный номер не должен превышать 100 символов')
+    .trim()
+    .optional()
+    .or(z.literal('')),
   type: z.string()
-    .refine(val => !val || ['server', 'workstation', 'application', 'database', 'document', 'network_device', 'other'].includes(val), {
+    .refine(val => !val || ['server', 'workstation', 'computer', 'monitor', 'application', 'database', 'document', 'network_device', 'other'].includes(val), {
       message: 'Выберите корректный тип актива'
     })
     .optional(),
@@ -111,7 +151,36 @@ export const updateAssetSchema = z.object({
     .refine(val => !val || ['active', 'in_repair', 'storage', 'decommissioned'].includes(val), {
       message: 'Выберите корректный статус'
     })
+    .optional(),
+  // Passport fields
+  serial_number: z.string().max(255).optional().or(z.literal('')),
+  pc_number: z.string().max(100).optional().or(z.literal('')),
+  model: z.string().max(255).optional().or(z.literal('')),
+  cpu: z.string().max(255).optional().or(z.literal('')),
+  ram: z.string().max(100).optional().or(z.literal('')),
+  hdd_info: z.string().optional().or(z.literal('')),
+  network_card: z.string().max(255).optional().or(z.literal('')),
+  optical_drive: z.string().max(255).optional().or(z.literal('')),
+  ip_address: z.string()
     .optional()
+    .refine(val => !val || val === '' || /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(val), {
+      message: 'Некорректный формат IP адреса'
+    })
+    .or(z.literal('')),
+  mac_address: z.string()
+    .optional()
+    .refine(val => !val || val === '' || /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(val), {
+      message: 'Некорректный формат MAC адреса'
+    })
+    .or(z.literal('')),
+  manufacturer: z.string().max(255).optional().or(z.literal('')),
+  purchase_year: z.number()
+    .min(1900, 'Год не может быть раньше 1900')
+    .max(2100, 'Год не может быть позже 2100')
+    .optional()
+    .nullable(),
+  warranty_until: z.string().optional().or(z.literal('')),
+  template_id: z.string().optional().or(z.literal('')),
 });
 
 // Схема валидации для документов актива
@@ -191,7 +260,7 @@ export const validateCIAValue = (value: string): boolean => {
 };
 
 export const validateAssetType = (type: string): boolean => {
-  return ['server', 'workstation', 'application', 'database', 'document', 'network_device', 'other'].includes(type);
+  return ['server', 'workstation', 'computer', 'monitor', 'application', 'database', 'document', 'network_device', 'other'].includes(type);
 };
 
 export const validateAssetClass = (classValue: string): boolean => {

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -17,6 +18,7 @@ import (
 // DocumentHandler - обработчик для документов
 type DocumentHandler struct {
 	documentService domain.DocumentStorageServiceInterface
+	ragService      *domain.RAGService
 }
 
 // NewDocumentHandler создает новый экземпляр DocumentHandler
@@ -24,6 +26,11 @@ func NewDocumentHandler(documentService domain.DocumentStorageServiceInterface) 
 	return &DocumentHandler{
 		documentService: documentService,
 	}
+}
+
+// SetRAGService устанавливает RAG сервис для автоиндексации
+func (h *DocumentHandler) SetRAGService(ragService *domain.RAGService) {
+	h.ragService = ragService
 }
 
 // RegisterRoutes регистрирует маршруты для документов
@@ -58,6 +65,7 @@ func (h *DocumentHandler) RegisterRoutes(router fiber.Router) {
 	router.Delete("/documents/:id", RequirePermission("document.delete"), h.DeleteDocument)
 	router.Get("/documents/:id/download", RequirePermission("document.read"), h.DownloadDocument)
 	router.Get("/documents/:id/versions", RequirePermission("document.read"), h.GetDocumentVersions)
+	router.Get("/documents/versions/:versionId/download", RequirePermission("document.read"), h.DownloadDocumentVersion)
 	router.Post("/documents/:id/versions", RequirePermission("document.edit"), h.UploadDocumentVersion)
 }
 
@@ -229,6 +237,19 @@ func (h *DocumentHandler) UploadDocument(c *fiber.Ctx) error {
 	}
 
 	log.Printf("DEBUG: DocumentHandler.UploadDocument success, documentID=%s", document.ID)
+
+	// Автоматически запускаем индексацию в RAG в фоне
+	if h.ragService != nil {
+		go func() {
+			ragCtx := context.Background()
+			if err := h.ragService.IndexDocument(ragCtx, tenantID, document.ID); err != nil {
+				log.Printf("WARNING: Auto-indexing to RAG failed for document %s: %v", document.ID, err)
+			} else {
+				log.Printf("INFO: Document %s automatically indexed to RAG", document.ID)
+			}
+		}()
+	}
+
 	return c.JSON(fiber.Map{"data": document})
 }
 
@@ -431,17 +452,25 @@ func (h *DocumentHandler) UpdateDocument(c *fiber.Ctx) error {
 	userID := c.Locals("user_id").(string)
 	documentID := c.Params("id")
 
+	log.Printf("DEBUG: DocumentHandler.UpdateDocument called - documentID=%s, tenantID=%s, userID=%s", documentID, tenantID, userID)
+	log.Printf("DEBUG: DocumentHandler.UpdateDocument request body: %s", string(c.Body()))
+
 	var req dto.UpdateDocumentDTO
 	if err := c.BodyParser(&req); err != nil {
+		log.Printf("ERROR: DocumentHandler.UpdateDocument BodyParser error: %v", err)
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	_, err := h.documentService.UpdateDocument(ctx, documentID, tenantID, req, userID)
+	log.Printf("DEBUG: DocumentHandler.UpdateDocument parsed req=%+v", req)
+
+	document, err := h.documentService.UpdateDocument(ctx, documentID, tenantID, req, userID)
 	if err != nil {
+		log.Printf("ERROR: DocumentHandler.UpdateDocument service error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to update document: %v", err)})
 	}
 
-	return c.SendStatus(200)
+	log.Printf("DEBUG: DocumentHandler.UpdateDocument success")
+	return c.JSON(fiber.Map{"data": document})
 }
 
 // DeleteDocument удаляет документ
@@ -545,13 +574,13 @@ func (h *DocumentHandler) ListStructuredDocuments(c *fiber.Ctx) error {
 	ctx := c.Context()
 	tenantID := c.Locals("tenant_id").(string)
 
-	// Получаем все документы
-	documents, err := h.documentService.ListDocuments(ctx, tenantID, dto.FileDocumentFiltersDTO{
+	// Получаем ВСЕ документы включая связанные с модулями (для файлового хранилища)
+	documents, err := h.documentService.ListAllDocuments(ctx, tenantID, dto.FileDocumentFiltersDTO{
 		Page:  1,
 		Limit: 1000, // Большое число для получения всех документов
 	})
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to list documents: %v", err)})
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to list all documents: %v", err)})
 	}
 
 	// Организуем документы по структуре папок
@@ -621,4 +650,35 @@ func getStringPtr(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// DownloadDocumentVersion скачивает версию документа
+func (h *DocumentHandler) DownloadDocumentVersion(c *fiber.Ctx) error {
+	ctx := c.Context()
+	tenantID := c.Locals("tenant_id").(string)
+	versionID := c.Params("versionId")
+
+	downloadData, err := h.documentService.DownloadDocumentVersion(ctx, versionID, tenantID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to download document version: %v", err)})
+	}
+
+	// Устанавливаем заголовки для скачивания с UTF-8 кодировкой
+	contentType := downloadData.MimeType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	// Для текстовых файлов принудительно устанавливаем UTF-8
+	if strings.HasPrefix(contentType, "text/") {
+		contentType += "; charset=utf-8"
+	}
+
+	c.Set("Content-Type", contentType)
+	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", downloadData.FileName))
+	c.Set("Content-Length", strconv.FormatInt(downloadData.FileSize, 10))
+	c.Set("Last-Modified", downloadData.LastModified.Format("Mon, 02 Jan 2006 15:04:05 GMT"))
+	c.Set("Accept-Charset", "utf-8")
+
+	return c.Send(downloadData.Content)
 }

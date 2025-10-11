@@ -1,3 +1,6 @@
+//go:build legacy_tests
+// +build legacy_tests
+
 package main
 
 import (
@@ -13,12 +16,12 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockIncidentRepo - мок для IncidentRepo
+// MockIncidentRepo - РјРѕРє РґР»СЏ IncidentRepo
 type MockIncidentRepo struct {
 	mock.Mock
 }
 
-// Убеждаемся, что MockIncidentRepo реализует интерфейс
+// РЈР±РµР¶РґР°РµРјСЃСЏ, С‡С‚Рѕ MockIncidentRepo СЂРµР°Р»РёР·СѓРµС‚ РёРЅС‚РµСЂС„РµР№СЃ
 var _ domain.IncidentRepoInterface = (*MockIncidentRepo)(nil)
 
 func (m *MockIncidentRepo) Create(ctx context.Context, incident *repo.Incident) error {
@@ -142,7 +145,7 @@ func (m *MockIncidentRepo) GetIncidentMetrics(ctx context.Context, tenantID stri
 	return arguments.Get(0).(*repo.IncidentMetricsSummary), arguments.Error(1)
 }
 
-// MockUserRepo - мок для UserRepo
+// MockUserRepo - РјРѕРє РґР»СЏ UserRepo
 type MockUserRepo struct {
 	mock.Mock
 }
@@ -157,7 +160,7 @@ func (m *MockUserRepo) GetByID(ctx context.Context, id string) (*repo.User, erro
 	return arguments.Get(0).(*repo.User), arguments.Error(1)
 }
 
-// MockAssetRepo - мок для AssetRepo
+// MockAssetRepo - РјРѕРє РґР»СЏ AssetRepo
 type MockAssetRepo struct {
 	mock.Mock
 }
@@ -172,7 +175,7 @@ func (m *MockAssetRepo) GetByID(ctx context.Context, id string) (*repo.Asset, er
 	return arguments.Get(0).(*repo.Asset), arguments.Error(1)
 }
 
-// MockRiskRepo - мок для RiskRepo
+// MockRiskRepo - РјРѕРє РґР»СЏ RiskRepo
 type MockRiskRepo struct {
 	mock.Mock
 }

@@ -82,8 +82,29 @@ func (s *AssetService) CreateAsset(ctx context.Context, tenantID string, req dto
 		Integrity:         req.Integrity,
 		Availability:      req.Availability,
 		Status:            status,
-		CreatedAt:         time.Now(),
-		UpdatedAt:         time.Now(),
+		// Passport fields
+		SerialNumber: req.SerialNumber,
+		PCNumber:     req.PCNumber,
+		Model:        req.Model,
+		CPU:          req.CPU,
+		RAM:          req.RAM,
+		HDDInfo:      req.HDDInfo,
+		NetworkCard:  req.NetworkCard,
+		OpticalDrive: req.OpticalDrive,
+		IPAddress:    req.IPAddress,
+		MACAddress:   req.MACAddress,
+		Manufacturer: req.Manufacturer,
+		PurchaseYear: req.PurchaseYear,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+
+	// Parse warranty date if provided
+	if req.WarrantyUntil != nil && *req.WarrantyUntil != "" {
+		warrantyDate, err := time.Parse("2006-01-02", *req.WarrantyUntil)
+		if err == nil {
+			asset.WarrantyUntil = &warrantyDate
+		}
 	}
 
 	// Handle empty owner ID
@@ -273,8 +294,52 @@ func (s *AssetService) UpdateAsset(ctx context.Context, id string, req dto.Updat
 		asset.Status = *req.Status
 	}
 
+	// Update passport fields (we don't track these in history for now)
+	if req.SerialNumber != nil {
+		asset.SerialNumber = req.SerialNumber
+	}
+	if req.PCNumber != nil {
+		asset.PCNumber = req.PCNumber
+	}
+	if req.Model != nil {
+		asset.Model = req.Model
+	}
+	if req.CPU != nil {
+		asset.CPU = req.CPU
+	}
+	if req.RAM != nil {
+		asset.RAM = req.RAM
+	}
+	if req.HDDInfo != nil {
+		asset.HDDInfo = req.HDDInfo
+	}
+	if req.NetworkCard != nil {
+		asset.NetworkCard = req.NetworkCard
+	}
+	if req.OpticalDrive != nil {
+		asset.OpticalDrive = req.OpticalDrive
+	}
+	if req.IPAddress != nil {
+		asset.IPAddress = req.IPAddress
+	}
+	if req.MACAddress != nil {
+		asset.MACAddress = req.MACAddress
+	}
+	if req.Manufacturer != nil {
+		asset.Manufacturer = req.Manufacturer
+	}
+	if req.PurchaseYear != nil {
+		asset.PurchaseYear = req.PurchaseYear
+	}
+	if req.WarrantyUntil != nil && *req.WarrantyUntil != "" {
+		warrantyDate, err := time.Parse("2006-01-02", *req.WarrantyUntil)
+		if err == nil {
+			asset.WarrantyUntil = &warrantyDate
+		}
+	}
+
 	// Update asset if there are changes
-	if len(changes) > 0 {
+	if len(changes) > 0 || req.SerialNumber != nil || req.Model != nil || req.IPAddress != nil {
 		asset.UpdatedAt = time.Now()
 		err = s.assetRepo.Update(ctx, *asset)
 		if err != nil {

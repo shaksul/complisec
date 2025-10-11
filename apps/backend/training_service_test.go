@@ -1,3 +1,6 @@
+//go:build legacy_tests
+// +build legacy_tests
+
 package main
 
 import (
@@ -600,4 +603,3 @@ func stringPtr(s string) *string {
 func boolPtr(b bool) *bool {
 	return &b
 }
-

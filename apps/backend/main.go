@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 
 	"risknexus/backend/internal/cache"
@@ -65,21 +66,30 @@ func main() {
 	aiRepo := repo.NewAIRepo(db)
 	complianceRepo := repo.NewComplianceRepo(db)
 	emailChangeRepo := repo.NewEmailChangeRepo(db)
+	templateRepo := repo.NewTemplateRepo(db)
+	ragRepo := repo.NewRAGRepo(db)
 
 	// Initialize services
 	authService := domain.NewAuthService(userRepo, baseRoleRepo, permissionRepo, cfg.JWTSecret)
 	userService := domain.NewUserService(userRepo, baseRoleRepo, assetRepo)
 	roleService := domain.NewRoleService(roleRepo, userRepo, auditRepo)
 	tenantService := domain.NewTenantService(tenantRepo, auditRepo)
-	documentService := domain.NewDocumentService(documentRepo, ".")
+	storageRoot := filepath.Join(".", "storage", "documents")
+	documentService := domain.NewDocumentService(documentRepo, storageRoot)
 	documentStorageService := domain.NewDocumentStorageService(documentService)
+	templateService := domain.NewTemplateService(templateRepo, assetRepo, documentService)
 	assetService := domain.NewAssetService(assetRepo, userRepo, documentStorageService)
 	riskService := domain.NewRiskService(riskRepo, auditRepo, documentStorageService)
 	incidentService := domain.NewIncidentService(incidentRepo, userRepo, assetRepo, riskRepo, documentStorageService)
 	trainingService := domain.NewTrainingService(trainingRepo, documentStorageService)
 	aiService := domain.NewAIService(aiRepo)
+	aiChatService := domain.NewAIChatService(aiRepo)
 	complianceService := domain.NewComplianceService(complianceRepo)
 	emailChangeService := domain.NewEmailChangeService(emailChangeRepo, userRepo)
+	ragService := domain.NewRAGService(ragRepo, documentRepo)
+
+	// Связываем AIService с RAGService для QueryWithRAG
+	aiService.SetRAGService(ragService)
 
 	// Initialize handlers
 	authHandler := http.NewAuthHandler(authService, userService)
@@ -100,8 +110,14 @@ func main() {
 	incidentHandler := http.NewIncidentHandler(incidentService)
 	trainingHandler := http.NewTrainingHandler(trainingService)
 	aiHandler := http.NewAIHandler(aiService)
+	aiChatHandler := http.NewAIChatHandler(aiChatService)
 	complianceHandler := http.NewComplianceHandler(complianceService)
 	emailChangeHandler := http.NewEmailChangeHandler(emailChangeService, validator.New())
+	templateHandler := http.NewTemplateHandler(templateService)
+	ragHandler := http.NewRAGHandler(ragService)
+
+	// Связываем DocumentHandler с RAGService для автоиндексации
+	documentHandler.SetRAGService(ragService)
 
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
@@ -187,8 +203,11 @@ func main() {
 	incidentHandler.Register(protected)
 	trainingHandler.Register(protected)
 	aiHandler.Register(protected)
+	aiChatHandler.Register(protected)
 	complianceHandler.Register(protected)
 	emailChangeHandler.Register(protected)
+	templateHandler.Register(protected)
+	ragHandler.Register(protected)
 
 	port := os.Getenv("PORT")
 	if port == "" {

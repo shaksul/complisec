@@ -31,6 +31,20 @@ type Asset struct {
 	Integrity           string     `json:"integrity"`
 	Availability        string     `json:"availability"`
 	Status              string     `json:"status"`
+	SerialNumber        *string    `json:"serial_number,omitempty"`
+	PCNumber            *string    `json:"pc_number,omitempty"`
+	Model               *string    `json:"model,omitempty"`
+	CPU                 *string    `json:"cpu,omitempty"`
+	RAM                 *string    `json:"ram,omitempty"`
+	HDDInfo             *string    `json:"hdd_info,omitempty"`
+	NetworkCard         *string    `json:"network_card,omitempty"`
+	OpticalDrive        *string    `json:"optical_drive,omitempty"`
+	IPAddress           *string    `json:"ip_address,omitempty"`
+	MACAddress          *string    `json:"mac_address,omitempty"`
+	Manufacturer        *string    `json:"manufacturer,omitempty"`
+	PurchaseYear        *int       `json:"purchase_year,omitempty"`
+	WarrantyUntil       *time.Time `json:"warranty_until,omitempty"`
+	Metadata            *string    `json:"metadata,omitempty"`
 	CreatedAt           time.Time  `json:"created_at"`
 	UpdatedAt           time.Time  `json:"updated_at"`
 	DeletedAt           *time.Time `json:"deleted_at,omitempty"`
@@ -136,11 +150,16 @@ func (r *AssetRepo) Create(ctx context.Context, asset Asset) error {
 	log.Printf("DEBUG: asset_repo.Create inserting asset tenant=%s name=%s", asset.TenantID, asset.Name)
 	_, err := r.db.ExecContext(ctx, `
         INSERT INTO assets (id, tenant_id, inventory_number, name, type, class, owner_id, responsible_user_id, location, 
-                           criticality, confidentiality, integrity, availability, status)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                           criticality, confidentiality, integrity, availability, status,
+                           serial_number, pc_number, model, cpu, ram, hdd_info, network_card, optical_drive,
+                           ip_address, mac_address, manufacturer, purchase_year, warranty_until)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
     `, asset.ID, asset.TenantID, asset.InventoryNumber, asset.Name, asset.Type, asset.Class,
 		asset.OwnerID, asset.ResponsibleUserID, asset.Location, asset.Criticality, asset.Confidentiality,
-		asset.Integrity, asset.Availability, asset.Status)
+		asset.Integrity, asset.Availability, asset.Status,
+		asset.SerialNumber, asset.PCNumber, asset.Model, asset.CPU, asset.RAM, asset.HDDInfo,
+		asset.NetworkCard, asset.OpticalDrive, asset.IPAddress, asset.MACAddress, asset.Manufacturer,
+		asset.PurchaseYear, asset.WarrantyUntil)
 	if err != nil {
 		log.Printf("ERROR: asset_repo.Create insert failed: %v", err)
 	}
@@ -150,42 +169,80 @@ func (r *AssetRepo) Create(ctx context.Context, asset Asset) error {
 func (r *AssetRepo) GetByID(ctx context.Context, id string) (*Asset, error) {
 	row := r.db.QueryRow(`
 		SELECT id, tenant_id, inventory_number, name, type, class, owner_id, responsible_user_id, location,
-		       criticality, confidentiality, integrity, availability, status, created_at, updated_at, deleted_at
+		       criticality, confidentiality, integrity, availability, status, 
+		       serial_number, pc_number, model, cpu, ram, hdd_info, network_card, optical_drive,
+		       ip_address, mac_address, manufacturer, purchase_year, warranty_until, metadata,
+		       created_at, updated_at, deleted_at
 		FROM assets WHERE id = $1 AND deleted_at IS NULL
 	`, id)
 
 	var asset Asset
+	var serialNumber, pcNumber, model, cpu, ram, hddInfo, networkCard, opticalDrive, ipAddress, macAddress, manufacturer sql.NullString
+	var purchaseYear sql.NullInt32
+	var warrantyUntil sql.NullTime
+	var metadata sql.NullString
+
 	err := row.Scan(&asset.ID, &asset.TenantID, &asset.InventoryNumber, &asset.Name,
 		&asset.Type, &asset.Class, &asset.OwnerID, &asset.ResponsibleUserID, &asset.Location,
 		&asset.Criticality, &asset.Confidentiality, &asset.Integrity,
-		&asset.Availability, &asset.Status, &asset.CreatedAt, &asset.UpdatedAt, &asset.DeletedAt)
+		&asset.Availability, &asset.Status,
+		&serialNumber, &pcNumber, &model, &cpu, &ram, &hddInfo, &networkCard, &opticalDrive,
+		&ipAddress, &macAddress, &manufacturer, &purchaseYear, &warrantyUntil, &metadata,
+		&asset.CreatedAt, &asset.UpdatedAt, &asset.DeletedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
+
+	// Populate passport fields
+	populatePassportFieldsFromRow(&asset, serialNumber, pcNumber, model, cpu, ram, hddInfo, networkCard, opticalDrive, ipAddress, macAddress, manufacturer, purchaseYear, warrantyUntil)
+
+	if metadata.Valid {
+		asset.Metadata = &metadata.String
+	}
+
 	return &asset, nil
 }
 
 func (r *AssetRepo) GetByInventoryNumber(ctx context.Context, tenantID, inventoryNumber string) (*Asset, error) {
 	row := r.db.QueryRow(`
 		SELECT id, tenant_id, inventory_number, name, type, class, owner_id, responsible_user_id, location,
-		       criticality, confidentiality, integrity, availability, status, created_at, updated_at, deleted_at
+		       criticality, confidentiality, integrity, availability, status,
+		       serial_number, pc_number, model, cpu, ram, hdd_info, network_card, optical_drive,
+		       ip_address, mac_address, manufacturer, purchase_year, warranty_until, metadata,
+		       created_at, updated_at, deleted_at
 		FROM assets WHERE tenant_id = $1 AND inventory_number = $2 AND deleted_at IS NULL
 	`, tenantID, inventoryNumber)
 
 	var asset Asset
+	var serialNumber, pcNumber, model, cpu, ram, hddInfo, networkCard, opticalDrive, ipAddress, macAddress, manufacturer sql.NullString
+	var purchaseYear sql.NullInt32
+	var warrantyUntil sql.NullTime
+	var metadata sql.NullString
+
 	err := row.Scan(&asset.ID, &asset.TenantID, &asset.InventoryNumber, &asset.Name,
 		&asset.Type, &asset.Class, &asset.OwnerID, &asset.ResponsibleUserID, &asset.Location,
 		&asset.Criticality, &asset.Confidentiality, &asset.Integrity,
-		&asset.Availability, &asset.Status, &asset.CreatedAt, &asset.UpdatedAt, &asset.DeletedAt)
+		&asset.Availability, &asset.Status,
+		&serialNumber, &pcNumber, &model, &cpu, &ram, &hddInfo, &networkCard, &opticalDrive,
+		&ipAddress, &macAddress, &manufacturer, &purchaseYear, &warrantyUntil, &metadata,
+		&asset.CreatedAt, &asset.UpdatedAt, &asset.DeletedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
+
+	// Populate passport fields
+	populatePassportFieldsFromRow(&asset, serialNumber, pcNumber, model, cpu, ram, hddInfo, networkCard, opticalDrive, ipAddress, macAddress, manufacturer, purchaseYear, warrantyUntil)
+
+	if metadata.Valid {
+		asset.Metadata = &metadata.String
+	}
+
 	return &asset, nil
 }
 
@@ -196,7 +253,9 @@ func (r *AssetRepo) List(ctx context.Context, tenantID string, filters map[strin
 		       a.responsible_user_id,
 		       COALESCE(u_resp.first_name || ' ' || u_resp.last_name, u_resp.email) as responsible_user_name,
 		       a.location, a.criticality, a.confidentiality, a.integrity, a.availability, 
-		       a.status, a.created_at, a.updated_at, a.deleted_at
+		       a.status, a.serial_number, a.pc_number, a.model, a.cpu, a.ram, a.hdd_info, a.network_card, a.optical_drive,
+		       a.ip_address, a.mac_address, a.manufacturer, a.purchase_year, a.warranty_until,
+		       a.created_at, a.updated_at, a.deleted_at
 		FROM assets a
 		LEFT JOIN users u_owner ON a.owner_id = u_owner.id
 		LEFT JOIN users u_resp ON a.responsible_user_id = u_resp.id
@@ -249,10 +308,16 @@ func (r *AssetRepo) List(ctx context.Context, tenantID string, filters map[strin
 	for rows.Next() {
 		var asset Asset
 		var ownerName, responsibleUserName sql.NullString
+		var serialNumber, pcNumber, model, cpu, ram, hddInfo, networkCard, opticalDrive, ipAddress, macAddress, manufacturer sql.NullString
+		var purchaseYear sql.NullInt32
+		var warrantyUntil sql.NullTime
 		err := rows.Scan(&asset.ID, &asset.TenantID, &asset.InventoryNumber, &asset.Name,
 			&asset.Type, &asset.Class, &asset.OwnerID, &ownerName, &asset.ResponsibleUserID,
 			&responsibleUserName, &asset.Location, &asset.Criticality, &asset.Confidentiality,
-			&asset.Integrity, &asset.Availability, &asset.Status, &asset.CreatedAt,
+			&asset.Integrity, &asset.Availability, &asset.Status,
+			&serialNumber, &pcNumber, &model, &cpu, &ram, &hddInfo, &networkCard, &opticalDrive,
+			&ipAddress, &macAddress, &manufacturer, &purchaseYear, &warrantyUntil,
+			&asset.CreatedAt,
 			&asset.UpdatedAt, &asset.DeletedAt)
 		if err != nil {
 			return nil, err
@@ -263,6 +328,7 @@ func (r *AssetRepo) List(ctx context.Context, tenantID string, filters map[strin
 		if responsibleUserName.Valid {
 			asset.ResponsibleUserName = &responsibleUserName.String
 		}
+		populatePassportFieldsFromRow(&asset, serialNumber, pcNumber, model, cpu, ram, hddInfo, networkCard, opticalDrive, ipAddress, macAddress, manufacturer, purchaseYear, warrantyUntil)
 		assets = append(assets, asset)
 	}
 	return assets, nil
@@ -322,7 +388,9 @@ func (r *AssetRepo) ListPaginated(ctx context.Context, tenantID string, page, pa
 		       a.responsible_user_id,
 		       COALESCE(u_resp.first_name || ' ' || u_resp.last_name, u_resp.email) as responsible_user_name,
 		       a.location, a.criticality, a.confidentiality, a.integrity, a.availability, 
-		       a.status, a.created_at, a.updated_at, a.deleted_at
+		       a.status, a.serial_number, a.pc_number, a.model, a.cpu, a.ram, a.hdd_info, a.network_card, a.optical_drive,
+		       a.ip_address, a.mac_address, a.manufacturer, a.purchase_year, a.warranty_until,
+		       a.created_at, a.updated_at, a.deleted_at
 		FROM assets a
 		LEFT JOIN users u_owner ON a.owner_id = u_owner.id
 		LEFT JOIN users u_resp ON a.responsible_user_id = u_resp.id
@@ -376,10 +444,16 @@ func (r *AssetRepo) ListPaginated(ctx context.Context, tenantID string, page, pa
 	for rows.Next() {
 		var asset Asset
 		var ownerName, responsibleUserName sql.NullString
+		var serialNumber, pcNumber, model, cpu, ram, hddInfo, networkCard, opticalDrive, ipAddress, macAddress, manufacturer sql.NullString
+		var purchaseYear sql.NullInt32
+		var warrantyUntil sql.NullTime
 		err := rows.Scan(&asset.ID, &asset.TenantID, &asset.InventoryNumber, &asset.Name,
 			&asset.Type, &asset.Class, &asset.OwnerID, &ownerName, &asset.ResponsibleUserID,
 			&responsibleUserName, &asset.Location, &asset.Criticality, &asset.Confidentiality,
-			&asset.Integrity, &asset.Availability, &asset.Status, &asset.CreatedAt,
+			&asset.Integrity, &asset.Availability, &asset.Status,
+			&serialNumber, &pcNumber, &model, &cpu, &ram, &hddInfo, &networkCard, &opticalDrive,
+			&ipAddress, &macAddress, &manufacturer, &purchaseYear, &warrantyUntil,
+			&asset.CreatedAt,
 			&asset.UpdatedAt, &asset.DeletedAt)
 		if err != nil {
 			return nil, 0, err
@@ -390,6 +464,7 @@ func (r *AssetRepo) ListPaginated(ctx context.Context, tenantID string, page, pa
 		if responsibleUserName.Valid {
 			asset.ResponsibleUserName = &responsibleUserName.String
 		}
+		populatePassportFieldsFromRow(&asset, serialNumber, pcNumber, model, cpu, ram, hddInfo, networkCard, opticalDrive, ipAddress, macAddress, manufacturer, purchaseYear, warrantyUntil)
 		assets = append(assets, asset)
 	}
 
@@ -400,11 +475,21 @@ func (r *AssetRepo) Update(ctx context.Context, asset Asset) error {
 	_, err := r.db.Exec(`
 		UPDATE assets SET name = $1, type = $2, class = $3, owner_id = $4, responsible_user_id = $5, location = $6,
 		                  criticality = $7, confidentiality = $8, integrity = $9, availability = $10,
-		                  status = $11, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $12
+		                  status = $11,
+		                  serial_number = $12, pc_number = $13, model = $14, cpu = $15, ram = $16,
+		                  hdd_info = $17, network_card = $18, optical_drive = $19,
+		                  ip_address = $20, mac_address = $21, manufacturer = $22,
+		                  purchase_year = $23, warranty_until = $24,
+		                  updated_at = CURRENT_TIMESTAMP
+		WHERE id = $25
 	`, asset.Name, asset.Type, asset.Class, asset.OwnerID, asset.ResponsibleUserID, asset.Location,
 		asset.Criticality, asset.Confidentiality, asset.Integrity,
-		asset.Availability, asset.Status, asset.ID)
+		asset.Availability, asset.Status,
+		asset.SerialNumber, asset.PCNumber, asset.Model, asset.CPU, asset.RAM,
+		asset.HDDInfo, asset.NetworkCard, asset.OpticalDrive,
+		asset.IPAddress, asset.MACAddress, asset.Manufacturer,
+		asset.PurchaseYear, asset.WarrantyUntil,
+		asset.ID)
 	return err
 }
 
@@ -534,7 +619,7 @@ func (r *AssetRepo) GetAssetDocuments(ctx context.Context, assetID string) ([]As
 		}
 		documents = append(documents, doc)
 	}
-	
+
 	log.Printf("DEBUG: GetAssetDocuments assetID=%s returned %d documents", assetID, len(documents))
 	return documents, nil
 }
@@ -754,7 +839,9 @@ func (r *AssetRepo) GetAssetsWithoutOwner(ctx context.Context, tenantID string) 
 		       a.responsible_user_id,
 		       COALESCE(u_resp.first_name || ' ' || u_resp.last_name, u_resp.email) as responsible_user_name,
 		       a.location, a.criticality, a.confidentiality, a.integrity, a.availability, 
-		       a.status, a.created_at, a.updated_at, a.deleted_at
+		       a.status, a.serial_number, a.pc_number, a.model, a.cpu, a.ram, a.hdd_info, a.network_card, a.optical_drive,
+		       a.ip_address, a.mac_address, a.manufacturer, a.purchase_year, a.warranty_until,
+		       a.created_at, a.updated_at, a.deleted_at
 		FROM assets a
 		LEFT JOIN users u_owner ON a.owner_id = u_owner.id
 		LEFT JOIN users u_resp ON a.responsible_user_id = u_resp.id
@@ -770,10 +857,16 @@ func (r *AssetRepo) GetAssetsWithoutOwner(ctx context.Context, tenantID string) 
 	for rows.Next() {
 		var asset Asset
 		var ownerName, responsibleUserName sql.NullString
+		var serialNumber, pcNumber, model, cpu, ram, hddInfo, networkCard, opticalDrive, ipAddress, macAddress, manufacturer sql.NullString
+		var purchaseYear sql.NullInt32
+		var warrantyUntil sql.NullTime
 		err := rows.Scan(&asset.ID, &asset.TenantID, &asset.InventoryNumber, &asset.Name,
 			&asset.Type, &asset.Class, &asset.OwnerID, &ownerName, &asset.ResponsibleUserID,
 			&responsibleUserName, &asset.Location, &asset.Criticality, &asset.Confidentiality,
-			&asset.Integrity, &asset.Availability, &asset.Status, &asset.CreatedAt,
+			&asset.Integrity, &asset.Availability, &asset.Status,
+			&serialNumber, &pcNumber, &model, &cpu, &ram, &hddInfo, &networkCard, &opticalDrive,
+			&ipAddress, &macAddress, &manufacturer, &purchaseYear, &warrantyUntil,
+			&asset.CreatedAt,
 			&asset.UpdatedAt, &asset.DeletedAt)
 		if err != nil {
 			return nil, err
@@ -784,6 +877,7 @@ func (r *AssetRepo) GetAssetsWithoutOwner(ctx context.Context, tenantID string) 
 		if responsibleUserName.Valid {
 			asset.ResponsibleUserName = &responsibleUserName.String
 		}
+		populatePassportFieldsFromRow(&asset, serialNumber, pcNumber, model, cpu, ram, hddInfo, networkCard, opticalDrive, ipAddress, macAddress, manufacturer, purchaseYear, warrantyUntil)
 		assets = append(assets, asset)
 	}
 	return assets, nil
@@ -797,11 +891,17 @@ func (r *AssetRepo) GetAssetsWithoutPassport(ctx context.Context, tenantID strin
 		       a.responsible_user_id,
 		       COALESCE(u_resp.first_name || ' ' || u_resp.last_name, u_resp.email) as responsible_user_name,
 		       a.location, a.criticality, a.confidentiality, a.integrity, a.availability, 
-		       a.status, a.created_at, a.updated_at, a.deleted_at
+		       a.status, a.serial_number, a.pc_number, a.model, a.cpu, a.ram, a.hdd_info, a.network_card, a.optical_drive,
+		       a.ip_address, a.mac_address, a.manufacturer, a.purchase_year, a.warranty_until,
+		       a.created_at, a.updated_at, a.deleted_at
 		FROM assets a
 		LEFT JOIN users u_owner ON a.owner_id = u_owner.id
-		LEFT JOIN asset_documents ad ON a.id = ad.asset_id AND ad.document_type = 'passport'
-		WHERE a.tenant_id = $1 AND a.deleted_at IS NULL AND ad.id IS NULL
+		LEFT JOIN users u_resp ON a.responsible_user_id = u_resp.id
+		WHERE a.tenant_id = $1 AND a.deleted_at IS NULL 
+		  AND a.class = 'hardware'
+		  AND (a.serial_number IS NULL OR a.serial_number = '' 
+		       OR a.model IS NULL OR a.model = '' 
+		       OR a.manufacturer IS NULL OR a.manufacturer = '')
 		ORDER BY a.created_at DESC
 	`, tenantID)
 	if err != nil {
@@ -813,10 +913,16 @@ func (r *AssetRepo) GetAssetsWithoutPassport(ctx context.Context, tenantID strin
 	for rows.Next() {
 		var asset Asset
 		var ownerName, responsibleUserName sql.NullString
+		var serialNumber, pcNumber, model, cpu, ram, hddInfo, networkCard, opticalDrive, ipAddress, macAddress, manufacturer sql.NullString
+		var purchaseYear sql.NullInt32
+		var warrantyUntil sql.NullTime
 		err := rows.Scan(&asset.ID, &asset.TenantID, &asset.InventoryNumber, &asset.Name,
 			&asset.Type, &asset.Class, &asset.OwnerID, &ownerName, &asset.ResponsibleUserID,
 			&responsibleUserName, &asset.Location, &asset.Criticality, &asset.Confidentiality,
-			&asset.Integrity, &asset.Availability, &asset.Status, &asset.CreatedAt,
+			&asset.Integrity, &asset.Availability, &asset.Status,
+			&serialNumber, &pcNumber, &model, &cpu, &ram, &hddInfo, &networkCard, &opticalDrive,
+			&ipAddress, &macAddress, &manufacturer, &purchaseYear, &warrantyUntil,
+			&asset.CreatedAt,
 			&asset.UpdatedAt, &asset.DeletedAt)
 		if err != nil {
 			return nil, err
@@ -827,6 +933,7 @@ func (r *AssetRepo) GetAssetsWithoutPassport(ctx context.Context, tenantID strin
 		if responsibleUserName.Valid {
 			asset.ResponsibleUserName = &responsibleUserName.String
 		}
+		populatePassportFieldsFromRow(&asset, serialNumber, pcNumber, model, cpu, ram, hddInfo, networkCard, opticalDrive, ipAddress, macAddress, manufacturer, purchaseYear, warrantyUntil)
 		assets = append(assets, asset)
 	}
 	return assets, nil
@@ -840,7 +947,9 @@ func (r *AssetRepo) GetAssetsWithoutCriticality(ctx context.Context, tenantID st
 		       a.responsible_user_id,
 		       COALESCE(u_resp.first_name || ' ' || u_resp.last_name, u_resp.email) as responsible_user_name,
 		       a.location, a.criticality, a.confidentiality, a.integrity, a.availability, 
-		       a.status, a.created_at, a.updated_at, a.deleted_at
+		       a.status, a.serial_number, a.pc_number, a.model, a.cpu, a.ram, a.hdd_info, a.network_card, a.optical_drive,
+		       a.ip_address, a.mac_address, a.manufacturer, a.purchase_year, a.warranty_until,
+		       a.created_at, a.updated_at, a.deleted_at
 		FROM assets a
 		LEFT JOIN users u_owner ON a.owner_id = u_owner.id
 		LEFT JOIN users u_resp ON a.responsible_user_id = u_resp.id
@@ -858,10 +967,16 @@ func (r *AssetRepo) GetAssetsWithoutCriticality(ctx context.Context, tenantID st
 	for rows.Next() {
 		var asset Asset
 		var ownerName, responsibleUserName sql.NullString
+		var serialNumber, pcNumber, model, cpu, ram, hddInfo, networkCard, opticalDrive, ipAddress, macAddress, manufacturer sql.NullString
+		var purchaseYear sql.NullInt32
+		var warrantyUntil sql.NullTime
 		err := rows.Scan(&asset.ID, &asset.TenantID, &asset.InventoryNumber, &asset.Name,
 			&asset.Type, &asset.Class, &asset.OwnerID, &ownerName, &asset.ResponsibleUserID,
 			&responsibleUserName, &asset.Location, &asset.Criticality, &asset.Confidentiality,
-			&asset.Integrity, &asset.Availability, &asset.Status, &asset.CreatedAt,
+			&asset.Integrity, &asset.Availability, &asset.Status,
+			&serialNumber, &pcNumber, &model, &cpu, &ram, &hddInfo, &networkCard, &opticalDrive,
+			&ipAddress, &macAddress, &manufacturer, &purchaseYear, &warrantyUntil,
+			&asset.CreatedAt,
 			&asset.UpdatedAt, &asset.DeletedAt)
 		if err != nil {
 			return nil, err
@@ -872,6 +987,7 @@ func (r *AssetRepo) GetAssetsWithoutCriticality(ctx context.Context, tenantID st
 		if responsibleUserName.Valid {
 			asset.ResponsibleUserName = &responsibleUserName.String
 		}
+		populatePassportFieldsFromRow(&asset, serialNumber, pcNumber, model, cpu, ram, hddInfo, networkCard, opticalDrive, ipAddress, macAddress, manufacturer, purchaseYear, warrantyUntil)
 		assets = append(assets, asset)
 	}
 	return assets, nil
@@ -927,7 +1043,9 @@ func (r *AssetRepo) GetUserResponsibleAssets(ctx context.Context, tenantID, user
 		       a.responsible_user_id,
 		       COALESCE(u_resp.first_name || ' ' || u_resp.last_name, u_resp.email) as responsible_user_name,
 		       a.location, a.criticality, a.confidentiality, a.integrity, a.availability, 
-		       a.status, a.created_at, a.updated_at, a.deleted_at
+		       a.status, a.serial_number, a.pc_number, a.model, a.cpu, a.ram, a.hdd_info, a.network_card, a.optical_drive,
+		       a.ip_address, a.mac_address, a.manufacturer, a.purchase_year, a.warranty_until,
+		       a.created_at, a.updated_at, a.deleted_at
 		FROM assets a
 		LEFT JOIN users u_owner ON a.owner_id = u_owner.id
 		LEFT JOIN users u_resp ON a.responsible_user_id = u_resp.id
@@ -943,10 +1061,16 @@ func (r *AssetRepo) GetUserResponsibleAssets(ctx context.Context, tenantID, user
 	for rows.Next() {
 		var asset Asset
 		var ownerName, responsibleUserName sql.NullString
+		var serialNumber, pcNumber, model, cpu, ram, hddInfo, networkCard, opticalDrive, ipAddress, macAddress, manufacturer sql.NullString
+		var purchaseYear sql.NullInt32
+		var warrantyUntil sql.NullTime
 		err := rows.Scan(&asset.ID, &asset.TenantID, &asset.InventoryNumber, &asset.Name,
 			&asset.Type, &asset.Class, &asset.OwnerID, &ownerName, &asset.ResponsibleUserID,
 			&responsibleUserName, &asset.Location, &asset.Criticality, &asset.Confidentiality,
-			&asset.Integrity, &asset.Availability, &asset.Status, &asset.CreatedAt,
+			&asset.Integrity, &asset.Availability, &asset.Status,
+			&serialNumber, &pcNumber, &model, &cpu, &ram, &hddInfo, &networkCard, &opticalDrive,
+			&ipAddress, &macAddress, &manufacturer, &purchaseYear, &warrantyUntil,
+			&asset.CreatedAt,
 			&asset.UpdatedAt, &asset.DeletedAt)
 		if err != nil {
 			return nil, err
@@ -957,6 +1081,7 @@ func (r *AssetRepo) GetUserResponsibleAssets(ctx context.Context, tenantID, user
 		if responsibleUserName.Valid {
 			asset.ResponsibleUserName = &responsibleUserName.String
 		}
+		populatePassportFieldsFromRow(&asset, serialNumber, pcNumber, model, cpu, ram, hddInfo, networkCard, opticalDrive, ipAddress, macAddress, manufacturer, purchaseYear, warrantyUntil)
 		assets = append(assets, asset)
 	}
 	return assets, nil
@@ -970,7 +1095,7 @@ func (r *AssetRepo) GetDocumentStorage(ctx context.Context, tenantID string, req
 		       d.version, d.size_bytes, d.mime_type as mime, d.created_by, d.created_at
 		FROM documents d
 		WHERE d.tenant_id = $1 AND d.deleted_at IS NULL`
-	
+
 	args := []interface{}{tenantID}
 	argIndex := 2
 
@@ -1017,7 +1142,7 @@ func (r *AssetRepo) GetDocumentStorage(ctx context.Context, tenantID string, req
 	var documents []dto.DocumentStorageResponse
 	for rows.Next() {
 		var doc dto.DocumentStorageResponse
-		err := rows.Scan(&doc.ID, &doc.Title, &doc.DocumentType, 
+		err := rows.Scan(&doc.ID, &doc.Title, &doc.DocumentType,
 			&doc.Version, &doc.SizeBytes, &doc.Mime, &doc.CreatedBy, &doc.CreatedAt)
 		if err != nil {
 			return nil, 0, err
@@ -1026,4 +1151,97 @@ func (r *AssetRepo) GetDocumentStorage(ctx context.Context, tenantID string, req
 	}
 
 	return documents, total, nil
+}
+
+func populatePassportFieldsFromRow(asset *Asset, serialNumber, pcNumber, model, cpu, ram, hddInfo, networkCard, opticalDrive, ipAddress, macAddress, manufacturer sql.NullString, purchaseYear sql.NullInt32, warrantyUntil sql.NullTime) {
+	if serialNumber.Valid {
+		value := serialNumber.String
+		asset.SerialNumber = &value
+	} else {
+		asset.SerialNumber = nil
+	}
+
+	if pcNumber.Valid {
+		value := pcNumber.String
+		asset.PCNumber = &value
+	} else {
+		asset.PCNumber = nil
+	}
+
+	if model.Valid {
+		value := model.String
+		asset.Model = &value
+	} else {
+		asset.Model = nil
+	}
+
+	if cpu.Valid {
+		value := cpu.String
+		asset.CPU = &value
+	} else {
+		asset.CPU = nil
+	}
+
+	if ram.Valid {
+		value := ram.String
+		asset.RAM = &value
+	} else {
+		asset.RAM = nil
+	}
+
+	if hddInfo.Valid {
+		value := hddInfo.String
+		asset.HDDInfo = &value
+	} else {
+		asset.HDDInfo = nil
+	}
+
+	if networkCard.Valid {
+		value := networkCard.String
+		asset.NetworkCard = &value
+	} else {
+		asset.NetworkCard = nil
+	}
+
+	if opticalDrive.Valid {
+		value := opticalDrive.String
+		asset.OpticalDrive = &value
+	} else {
+		asset.OpticalDrive = nil
+	}
+
+	if ipAddress.Valid {
+		value := ipAddress.String
+		asset.IPAddress = &value
+	} else {
+		asset.IPAddress = nil
+	}
+
+	if macAddress.Valid {
+		value := macAddress.String
+		asset.MACAddress = &value
+	} else {
+		asset.MACAddress = nil
+	}
+
+	if manufacturer.Valid {
+		value := manufacturer.String
+		asset.Manufacturer = &value
+	} else {
+		asset.Manufacturer = nil
+	}
+
+	if purchaseYear.Valid {
+		year := int(purchaseYear.Int32)
+		asset.PurchaseYear = &year
+	} else {
+		asset.PurchaseYear = nil
+	}
+
+	if warrantyUntil.Valid {
+		value := warrantyUntil.Time
+		asset.WarrantyUntil = &value
+	} else {
+		asset.WarrantyUntil = nil
+	}
 }

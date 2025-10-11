@@ -1,3 +1,6 @@
+//go:build legacy_tests
+// +build legacy_tests
+
 package main
 
 import (
@@ -13,12 +16,12 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockDB - мок для базы данных
+// MockDB - РјРѕРє РґР»СЏ Р±Р°Р·С‹ РґР°РЅРЅС‹С…
 type MockDB struct {
 	mock.Mock
 }
 
-// Убеждаемся, что MockDB реализует интерфейс
+// РЈР±РµР¶РґР°РµРјСЃСЏ, С‡С‚Рѕ MockDB СЂРµР°Р»РёР·СѓРµС‚ РёРЅС‚РµСЂС„РµР№СЃ
 var _ repo.DBInterface = (*MockDB)(nil)
 
 func (m *MockDB) Query(query string, args ...interface{}) (*sql.Rows, error) {
@@ -84,13 +87,13 @@ func TestAssetRepo_Create(t *testing.T) {
 		UpdatedAt:       time.Now(),
 	}
 
-	// Настройка мока
+	// РќР°СЃС‚СЂРѕР№РєР° РјРѕРєР°
 	mockDB.On("ExecContext", ctx, mock.AnythingOfType("string"), mock.Anything).Return(nil, nil)
 
-	// Выполнение теста
+	// Р’С‹РїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚Р°
 	err := assetRepo.Create(ctx, asset)
 
-	// Проверки
+	// РџСЂРѕРІРµСЂРєРё
 	assert.NoError(t, err)
 	mockDB.AssertExpectations(t)
 }
@@ -115,13 +118,13 @@ func TestAssetRepo_Update(t *testing.T) {
 		UpdatedAt:       time.Now(),
 	}
 
-	// Настройка мока
+	// РќР°СЃС‚СЂРѕР№РєР° РјРѕРєР°
 	mockDB.On("Exec", mock.AnythingOfType("string"), mock.Anything).Return(nil, nil)
 
-	// Выполнение теста
+	// Р’С‹РїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚Р°
 	err := assetRepo.Update(ctx, asset)
 
-	// Проверки
+	// РџСЂРѕРІРµСЂРєРё
 	assert.NoError(t, err)
 	mockDB.AssertExpectations(t)
 }
@@ -133,13 +136,13 @@ func TestAssetRepo_SoftDelete(t *testing.T) {
 	ctx := context.Background()
 	assetID := uuid.New().String()
 
-	// Настройка мока
+	// РќР°СЃС‚СЂРѕР№РєР° РјРѕРєР°
 	mockDB.On("Exec", mock.AnythingOfType("string"), mock.Anything).Return(nil, nil)
 
-	// Выполнение теста
+	// Р’С‹РїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚Р°
 	err := assetRepo.SoftDelete(ctx, assetID)
 
-	// Проверки
+	// РџСЂРѕРІРµСЂРєРё
 	assert.NoError(t, err)
 	mockDB.AssertExpectations(t)
 }

@@ -18,6 +18,7 @@ import { assetsApi } from '../../shared/api/assets';
 import AssetRelationsTab from './AssetRelationsTab';
 import { DocumentUploadModal } from './DocumentUploadModal';
 import { AddSoftwareModal } from './AddSoftwareModal';
+import { FillPassportModal } from './FillPassportModal';
 
 interface TabPanelProps {
   children?: React.ReactNode
@@ -56,6 +57,7 @@ const AssetDetailsModal: React.FC<AssetDetailsModalProps> = ({ assetId, onClose 
   const [error, setError] = useState<string | null>(null);
   const [tabValue, setTabValue] = useState(0);
   const [documentUploadModalOpen, setDocumentUploadModalOpen] = useState(false);
+  const [passportModalOpen, setPassportModalOpen] = useState(false);
   const [softwareModalOpen, setSoftwareModalOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<AssetDocument | null>(null);
@@ -264,6 +266,97 @@ const AssetDetailsModal: React.FC<AssetDetailsModalProps> = ({ assetId, onClose 
                 </Box>
               </Box>
 
+              {/* Паспортные данные */}
+              <Box>
+                <Typography variant="h6" sx={{ mb: 2 }}>Паспортные данные</Typography>
+                <Box sx={{ bgcolor: 'grey.50', p: 2, borderRadius: 1 }}>
+                  {asset.serial_number && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="caption" color="text.secondary">Серийный номер</Typography>
+                      <Typography variant="body2">{asset.serial_number}</Typography>
+                    </Box>
+                  )}
+                  {asset.pc_number && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="caption" color="text.secondary">Номер ПК</Typography>
+                      <Typography variant="body2">{asset.pc_number}</Typography>
+                    </Box>
+                  )}
+                  {asset.manufacturer && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="caption" color="text.secondary">Производитель</Typography>
+                      <Typography variant="body2">{asset.manufacturer}</Typography>
+                    </Box>
+                  )}
+                  {asset.model && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="caption" color="text.secondary">Модель</Typography>
+                      <Typography variant="body2">{asset.model}</Typography>
+                    </Box>
+                  )}
+                  {asset.cpu && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="caption" color="text.secondary">Процессор</Typography>
+                      <Typography variant="body2">{asset.cpu}</Typography>
+                    </Box>
+                  )}
+                  {asset.ram && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="caption" color="text.secondary">Оперативная память</Typography>
+                      <Typography variant="body2">{asset.ram}</Typography>
+                    </Box>
+                  )}
+                  {asset.hdd_info && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="caption" color="text.secondary">Жесткий диск</Typography>
+                      <Typography variant="body2">{asset.hdd_info}</Typography>
+                    </Box>
+                  )}
+                  {asset.network_card && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="caption" color="text.secondary">Сетевая карта</Typography>
+                      <Typography variant="body2">{asset.network_card}</Typography>
+                    </Box>
+                  )}
+                  {asset.optical_drive && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="caption" color="text.secondary">Оптический привод</Typography>
+                      <Typography variant="body2">{asset.optical_drive}</Typography>
+                    </Box>
+                  )}
+                  {asset.ip_address && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="caption" color="text.secondary">IP адрес</Typography>
+                      <Typography variant="body2">{asset.ip_address}</Typography>
+                    </Box>
+                  )}
+                  {asset.mac_address && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="caption" color="text.secondary">MAC адрес</Typography>
+                      <Typography variant="body2">{asset.mac_address}</Typography>
+                    </Box>
+                  )}
+                  {asset.purchase_year && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="caption" color="text.secondary">Год покупки</Typography>
+                      <Typography variant="body2">{asset.purchase_year}</Typography>
+                    </Box>
+                  )}
+                  {asset.warranty_until && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="caption" color="text.secondary">Гарантия до</Typography>
+                      <Typography variant="body2">{new Date(asset.warranty_until).toLocaleDateString('ru-RU')}</Typography>
+                    </Box>
+                  )}
+                  {!asset.serial_number && !asset.pc_number && !asset.manufacturer && !asset.model && 
+                   !asset.cpu && !asset.ram && !asset.hdd_info && !asset.network_card && 
+                   !asset.optical_drive && !asset.ip_address && !asset.mac_address && 
+                   !asset.purchase_year && !asset.warranty_until && (
+                    <Typography variant="body2" color="text.secondary">Паспортные данные не заполнены</Typography>
+                  )}
+                </Box>
+              </Box>
+
               {/* CIA Оценка */}
               <Box>
                 <Typography variant="h6" sx={{ mb: 2 }}>CIA Оценка</Typography>
@@ -376,14 +469,23 @@ const AssetDetailsModal: React.FC<AssetDetailsModalProps> = ({ assetId, onClose 
         <TabPanel value={tabValue} index={1}>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
             <Typography variant="h6">Документы актива</Typography>
-            <Button
-              variant="contained"
-              size="small"
-              startIcon={<AddIcon />}
-              onClick={() => setDocumentUploadModalOpen(true)}
-            >
-              Добавить документ
-            </Button>
+            <Box display="flex" gap={1}>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => setPassportModalOpen(true)}
+              >
+                Создать паспорт
+              </Button>
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<AddIcon />}
+                onClick={() => setDocumentUploadModalOpen(true)}
+              >
+                Добавить документ
+              </Button>
+            </Box>
           </Box>
           {asset.documents && asset.documents.length > 0 ? (
             <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, overflow: 'hidden' }}>
@@ -516,6 +618,7 @@ const AssetDetailsModal: React.FC<AssetDetailsModalProps> = ({ assetId, onClose 
             <AssetRelationsTab
               assetId={asset.id}
               assetName={asset.name}
+              assetStatus={asset.status}
             />
         </TabPanel>
       </DialogContent>
@@ -527,6 +630,15 @@ const AssetDetailsModal: React.FC<AssetDetailsModalProps> = ({ assetId, onClose 
         assetId={assetId}
         onSuccess={handleDocumentAdded}
       />
+
+      {asset && (
+        <FillPassportModal
+          open={passportModalOpen}
+          onClose={() => setPassportModalOpen(false)}
+          asset={asset}
+          onSuccess={handleDocumentAdded}
+        />
+      )}
       
       <AddSoftwareModal
         open={softwareModalOpen}

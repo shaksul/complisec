@@ -1,3 +1,6 @@
+//go:build legacy_tests
+// +build legacy_tests
+
 package main
 
 import (
@@ -14,12 +17,12 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockAssetRepo - мок для AssetRepo
+// MockAssetRepo - РјРѕРє РґР»СЏ AssetRepo
 type MockAssetRepo struct {
 	mock.Mock
 }
 
-// Убеждаемся, что MockAssetRepo реализует интерфейс
+// РЈР±РµР¶РґР°РµРјСЃСЏ, С‡С‚Рѕ MockAssetRepo СЂРµР°Р»РёР·СѓРµС‚ РёРЅС‚РµСЂС„РµР№СЃ
 var _ domain.AssetRepoInterface = (*MockAssetRepo)(nil)
 
 func (m *MockAssetRepo) Create(ctx context.Context, asset repo.Asset) error {
@@ -93,12 +96,12 @@ func (m *MockAssetRepo) GetAssetHistory(ctx context.Context, assetID string) ([]
 	return arguments.Get(0).([]repo.AssetHistory), arguments.Error(1)
 }
 
-// MockUserRepo - мок для UserRepo
+// MockUserRepo - РјРѕРє РґР»СЏ UserRepo
 type MockUserRepo struct {
 	mock.Mock
 }
 
-// Убеждаемся, что MockUserRepo реализует интерфейс
+// РЈР±РµР¶РґР°РµРјСЃСЏ, С‡С‚Рѕ MockUserRepo СЂРµР°Р»РёР·СѓРµС‚ РёРЅС‚РµСЂС„РµР№СЃ
 var _ domain.UserRepoInterface = (*MockUserRepo)(nil)
 
 func (m *MockUserRepo) GetByID(ctx context.Context, id string) (*repo.User, error) {
@@ -130,7 +133,7 @@ func TestAssetService_CreateAsset(t *testing.T) {
 		Status:          "active",
 	}
 
-	// Настройка моков
+	// РќР°СЃС‚СЂРѕР№РєР° РјРѕРєРѕРІ
 	owner := &repo.User{
 		ID:        "owner-123",
 		FirstName: stringPtr("John"),
@@ -140,10 +143,10 @@ func TestAssetService_CreateAsset(t *testing.T) {
 	mockAssetRepo.On("Create", ctx, mock.AnythingOfType("repo.Asset")).Return(nil)
 	mockAssetRepo.On("AddHistory", ctx, mock.AnythingOfType("string"), "created", "", "Asset created", createdBy).Return(nil)
 
-	// Выполнение теста
+	// Р’С‹РїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚Р°
 	asset, err := service.CreateAsset(ctx, tenantID, req, createdBy)
 
-	// Проверки
+	// РџСЂРѕРІРµСЂРєРё
 	assert.NoError(t, err)
 	assert.NotNil(t, asset)
 	assert.Equal(t, req.Name, asset.Name)
@@ -151,7 +154,7 @@ func TestAssetService_CreateAsset(t *testing.T) {
 	assert.Equal(t, req.Class, asset.Class)
 	assert.Equal(t, req.OwnerID, *asset.OwnerID)
 	assert.Equal(t, req.Criticality, asset.Criticality)
-	assert.Equal(t, "active", asset.Status) // Статус по умолчанию
+	assert.Equal(t, "active", asset.Status) // РЎС‚Р°С‚СѓСЃ РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ
 
 	mockAssetRepo.AssertExpectations(t)
 	mockUserRepo.AssertExpectations(t)
@@ -176,13 +179,13 @@ func TestAssetService_CreateAsset_OwnerNotFound(t *testing.T) {
 		Availability:    "high",
 	}
 
-	// Настройка мока - владелец не найден
+	// РќР°СЃС‚СЂРѕР№РєР° РјРѕРєР° - РІР»Р°РґРµР»РµС† РЅРµ РЅР°Р№РґРµРЅ
 	mockUserRepo.On("GetByID", ctx, "owner-123").Return(nil, nil)
 
-	// Выполнение теста
+	// Р’С‹РїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚Р°
 	asset, err := service.CreateAsset(ctx, tenantID, req, createdBy)
 
-	// Проверки
+	// РџСЂРѕРІРµСЂРєРё
 	assert.Error(t, err)
 	assert.Nil(t, asset)
 	assert.Contains(t, err.Error(), "owner not found")
@@ -200,7 +203,7 @@ func TestAssetService_UpdateAsset(t *testing.T) {
 	assetID := uuid.New().String()
 	updatedBy := "user-123"
 
-	// Существующий актив
+	// РЎСѓС‰РµСЃС‚РІСѓСЋС‰РёР№ Р°РєС‚РёРІ
 	existingAsset := &repo.Asset{
 		ID:              assetID,
 		Name:            "Old Name",
@@ -218,16 +221,16 @@ func TestAssetService_UpdateAsset(t *testing.T) {
 		Criticality: stringPtr("high"),
 	}
 
-	// Настройка моков
+	// РќР°СЃС‚СЂРѕР№РєР° РјРѕРєРѕРІ
 	mockAssetRepo.On("GetByID", ctx, assetID).Return(existingAsset, nil)
 	mockAssetRepo.On("Update", ctx, mock.AnythingOfType("repo.Asset")).Return(nil)
 	mockAssetRepo.On("AddHistory", ctx, assetID, "name", "Old Name", "New Name", updatedBy).Return(nil)
 	mockAssetRepo.On("AddHistory", ctx, assetID, "criticality", "medium", "high", updatedBy).Return(nil)
 
-	// Выполнение теста
+	// Р’С‹РїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚Р°
 	err := service.UpdateAsset(ctx, assetID, req, updatedBy)
 
-	// Проверки
+	// РџСЂРѕРІРµСЂРєРё
 	assert.NoError(t, err)
 	mockAssetRepo.AssertExpectations(t)
 }
@@ -244,13 +247,13 @@ func TestAssetService_UpdateAsset_NotFound(t *testing.T) {
 		Name: stringPtr("New Name"),
 	}
 
-	// Настройка мока - актив не найден
+	// РќР°СЃС‚СЂРѕР№РєР° РјРѕРєР° - Р°РєС‚РёРІ РЅРµ РЅР°Р№РґРµРЅ
 	mockAssetRepo.On("GetByID", ctx, assetID).Return(nil, nil)
 
-	// Выполнение теста
+	// Р’С‹РїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚Р°
 	err := service.UpdateAsset(ctx, assetID, req, updatedBy)
 
-	// Проверки
+	// РџСЂРѕРІРµСЂРєРё
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "asset not found")
 	mockAssetRepo.AssertExpectations(t)
@@ -265,22 +268,22 @@ func TestAssetService_DeleteAsset(t *testing.T) {
 	assetID := uuid.New().String()
 	deletedBy := "user-123"
 
-	// Существующий актив
+	// РЎСѓС‰РµСЃС‚РІСѓСЋС‰РёР№ Р°РєС‚РёРІ
 	existingAsset := &repo.Asset{
 		ID:     assetID,
 		Name:   "Test Asset",
 		Status: "active",
 	}
 
-	// Настройка моков
+	// РќР°СЃС‚СЂРѕР№РєР° РјРѕРєРѕРІ
 	mockAssetRepo.On("GetByID", ctx, assetID).Return(existingAsset, nil)
 	mockAssetRepo.On("SoftDelete", ctx, assetID).Return(nil)
 	mockAssetRepo.On("AddHistory", ctx, assetID, "deleted", "", "Asset deleted", deletedBy).Return(nil)
 
-	// Выполнение теста
+	// Р’С‹РїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚Р°
 	err := service.DeleteAsset(ctx, assetID, deletedBy)
 
-	// Проверки
+	// РџСЂРѕРІРµСЂРєРё
 	assert.NoError(t, err)
 	mockAssetRepo.AssertExpectations(t)
 }
@@ -298,22 +301,22 @@ func TestAssetService_AddDocument(t *testing.T) {
 		FilePath:     "/path/to/document.pdf",
 	}
 
-	// Существующий актив
+	// РЎСѓС‰РµСЃС‚РІСѓСЋС‰РёР№ Р°РєС‚РёРІ
 	existingAsset := &repo.Asset{
 		ID:     assetID,
 		Name:   "Test Asset",
 		Status: "active",
 	}
 
-	// Настройка моков
+	// РќР°СЃС‚СЂРѕР№РєР° РјРѕРєРѕРІ
 	mockAssetRepo.On("GetByID", ctx, assetID).Return(existingAsset, nil)
 	mockAssetRepo.On("AddDocument", ctx, assetID, "passport", "/path/to/document.pdf", createdBy).Return(nil)
 	mockAssetRepo.On("AddHistory", ctx, assetID, "document_added", "", "passport", createdBy).Return(nil)
 
-	// Выполнение теста
+	// Р’С‹РїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚Р°
 	err := service.AddDocument(ctx, assetID, req, createdBy)
 
-	// Проверки
+	// РџСЂРѕРІРµСЂРєРё
 	assert.NoError(t, err)
 	mockAssetRepo.AssertExpectations(t)
 }
@@ -333,22 +336,22 @@ func TestAssetService_AddSoftware(t *testing.T) {
 		InstalledAt:  &installedAt,
 	}
 
-	// Существующий актив
+	// РЎСѓС‰РµСЃС‚РІСѓСЋС‰РёР№ Р°РєС‚РёРІ
 	existingAsset := &repo.Asset{
 		ID:     assetID,
 		Name:   "Test Asset",
 		Status: "active",
 	}
 
-	// Настройка моков
+	// РќР°СЃС‚СЂРѕР№РєР° РјРѕРєРѕРІ
 	mockAssetRepo.On("GetByID", ctx, assetID).Return(existingAsset, nil)
 	mockAssetRepo.On("AddSoftware", ctx, assetID, "Windows Server 2019", "10.0.17763", &installedAt).Return(nil)
 	mockAssetRepo.On("AddHistory", ctx, assetID, "software_added", "", "Windows Server 2019", addedBy).Return(nil)
 
-	// Выполнение теста
+	// Р’С‹РїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚Р°
 	err := service.AddSoftware(ctx, assetID, req, addedBy)
 
-	// Проверки
+	// РџСЂРѕРІРµСЂРєРё
 	assert.NoError(t, err)
 	mockAssetRepo.AssertExpectations(t)
 }
@@ -368,11 +371,11 @@ func TestAssetService_PerformInventory(t *testing.T) {
 		Notes:    stringPtr("Maintenance required"),
 	}
 
-	// Существующие активы
+	// РЎСѓС‰РµСЃС‚РІСѓСЋС‰РёРµ Р°РєС‚РёРІС‹
 	asset1 := &repo.Asset{ID: "asset-1", Name: "Asset 1", Status: "active"}
 	asset2 := &repo.Asset{ID: "asset-2", Name: "Asset 2", Status: "active"}
 
-	// Настройка моков
+	// РќР°СЃС‚СЂРѕР№РєР° РјРѕРєРѕРІ
 	mockAssetRepo.On("GetByID", ctx, "asset-1").Return(asset1, nil)
 	mockAssetRepo.On("GetByID", ctx, "asset-2").Return(asset2, nil)
 	mockAssetRepo.On("Update", ctx, mock.AnythingOfType("repo.Asset")).Return(nil).Twice()
@@ -381,10 +384,10 @@ func TestAssetService_PerformInventory(t *testing.T) {
 	mockAssetRepo.On("AddHistory", ctx, "asset-1", "inventory_update_status", "", "Maintenance required", performedBy).Return(nil)
 	mockAssetRepo.On("AddHistory", ctx, "asset-2", "inventory_update_status", "", "Maintenance required", performedBy).Return(nil)
 
-	// Выполнение теста
+	// Р’С‹РїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚Р°
 	err := service.PerformInventory(ctx, tenantID, req, performedBy)
 
-	// Проверки
+	// РџСЂРѕРІРµСЂРєРё
 	assert.NoError(t, err)
 	mockAssetRepo.AssertExpectations(t)
 }

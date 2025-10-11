@@ -14,8 +14,13 @@ import TrainingPage from './pages/TrainingPage'
 import CompliancePage from './pages/CompliancePage'
 import AIProvidersPage from './pages/AIProvidersPage'
 import AIQueryPage from './pages/AIQueryPage'
+import AIChatPage from './pages/AIChatPage'
+import RAGManagementPage from './pages/RAGManagementPage'
 import RolesManagementPage from './pages/RolesManagementPage'
 import OrganizationsPage from './pages/OrganizationsPage'
+import { TemplatesPage } from './pages/admin/TemplatesPage'
+import { InventoryRulesPage } from './pages/admin/InventoryRulesPage'
+import AssetsInventoryPage from './pages/AssetsInventoryPage'
 
 function App() {
   return (
@@ -33,6 +38,9 @@ function App() {
                   <Route path="/users" element={<UsersPage />} />
                   <Route path="/admin/roles" element={<RolesManagementPage />} />
                   <Route path="/admin/organizations" element={<OrganizationsPage />} />
+                  <Route path="/admin/templates" element={<TemplatesPage />} />
+                  <Route path="/admin/inventory-rules" element={<InventoryRulesPage />} />
+                  <Route path="/admin/assets-inventory" element={<AssetsInventoryPage />} />
                   <Route path="/assets" element={<AssetsPage />} />
                   <Route path="/risks" element={<RisksPage />} />
                   <Route path="/documents" element={<DocumentsPage />} />
@@ -40,8 +48,10 @@ function App() {
                   <Route path="/incidents" element={<IncidentsPage />} />
                   <Route path="/training" element={<TrainingPage />} />
                   <Route path="/compliance" element={<CompliancePage />} />
+                  <Route path="/ai/chat" element={<AIChatPage />} />
                   <Route path="/ai/providers" element={<AIProvidersPage />} />
                   <Route path="/ai/query" element={<AIQueryPage />} />
+                  <Route path="/ai/rag" element={<RAGManagementPage />} />
                 </Routes>
               </Layout>
             </ProtectedRoute>

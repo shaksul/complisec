@@ -105,6 +105,7 @@ type DocumentRepoInterface interface {
 	GetDocumentByID(ctx context.Context, id, tenantID string) (*Document, error)
 	GetDocumentsByIDs(ctx context.Context, ids []string, tenantID string) ([]Document, error)
 	ListDocuments(ctx context.Context, tenantID string, filters map[string]interface{}) ([]Document, error)
+	ListAllDocuments(ctx context.Context, tenantID string, filters map[string]interface{}) ([]Document, error)
 	UpdateDocument(ctx context.Context, document Document) error
 	DeleteDocument(ctx context.Context, id, tenantID string) error
 
@@ -133,6 +134,7 @@ type DocumentRepoInterface interface {
 	// Document Versions
 	CreateDocumentVersion(ctx context.Context, version DocumentVersion) error
 	GetDocumentVersions(ctx context.Context, documentID string) ([]DocumentVersion, error)
+	GetDocumentVersion(ctx context.Context, versionID, tenantID string) (DocumentVersion, error)
 
 	// Document Audit Log
 	CreateDocumentAuditLog(ctx context.Context, log DocumentAuditLog) error

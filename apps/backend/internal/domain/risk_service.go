@@ -2,14 +2,10 @@ package domain
 
 import (
 	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"mime/multipart"
-	"os"
-	"path/filepath"
 	"time"
 
 	"risknexus/backend/internal/dto"
@@ -428,8 +424,10 @@ func (s *RiskService) checkRiskLevelEscalation(ctx context.Context, risk *repo.R
 	}
 }
 
-// Risk Document methods - использование модульных вложений рисков
+// Risk Document methods - использование централизованного хранилища
 func (s *RiskService) UploadRiskDocument(ctx context.Context, riskID, tenantID string, file multipart.File, header *multipart.FileHeader, req dto.UploadDocumentDTO, uploadedBy string) (*dto.DocumentDTO, error) {
+	log.Printf("DEBUG: risk_service.UploadRiskDocument riskID=%s", riskID)
+
 	// Проверяем, что риск существует
 	risk, err := s.riskRepo.GetByID(ctx, riskID)
 	if err != nil {
@@ -439,171 +437,93 @@ func (s *RiskService) UploadRiskDocument(ctx context.Context, riskID, tenantID s
 		return nil, errors.New("risk not found")
 	}
 
-	// Создаем уникальное имя файла
-	fileExt := filepath.Ext(header.Filename)
-	fileName := fmt.Sprintf("%s%s", uuid.New().String(), fileExt)
-	
-	// Создаем структурированный путь к файлу для рисков
-	basePath := filepath.Join("./storage/documents", tenantID, "modules", "risks", "attachments")
-	filePath := filepath.Join(basePath, fileName)
-
-	// Создаем директорию если не существует
-	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
-		return nil, fmt.Errorf("failed to create directory: %w", err)
-	}
-
-	// Создаем файл
-	dst, err := os.Create(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create file: %w", err)
-	}
-	defer dst.Close()
-
-	// Копируем содержимое файла
-	fileSize, err := io.Copy(dst, file)
-	if err != nil {
-		return nil, fmt.Errorf("failed to copy file: %w", err)
-	}
-
-	// Вычисляем хеш файла
-	hash := sha256.New()
-	file.Seek(0, 0) // Возвращаемся к началу файла
-	if _, err := io.Copy(hash, file); err != nil {
-		return nil, fmt.Errorf("failed to calculate hash: %w", err)
-	}
-	fileHash := fmt.Sprintf("%x", hash.Sum(nil))
-
-	// Создаем вложение в таблице risk_attachments
-	attachmentID := uuid.New().String()
-	attachment := repo.RiskAttachment{
-		ID:          attachmentID,
-		RiskID:      riskID,
-		FileName:    header.Filename,
-		FilePath:    filePath,
-		FileSize:    fileSize,
-		MimeType:    header.Header.Get("Content-Type"),
-		FileHash:    &fileHash,
+	// Создаем запрос для загрузки в централизованное хранилище
+	uploadReq := dto.UploadDocumentDTO{
+		Name:        req.Name,
 		Description: req.Description,
-		UploadedBy:  uploadedBy,
-		UploadedAt:  time.Now(),
+		FolderID:    nil,
+		Tags:        []string{"#риски", "attachment"}, // ✅ Correct tags for displaying in Risks folder
+		LinkedTo: &dto.DocumentLinkDTO{
+			Module:   "risks",
+			EntityID: riskID,
+		},
+		Metadata: riskStringPtr(fmt.Sprintf(`{"risk_id": "%s", "risk_title": "%s", "document_type": "attachment"}`, riskID, risk.Title)),
 	}
 
-	err = s.riskRepo.AddAttachment(ctx, attachment)
+	// Загружаем документ в централизованное хранилище
+	document, err := s.documentStorageService.UploadDocument(ctx, tenantID, file, header, uploadReq, uploadedBy)
 	if err != nil {
-		// Удаляем файл если не удалось сохранить в БД
-		os.Remove(filePath)
-		return nil, fmt.Errorf("failed to save attachment to database: %w", err)
-	}
-
-	// Логируем аудит
-	s.auditRepo.LogAction(ctx, tenantID, uploadedBy, "upload_risk_attachment", "risk", &riskID, map[string]interface{}{
-		"attachment_id": attachmentID,
-		"file_name":     header.Filename,
-		"file_size":     fileSize,
-		"mime_type":     header.Header.Get("Content-Type"),
-	})
-
-	// Возвращаем DTO в формате DocumentDTO для совместимости
-	return &dto.DocumentDTO{
-		ID:           attachmentID,
-		TenantID:     tenantID,
-		Title:        fmt.Sprintf("%s - %s", risk.Title, req.Name),
-		OriginalName: header.Filename,
-		Description:  req.Description,
-		Type:         "attachment",
-		Category:     stringPtr("risk_attachment"),
-		FilePath:     filePath,
-		FileSize:     fileSize,
-		MimeType:     header.Header.Get("Content-Type"),
-		FileHash:     fileHash,
-		FolderID:     nil,
-		OwnerID:      uploadedBy,
-		CreatedBy:    uploadedBy,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
-		IsActive:     true,
-		Version:      "1.0",
-		Metadata:     nil,
-		Tags:         []string{"#риски"},
-		Links:        []dto.DocumentLinkDTO{},
-	}, nil
-}
-
-func (s *RiskService) GetRiskDocuments(ctx context.Context, riskID, tenantID string) ([]dto.DocumentDTO, error) {
-	// Получаем вложения из таблицы risk_attachments
-	attachments, err := s.riskRepo.GetAttachments(ctx, riskID)
-	if err != nil {
+		log.Printf("ERROR: risk_service.UploadRiskDocument UploadDocument: %v", err)
 		return nil, err
 	}
 
-	// Конвертируем в формат DocumentDTO
-	var documents []dto.DocumentDTO
-	for _, attachment := range attachments {
-		documents = append(documents, dto.DocumentDTO{
-			ID:           attachment.ID,
-			TenantID:     tenantID,
-			Title:        attachment.FileName,
-			OriginalName: attachment.FileName,
-			Description:  attachment.Description,
-			Type:         "attachment",
-			Category:     stringPtr("risk_attachment"),
-			FilePath:     attachment.FilePath,
-			FileSize:     attachment.FileSize,
-			MimeType:     attachment.MimeType,
-			FileHash:     *attachment.FileHash,
-			FolderID:     nil,
-			OwnerID:      attachment.UploadedBy,
-			CreatedBy:    attachment.UploadedBy,
-			CreatedAt:    attachment.UploadedAt,
-			UpdatedAt:    attachment.UploadedAt,
-			IsActive:     true,
-			Version:      "1.0",
-			Metadata:     nil,
-			Tags:         []string{"#риски"},
-			Links:        []dto.DocumentLinkDTO{},
-		})
+	// Логируем аудит
+	s.auditRepo.LogAction(ctx, tenantID, uploadedBy, "upload_risk_document", "risk", &riskID, map[string]interface{}{
+		"document_id": document.ID,
+		"file_name":   document.OriginalName,
+		"file_size":   document.FileSize,
+		"mime_type":   document.MimeType,
+	})
+
+	log.Printf("DEBUG: risk_service.UploadRiskDocument success documentID=%s", document.ID)
+	return document, nil
+}
+
+func (s *RiskService) GetRiskDocuments(ctx context.Context, riskID, tenantID string) ([]dto.DocumentDTO, error) {
+	log.Printf("DEBUG: risk_service.GetRiskDocuments riskID=%s tenantID=%s", riskID, tenantID)
+
+	// Проверяем, что риск существует
+	risk, err := s.riskRepo.GetByID(ctx, riskID)
+	if err != nil {
+		return nil, err
+	}
+	if risk == nil {
+		return nil, errors.New("risk not found")
 	}
 
+	// Получаем документы из централизованного хранилища
+	documents, err := s.documentStorageService.GetModuleDocuments(ctx, "risks", riskID, tenantID)
+	if err != nil {
+		log.Printf("ERROR: risk_service.GetRiskDocuments GetModuleDocuments: %v", err)
+		return nil, err
+	}
+
+	log.Printf("DEBUG: risk_service.GetRiskDocuments found %d documents for riskID=%s", len(documents), riskID)
 	return documents, nil
 }
 
 func (s *RiskService) DeleteRiskDocument(ctx context.Context, riskID, documentID, tenantID, deletedBy string) error {
-	// Получаем вложение для проверки, что оно принадлежит этому риску
-	attachments, err := s.riskRepo.GetAttachments(ctx, riskID)
+	log.Printf("DEBUG: risk_service.DeleteRiskDocument riskID=%s documentID=%s", riskID, documentID)
+
+	// Проверяем, что риск существует
+	risk, err := s.riskRepo.GetByID(ctx, riskID)
+	if err != nil {
+		return err
+	}
+	if risk == nil {
+		return errors.New("risk not found")
+	}
+
+	// Получаем информацию о документе
+	document, err := s.documentStorageService.GetDocument(ctx, documentID, tenantID)
 	if err != nil {
 		return err
 	}
 
-	var found bool
-	var filePath string
-	for _, attachment := range attachments {
-		if attachment.ID == documentID {
-			found = true
-			filePath = attachment.FilePath
-			break
-		}
-	}
-
-	if !found {
-		return errors.New("attachment not found or not linked to this risk")
-	}
-
-	// Удаляем вложение из базы данных
-	err = s.riskRepo.DeleteAttachment(ctx, documentID)
+	// Удаляем документ из централизованного хранилища
+	err = s.documentStorageService.DeleteDocument(ctx, documentID, tenantID, deletedBy)
 	if err != nil {
+		log.Printf("ERROR: risk_service.DeleteRiskDocument DeleteDocument: %v", err)
 		return err
-	}
-
-	// Удаляем файл с диска
-	if filePath != "" {
-		os.Remove(filePath)
 	}
 
 	// Логируем аудит
-	s.auditRepo.LogAction(ctx, tenantID, deletedBy, "delete_risk_attachment", "risk", &riskID, map[string]interface{}{
-		"attachment_id": documentID,
+	s.auditRepo.LogAction(ctx, tenantID, deletedBy, "delete_risk_document", "risk", &riskID, map[string]interface{}{
+		"document_id": documentID,
+		"title":       document.Title,
 	})
 
+	log.Printf("DEBUG: risk_service.DeleteRiskDocument success")
 	return nil
 }
 

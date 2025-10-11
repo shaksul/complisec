@@ -160,9 +160,11 @@ type DocumentServiceInterface interface {
 	// Documents
 	CreateDocument(ctx context.Context, tenantID string, req dto.CreateDocumentDTO, createdBy string) (*dto.DocumentDTO, error)
 	UploadDocument(ctx context.Context, tenantID string, file multipart.File, header *multipart.FileHeader, req dto.UploadDocumentDTO, createdBy string) (*dto.DocumentDTO, error)
+	SaveGeneratedDocument(ctx context.Context, tenantID string, content []byte, fileName, mimeType string, req dto.UploadDocumentDTO, createdBy string) (*dto.DocumentDTO, error)
 	GetDocument(ctx context.Context, id, tenantID string) (*dto.DocumentDTO, error)
 	GetDocumentsByIDs(ctx context.Context, ids []string, tenantID string) ([]dto.DocumentDTO, error)
 	ListDocuments(ctx context.Context, tenantID string, filters dto.FileDocumentFiltersDTO) ([]dto.DocumentDTO, error)
+	ListAllDocuments(ctx context.Context, tenantID string, filters dto.FileDocumentFiltersDTO) ([]dto.DocumentDTO, error)
 	UpdateDocument(ctx context.Context, id, tenantID string, req dto.UpdateFileDocumentDTO, updatedBy string) error
 	DeleteDocument(ctx context.Context, id, tenantID string, deletedBy string) error
 	DownloadDocument(ctx context.Context, id, tenantID string) (*dto.DocumentDownloadDTO, error)
@@ -174,6 +176,7 @@ type DocumentServiceInterface interface {
 	// Document Versions
 	CreateDocumentVersion(ctx context.Context, documentID, tenantID string, file io.ReadSeeker, header *multipart.FileHeader, createdBy string) (*dto.DocumentVersionDTO, error)
 	GetDocumentVersions(ctx context.Context, documentID, tenantID string) ([]dto.DocumentVersionDTO, error)
+	DownloadDocumentVersion(ctx context.Context, versionID, tenantID string) (*dto.DocumentDownloadDTO, error)
 
 	// Document Links
 	AddDocumentLink(ctx context.Context, documentID string, link dto.CreateDocumentLinkDTO) error

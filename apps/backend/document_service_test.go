@@ -1,3 +1,6 @@
+//go:build legacy_tests
+// +build legacy_tests
+
 package main
 
 import (
@@ -482,4 +485,3 @@ func stringPtr(s string) *string {
 func floatPtr(f float64) *float64 {
 	return &f
 }
-

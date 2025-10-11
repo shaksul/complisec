@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo } from 'react'
+﻿import React, { useEffect, useMemo, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
@@ -15,7 +15,13 @@ import {
   Typography,
   Grid,
   CircularProgress,
+  Tabs,
+  Tab,
+  Divider,
+  IconButton,
+  Tooltip,
 } from '@mui/material'
+import AutorenewIcon from '@mui/icons-material/Autorenew'
 import {
   Asset,
   ASSET_TYPES,
@@ -30,6 +36,7 @@ import {
   type CreateAssetFormData,
   type UpdateAssetFormData,
 } from '../../shared/validation/assets'
+import { templatesApi } from '../../shared/api/templates'
 
 interface AssetModalProps {
   open: boolean
@@ -58,6 +65,8 @@ const buildUserKey = (user: UserCatalog, index: number) => user.id || `user-${in
 const AssetModal: React.FC<AssetModalProps> = ({ open, asset, users, onSave, onClose }) => {
   const isEdit = Boolean(asset)
   const schema = useMemo(() => (isEdit ? updateAssetSchema : createAssetSchema), [isEdit])
+  const [tabValue, setTabValue] = useState(0);
+  const [generatingInventoryNumber, setGeneratingInventoryNumber] = useState(false);
 
   const {
     control,
@@ -65,38 +74,113 @@ const AssetModal: React.FC<AssetModalProps> = ({ open, asset, users, onSave, onC
     handleSubmit,
     formState: { errors, isSubmitting },
     reset,
+    setValue,
+    watch,
   } = useForm<AssetFormData>({
     resolver: zodResolver(schema as any),
     defaultValues: {
-      name: asset?.name ?? '',
-      type: asset?.type ?? '',
-      class: asset?.class ?? '',
-      owner_id: asset?.owner_id ?? '',
-      responsible_user_id: asset?.responsible_user_id ?? '',
-      location: asset?.location ?? '',
-      criticality: asset?.criticality ?? '',
-      confidentiality: asset?.confidentiality ?? '',
-      integrity: asset?.integrity ?? '',
-      availability: asset?.availability ?? '',
-      status: asset?.status ?? 'active',
+      name: asset?.name || '',
+      inventory_number: asset?.inventory_number || '',
+      type: asset?.type || '',
+      class: asset?.class || '',
+      owner_id: asset?.owner_id || '',
+      responsible_user_id: asset?.responsible_user_id || '',
+      location: asset?.location || '',
+      criticality: asset?.criticality || '',
+      confidentiality: asset?.confidentiality || '',
+      integrity: asset?.integrity || '',
+      availability: asset?.availability || '',
+      status: asset?.status || 'active',
+      template_id: '',
+      // Passport fields
+      serial_number: asset?.serial_number || '',
+      pc_number: asset?.pc_number || '',
+      model: asset?.model || '',
+      manufacturer: asset?.manufacturer || '',
+      cpu: asset?.cpu || '',
+      ram: asset?.ram || '',
+      hdd_info: asset?.hdd_info || '',
+      network_card: asset?.network_card || '',
+      optical_drive: asset?.optical_drive || '',
+      ip_address: asset?.ip_address || '',
+      mac_address: asset?.mac_address || '',
+      purchase_year: asset?.purchase_year || undefined,
+      warranty_until: asset?.warranty_until || '',
     },
   })
 
+  const assetType = watch('type')
+  const assetClass = watch('class')
+
+  // Сбрасываем вкладку на первую, если класс актива изменился на не-hardware
   useEffect(() => {
+    if (assetClass !== 'hardware' && tabValue === 1) {
+      setTabValue(0)
+    }
+  }, [assetClass, tabValue])
+
+  useEffect(() => {
+    console.log('=== AssetModal useEffect ===');
+    console.log('Asset object:', asset);
+    console.log('Passport fields:', {
+      serial_number: asset?.serial_number,
+      pc_number: asset?.pc_number,
+      model: asset?.model,
+      cpu: asset?.cpu,
+      ram: asset?.ram,
+    });
+    
     reset({
-      name: asset?.name ?? '',
-      type: asset?.type ?? '',
-      class: asset?.class ?? '',
-      owner_id: asset?.owner_id ?? '',
-      responsible_user_id: asset?.responsible_user_id ?? '',
-      location: asset?.location ?? '',
-      criticality: asset?.criticality ?? '',
-      confidentiality: asset?.confidentiality ?? '',
-      integrity: asset?.integrity ?? '',
-      availability: asset?.availability ?? '',
-      status: asset?.status ?? 'active',
+      name: asset?.name || '',
+      inventory_number: asset?.inventory_number || '',
+      type: asset?.type || '',
+      class: asset?.class || '',
+      owner_id: asset?.owner_id || '',
+      responsible_user_id: asset?.responsible_user_id || '',
+      location: asset?.location || '',
+      criticality: asset?.criticality || '',
+      confidentiality: asset?.confidentiality || '',
+      integrity: asset?.integrity || '',
+      availability: asset?.availability || '',
+      status: asset?.status || 'active',
+      template_id: '',
+      // Passport fields
+      serial_number: asset?.serial_number || '',
+      pc_number: asset?.pc_number || '',
+      model: asset?.model || '',
+      manufacturer: asset?.manufacturer || '',
+      cpu: asset?.cpu || '',
+      ram: asset?.ram || '',
+      hdd_info: asset?.hdd_info || '',
+      network_card: asset?.network_card || '',
+      optical_drive: asset?.optical_drive || '',
+      ip_address: asset?.ip_address || '',
+      mac_address: asset?.mac_address || '',
+      purchase_year: asset?.purchase_year || undefined,
+      warranty_until: asset?.warranty_until || '',
     })
-  }, [asset, reset])
+    setTabValue(0); // Reset to first tab when modal opens
+  }, [asset, reset, open])
+
+  const handleGenerateInventoryNumber = async () => {
+    if (!assetType) {
+      alert('Сначала выберите тип актива')
+      return
+    }
+
+    try {
+      setGeneratingInventoryNumber(true)
+      const response = await templatesApi.generateInventoryNumber('temp-id', {
+        asset_type: assetType,
+      })
+      setValue('inventory_number', response.inventory_number)
+    } catch (error: any) {
+      alert(error.message || 'Не удалось сгенерировать инвентарный номер. Возможно, правило для этого типа актива не настроено.')
+    } finally {
+      setGeneratingInventoryNumber(false)
+    }
+  }
+
 
   const onSubmit = (formData: AssetFormData) => {
     if (isEdit) {
@@ -113,11 +197,19 @@ const AssetModal: React.FC<AssetModalProps> = ({ open, asset, users, onSave, onC
   }
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle>{isEdit ? 'Редактирование актива' : 'Создание актива'}</DialogTitle>
 
       <form onSubmit={handleSubmit(onSubmit)}>
-        <DialogContent>
+        <DialogContent sx={{ maxHeight: '70vh', overflowY: 'auto' }}>
+          {assetClass === 'hardware' && (
+            <Tabs value={tabValue} onChange={(_, val) => setTabValue(val)} sx={{ mb: 3 }}>
+              <Tab label="Основные данные" />
+              <Tab label="Данные паспорта" />
+            </Tabs>
+          )}
+
+          {(assetClass !== 'hardware' || tabValue === 0) && (
           <Grid container spacing={3}>
             <Grid item xs={12} sm={6}>
               <TextField
@@ -127,6 +219,31 @@ const AssetModal: React.FC<AssetModalProps> = ({ open, asset, users, onSave, onC
                 {...register('name')}
                 error={!!errors.name}
                 helperText={errors.name?.message}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label={`Инвентарный номер${isEdit ? '' : ' *'}`}
+                placeholder="Введите или сгенерируйте"
+                fullWidth
+                {...register('inventory_number')}
+                error={!!errors.inventory_number}
+                helperText={errors.inventory_number?.message}
+                InputProps={{
+                  endAdornment: !isEdit && (
+                    <Tooltip title="Сгенерировать номер">
+                      <IconButton
+                        onClick={handleGenerateInventoryNumber}
+                        disabled={generatingInventoryNumber || !assetType}
+                        size="small"
+                        color="primary"
+                      >
+                        <AutorenewIcon />
+                      </IconButton>
+                    </Tooltip>
+                  ),
+                }}
               />
             </Grid>
 
@@ -390,6 +507,152 @@ const AssetModal: React.FC<AssetModalProps> = ({ open, asset, users, onSave, onC
               />
             </Grid>
           </Grid>
+          )}
+
+          {assetClass === 'hardware' && tabValue === 1 && (
+          <Grid container spacing={3}>
+            <Grid item xs={12}>
+              <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold', mb: 2 }}>
+                Технические характеристики
+              </Typography>
+              <Divider sx={{ mb: 2 }} />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Серийный номер (S/N)"
+                fullWidth
+                {...register('serial_number')}
+                placeholder="Введите серийный номер"
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Номер ПК (НО)"
+                fullWidth
+                {...register('pc_number')}
+                placeholder="Введите номер ПК"
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Модель"
+                fullWidth
+                {...register('model')}
+                placeholder="Например: Dell OptiPlex 7090"
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Производитель"
+                fullWidth
+                {...register('manufacturer')}
+                placeholder="Например: Dell Inc."
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Процессор (CPU)"
+                fullWidth
+                {...register('cpu')}
+                placeholder="Например: Intel Core i7-11700"
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Оперативная память (RAM)"
+                fullWidth
+                {...register('ram')}
+                placeholder="Например: 16 GB DDR4"
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="HDD информация"
+                fullWidth
+                {...register('hdd_info')}
+                placeholder="Например: SSD 512GB"
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Сетевая карта"
+                fullWidth
+                {...register('network_card')}
+                placeholder="Например: Intel I219-V"
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Оптический привод"
+                fullWidth
+                {...register('optical_drive')}
+                placeholder="Например: DVD-RW"
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold', mb: 2, mt: 2 }}>
+                Сетевые параметры
+              </Typography>
+              <Divider sx={{ mb: 2 }} />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="IP адрес"
+                fullWidth
+                {...register('ip_address')}
+                placeholder="Например: 192.168.1.100"
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="MAC адрес"
+                fullWidth
+                {...register('mac_address')}
+                placeholder="Например: 00:1A:2B:3C:4D:5E"
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold', mb: 2, mt: 2 }}>
+                Производственно-экономические параметры
+              </Typography>
+              <Divider sx={{ mb: 2 }} />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Год приобретения"
+                type="number"
+                fullWidth
+                {...register('purchase_year', { valueAsNumber: true })}
+                placeholder="Например: 2023"
+                inputProps={{ min: 1900, max: 2100 }}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Гарантия до"
+                type="date"
+                fullWidth
+                {...register('warranty_until')}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+          </Grid>
+          )}
         </DialogContent>
 
         <DialogActions>

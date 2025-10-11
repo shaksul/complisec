@@ -1322,3 +1322,208 @@ func contains(slice []string, item string) bool {
 	}
 	return false
 }
+
+// SaveGeneratedDocument сохраняет сгенерированный документ
+func (s *DocumentService) SaveGeneratedDocument(ctx context.Context, tenantID string, content []byte, fileName, mimeType string, req dto.UploadDocumentDTO, createdBy string) (*dto.DocumentDTO, error) {
+	// Создаем уникальное имя файла
+	fileExt := filepath.Ext(fileName)
+	uniqueFileName := fmt.Sprintf("%s%s", uuid.New().String(), fileExt)
+	
+	// Определяем модуль и категорию из контекста
+	module, category := resolveModuleAndCategoryFromRequest(req)
+	
+	// Создаем структурированный путь к файлу
+	storagePath := filepath.Join(s.storagePath, module, category, uniqueFileName)
+	
+	// Создаем директории если не существуют
+	dir := filepath.Dir(storagePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create directory: %w", err)
+	}
+	
+	// Сохраняем файл
+	if err := os.WriteFile(storagePath, content, 0644); err != nil {
+		return nil, fmt.Errorf("failed to write file: %w", err)
+	}
+	
+	// Вычисляем хеш файла
+	hash := sha256.Sum256(content)
+	fileHash := fmt.Sprintf("%x", hash)
+	
+	// Создаем документ в БД
+	documentID := uuid.New().String()
+	document := repo.Document{
+		ID:           documentID,
+		TenantID:     tenantID,
+		Title:        req.Name,
+		OriginalName: fileName,
+		Description:  req.Description,
+		Type:         "generated",
+		Category:     &category,
+		FilePath:     storagePath,
+		FileSize:     int64(len(content)),
+		MimeType:     mimeType,
+		FileHash:     fileHash,
+		FolderID:     req.FolderID,
+		OwnerID:      createdBy,
+		CreatedBy:    createdBy,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+		IsActive:     true,
+		Version:      "1",
+		Metadata:     req.Metadata,
+	}
+	
+	if err := s.documentRepo.CreateDocument(ctx, document); err != nil {
+		return nil, fmt.Errorf("failed to create document: %w", err)
+	}
+	
+	// Добавляем теги
+	for _, tag := range req.Tags {
+		if err := s.documentRepo.AddDocumentTag(ctx, documentID, tag); err != nil {
+			log.Printf("Failed to add tag %s: %v", tag, err)
+		}
+	}
+	
+	// Создаем связи с модулями если указаны
+	if req.LinkedTo != nil {
+		log.Printf("DEBUG: SaveGeneratedDocument creating link - module=%s, entityID=%s, createdBy=%s", req.LinkedTo.Module, req.LinkedTo.EntityID, createdBy)
+		link := dto.CreateDocumentLinkDTO{
+			Module:   req.LinkedTo.Module,
+			EntityID: req.LinkedTo.EntityID,
+			LinkedBy: createdBy,
+		}
+		if err := s.AddDocumentLink(ctx, documentID, link); err != nil {
+			log.Printf("ERROR: Failed to add document link: %v", err)
+		} else {
+			log.Printf("DEBUG: SaveGeneratedDocument link created successfully")
+		}
+	}
+	
+	// Создаем аудит запись
+	auditLog := repo.DocumentAuditLog{
+		ID:         uuid.New().String(),
+		TenantID:   tenantID,
+		DocumentID: &documentID,
+		UserID:     createdBy,
+		Action:     "created",
+		Details:    &req.Name,
+		CreatedAt:  time.Now(),
+	}
+	s.documentRepo.CreateDocumentAuditLog(ctx, auditLog)
+	
+	// Получаем теги для ответа
+	tags, _ := s.documentRepo.GetDocumentTags(ctx, documentID)
+	
+	return &dto.DocumentDTO{
+		ID:           document.ID,
+		TenantID:     document.TenantID,
+		Title:        document.Title,
+		OriginalName: document.OriginalName,
+		Description:  document.Description,
+		Type:         document.Type,
+		Category:     document.Category,
+		FilePath:     document.FilePath,
+		FileSize:     document.FileSize,
+		MimeType:     document.MimeType,
+		FileHash:     document.FileHash,
+		FolderID:     document.FolderID,
+		OwnerID:      document.OwnerID,
+		CreatedBy:    document.CreatedBy,
+		CreatedAt:    document.CreatedAt,
+		UpdatedAt:    document.UpdatedAt,
+		IsActive:     document.IsActive,
+		Version:      document.Version,
+		Metadata:     document.Metadata,
+		Tags:         tags,
+		Links:        []dto.DocumentLinkDTO{},
+	}, nil
+}
+
+// resolveModuleAndCategoryFromRequest определяет модуль и категорию из запроса
+func resolveModuleAndCategoryFromRequest(req dto.UploadDocumentDTO) (string, string) {
+	// По умолчанию модуль - "documents"
+	module := "documents"
+	category := "documents"
+	
+	// Ищем теги для определения модуля и категории
+	for _, tag := range req.Tags {
+		if strings.HasPrefix(tag, "#") {
+			tagValue := strings.TrimPrefix(tag, "#")
+			switch tagValue {
+			case "активы", "assets":
+				module = "assets"
+				category = "assets"
+			case "риски", "risks":
+				module = "risks"
+				category = "risks"
+			case "passport":
+				module = "assets"
+				category = "passport"
+			case "compliance":
+				module = "compliance"
+				category = "compliance"
+			}
+		}
+	}
+	
+	// Если указан модуль в LinkedTo
+	if req.LinkedTo != nil {
+		switch req.LinkedTo.Module {
+		case "assets":
+			module = "assets"
+			category = "assets"
+		case "risks":
+			module = "risks"
+			category = "risks"
+		case "compliance":
+			module = "compliance"
+			category = "compliance"
+		}
+	}
+	
+	return module, category
+}
+
+// DownloadDocumentVersion скачивает версию документа
+func (s *DocumentService) DownloadDocumentVersion(ctx context.Context, versionID, tenantID string) (*dto.DocumentDownloadDTO, error) {
+	// Получаем версию документа
+	version, err := s.documentRepo.GetDocumentVersion(ctx, versionID, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get document version: %w", err)
+	}
+
+	// Получаем основной документ для получения оригинального имени
+	document, err := s.documentRepo.GetDocumentByID(ctx, version.DocumentID, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get document: %w", err)
+	}
+
+	// Читаем файл
+	filePath := filepath.Join(s.storagePath, version.FilePath)
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	// Получаем информацию о файле
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file info: %w", err)
+	}
+
+	// Читаем содержимое файла
+	content, err := io.ReadAll(file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	return &dto.DocumentDownloadDTO{
+		Content:      content,
+		FileName:     document.OriginalName,
+		FileSize:     fileInfo.Size(),
+		MimeType:     version.MimeType,
+		LastModified: version.CreatedAt,
+	}, nil
+}

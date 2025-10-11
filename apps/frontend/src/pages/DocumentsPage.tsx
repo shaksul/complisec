@@ -18,6 +18,8 @@ import {
   DialogActions,
   TextField,
   Select,
+  Tabs,
+  Tab,
   MenuItem,
   FormControl,
   InputLabel,
@@ -35,7 +37,9 @@ import {
   History,
   Search,
   Download,
+  Psychology,
 } from "@mui/icons-material"
+import DocumentPreview from "../components/docs/DocumentPreview"
 import {
   getDocuments,
   createDocument,
@@ -49,6 +53,7 @@ import {
   type CreateDocumentDTO,
   type DocumentFilters,
 } from "../shared/api/documents"
+import { indexDocument } from "../shared/api/rag"
 import { useAuth } from "../contexts/AuthContext"
 import CreateDocumentWizard from "../components/docs/CreateDocumentWizard"
 import DocumentVersionsDialog from "../components/docs/DocumentVersionsDialog"
@@ -71,6 +76,7 @@ function DocumentsPage() {
   const [openView, setOpenView] = useState(false)
   const [openVersions, setOpenVersions] = useState(false)
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null)
+  const [viewTab, setViewTab] = useState(0)
   
   // Form states
   const [formData, setFormData] = useState<CreateDocumentDTO>({
@@ -222,6 +228,18 @@ function DocumentsPage() {
     return ext || 'txt'
   }
 
+  const handleIndexToRAG = async (doc: Document) => {
+    try {
+      await indexDocument(doc.id)
+      setError(null)
+      // Показываем уведомление об успехе
+      alert(`Документ "${doc.title}" отправлен на индексацию в GraphRAG`)
+    } catch (err) {
+      console.error('Error indexing document to RAG:', err)
+      setError('Ошибка индексации документа в RAG')
+    }
+  }
+
   const renderDocumentsList = () => (
     <Paper>
       <Box display="flex" justifyContent="space-between" alignItems="center" p={2}>
@@ -343,6 +361,15 @@ function DocumentsPage() {
                       <Tooltip title="Версии">
                         <IconButton size="small" onClick={() => openVersionsDialog(document)}>
                           <History />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Индексировать в RAG">
+                        <IconButton 
+                          size="small" 
+                          color="primary"
+                          onClick={() => handleIndexToRAG(document)}
+                        >
+                          <Psychology />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Удалить">
@@ -487,51 +514,82 @@ function DocumentsPage() {
       </Dialog>
 
       {/* View Document Dialog */}
-      <Dialog open={openView} onClose={() => setOpenView(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Просмотр документа</DialogTitle>
-        <DialogContent>
+      <Dialog open={openView} onClose={() => setOpenView(false)} maxWidth="lg" fullWidth>
+        <DialogTitle>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Typography variant="h6">
+              {selectedDocument ? formatTextForDisplay(selectedDocument.title) : "Просмотр документа"}
+            </Typography>
+            <Button onClick={() => setOpenView(false)} size="small">
+              Закрыть
+            </Button>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0 }}>
           {selectedDocument && (
             <Box>
-              <Typography variant="h6" gutterBottom>
-                {formatTextForDisplay(selectedDocument.title)}
-              </Typography>
-              <Box mb={2}>
-                <Typography variant="body2" color="textSecondary">
-                  <strong>Тип:</strong> {getDocumentTypeLabel(selectedDocument.type)}
-                </Typography>
-                <Typography variant="body2" color="textSecondary">
-                  <strong>Статус:</strong> {getDocumentStatusLabel(selectedDocument.status)}
-                </Typography>
-                <Typography variant="body2" color="textSecondary">
-                  <strong>Категория:</strong> {formatTextForDisplay(selectedDocument.category) || "Не указана"}
-                </Typography>
-                <Typography variant="body2" color="textSecondary">
-                  <strong>Версия:</strong> v{selectedDocument.current_version}
-                </Typography>
-                <Typography variant="body2" color="textSecondary">
-                  <strong>Создан:</strong> {new Date(selectedDocument.created_at).toLocaleString()}
-                </Typography>
-              </Box>
-              {selectedDocument.description && (
-                <Box mb={2}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Описание:
-                  </Typography>
-                  <Typography variant="body2">
-                    {formatTextForDisplay(selectedDocument.description)}
-                  </Typography>
+              <Tabs 
+                value={viewTab} 
+                onChange={(_, newValue) => setViewTab(newValue)}
+                sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}
+              >
+                <Tab label="Метаданные" />
+                <Tab label="Предпросмотр" />
+              </Tabs>
+              
+              {viewTab === 0 && (
+                <Box p={2}>
+                  <Box mb={2}>
+                    <Typography variant="body2" color="textSecondary">
+                      <strong>Тип:</strong> {getDocumentTypeLabel(selectedDocument.type)}
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      <strong>Статус:</strong> {getDocumentStatusLabel(selectedDocument.status)}
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      <strong>Категория:</strong> {formatTextForDisplay(selectedDocument.category) || "Не указана"}
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      <strong>Версия:</strong> v{selectedDocument.current_version}
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      <strong>Создан:</strong> {new Date(selectedDocument.created_at).toLocaleString()}
+                    </Typography>
+                  </Box>
+                  {selectedDocument.description && (
+                    <Box mb={2}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Описание:
+                      </Typography>
+                      <Typography variant="body2">
+                        {formatTextForDisplay(selectedDocument.description)}
+                      </Typography>
+                    </Box>
+                  )}
+                  {selectedDocument.tags && selectedDocument.tags.length > 0 && (
+                    <Box mb={2}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Теги:
+                      </Typography>
+                      <Box display="flex" gap={1} flexWrap="wrap">
+                        {selectedDocument.tags.map((tag, index) => (
+                          <Chip key={index} label={tag} size="small" />
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
                 </Box>
               )}
-              {selectedDocument.tags && selectedDocument.tags.length > 0 && (
-                <Box mb={2}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Теги:
-                  </Typography>
-                  <Box display="flex" gap={1} flexWrap="wrap">
-                    {selectedDocument.tags.map((tag, index) => (
-                      <Chip key={index} label={tag} size="small" />
-                    ))}
-                  </Box>
+              
+              {viewTab === 1 && (
+                <Box>
+                  {selectedDocument.id && (
+                    <DocumentPreview
+                      documentId={selectedDocument.id}
+                      fileName={selectedDocument.title}
+                      mimeType={selectedDocument.mime_type}
+                    />
+                  )}
                 </Box>
               )}
             </Box>
